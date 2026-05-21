@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>School Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+/* ── RESET & BASE ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:   #0A1628;
+  --blue:   #1565C0;
+  --mid:    #1976D2;
+  --light:  #42A5F5;
+  --pale:   #E3F2FD;
+  --accent: #00B0FF;
+  --green:  #00C853;
+  --red:    #F44336;
+  --orange: #FF6D00;
+  --gold:   #FFD600;
+  --text:   #0D1B2A;
+  --muted:  #546E7A;
+  --border: #B0BEC5;
+  --card:   #FFFFFF;
+  --bg:     #F0F4F8;
+  --r:      12px;
+  --shadow: 0 4px 24px rgba(21,101,192,.13);
+  --shadow2:0 8px 40px rgba(21,101,192,.18);
+}
+html{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+body{min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none;outline:none}
+input,select,textarea{font-family:inherit;outline:none}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--pale)}
+::-webkit-scrollbar-thumb{background:var(--light);border-radius:3px}
+
+/* ── TOAST ── */
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px}
+.toast{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 18px;border-radius:10px;
+  font-size:13.5px;font-weight:500;
+  box-shadow:0 4px 20px rgba(0,0,0,.18);
+  animation:slideIn .3s ease;min-width:260px;max-width:380px;
+  border-left:4px solid;
+}
+.toast.success{background:#E8F5E9;color:#2E7D32;border-color:var(--green)}
+.toast.error  {background:#FFEBEE;color:#C62828;border-color:var(--red)}
+.toast.info   {background:#E3F2FD;color:#1565C0;border-color:var(--accent)}
+.toast svg{flex-shrink:0;width:18px;height:18px}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── MODAL ── */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(10,22,40,.55);
+  backdrop-filter:blur(4px);z-index:1000;
+  display:flex;align-items:center;justify-content:center;
+  animation:fadeIn .2s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--card);border-radius:var(--r);
+  padding:32px 36px;width:min(520px,92vw);
+  box-shadow:var(--shadow2);animation:popIn .25s ease;
+  max-height:88vh;overflow-y:auto;
+}
+@keyframes popIn{from{transform:scale(.93);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-title{font-family:'Syne',sans-serif;font-size:1.25rem;font-weight:800;color:var(--blue);margin-bottom:20px}
+
+/* ── LOGIN PAGE ── */
+#login-page{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 60%,var(--light) 100%);
+  position:relative;overflow:hidden;
+}
+#login-page::before{
+  content:'';position:absolute;inset:0;
+  background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23FFFFFF' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.login-card{
+  background:var(--card);border-radius:20px;
+  padding:48px 44px;width:min(420px,90vw);
+  box-shadow:0 24px 80px rgba(0,0,0,.35);
+  position:relative;z-index:1;
+}
+.login-logo{
+  display:flex;align-items:center;gap:12px;margin-bottom:32px;
+}
+.login-logo-icon{
+  width:48px;height:48px;background:linear-gradient(135deg,var(--blue),var(--accent));
+  border-radius:14px;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(21,101,192,.4);
+}
+.login-logo-icon svg{width:26px;height:26px;fill:white}
+.login-logo h1{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:var(--navy);line-height:1.1}
+.login-logo span{font-size:.8rem;color:var(--muted);font-weight:400;display:block;margin-top:2px}
+.login-subtitle{font-size:.875rem;color:var(--muted);margin-bottom:28px}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px}
+.field input,.field select{
+  width:100%;padding:12px 16px;
+  border:1.5px solid var(--border);border-radius:10px;
+  font-size:.95rem;transition:border .2s,box-shadow .2s;
+  background:var(--bg);
+}
+.field input:focus,.field select:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.12)}
+.btn-primary{
+  width:100%;padding:13px;background:linear-gradient(135deg,var(--blue),var(--mid));
+  color:white;border-radius:10px;font-size:.95rem;font-weight:600;
+  letter-spacing:.02em;transition:transform .15s,box-shadow .15s;
+  box-shadow:0 4px 18px rgba(21,101,192,.35);
+}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(21,101,192,.45)}
+.btn-primary:active{transform:translateY(0)}
+.login-error{
+  background:#FFEBEE;color:#C62828;border-radius:8px;
+  padding:10px 14px;font-size:.85rem;margin-bottom:16px;
+  border-left:3px solid var(--red);display:none;
+}
+
+/* ── APP SHELL ── */
+#app{display:none;flex-direction:row;min-height:100vh}
+
+/* ── SIDEBAR ── */
+#sidebar{
+  width:240px;background:var(--navy);
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;flex-shrink:0;
+}
+.sidebar-header{
+  padding:24px 20px 16px;border-bottom:1px solid rgba(255,255,255,.07);
+}
+.sidebar-brand{
+  display:flex;align-items:center;gap:10px;
+}
+.sidebar-brand-icon{
+  width:36px;height:36px;background:linear-gradient(135deg,var(--mid),var(--accent));
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+}
+.sidebar-brand-icon svg{width:18px;height:18px;fill:white}
+.sidebar-brand h2{font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;color:white;line-height:1}
+.sidebar-brand span{font-size:.7rem;color:rgba(255,255,255,.45);display:block;margin-top:2px}
+.sidebar-user{
+  padding:14px 20px 16px;border-bottom:1px solid rgba(255,255,255,.07);
+}
+.sidebar-user-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.08);border-radius:20px;
+  padding:5px 12px 5px 8px;font-size:.75rem;color:rgba(255,255,255,.75);
+}
+.sidebar-user-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.sidebar-nav{flex:1;overflow-y:auto;padding:12px 10px}
+.nav-section-title{
+  font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:rgba(255,255,255,.3);padding:10px 10px 6px;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:9px;cursor:pointer;
+  transition:background .15s,color .15s;
+  color:rgba(255,255,255,.6);font-size:.875rem;font-weight:500;
+  margin-bottom:2px;
+}
+.nav-item svg{width:17px;height:17px;flex-shrink:0;opacity:.7}
+.nav-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.9)}
+.nav-item.active{background:linear-gradient(90deg,var(--mid),rgba(25,118,210,.7));color:white}
+.nav-item.active svg{opacity:1}
+.sidebar-footer{
+  padding:16px;border-top:1px solid rgba(255,255,255,.07);
+}
+.btn-logout{
+  width:100%;padding:10px;background:rgba(244,67,54,.12);
+  color:#EF9A9A;border-radius:8px;font-size:.8rem;font-weight:600;
+  transition:background .15s;display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.btn-logout:hover{background:rgba(244,67,54,.22);color:#FFCDD2}
+.btn-logout svg{width:15px;height:15px}
+
+/* ── MAIN CONTENT ── */
+#main{flex:1;overflow-y:auto;padding:28px 32px}
+.page{display:none}
+.page.active{display:block;animation:fadeUp .3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.page-header{margin-bottom:24px}
+.page-title{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--navy)}
+.page-sub{font-size:.875rem;color:var(--muted);margin-top:4px}
+
+/* ── CARDS / STATS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;margin-bottom:28px}
+.stat-card{
+  background:var(--card);border-radius:var(--r);padding:20px;
+  box-shadow:var(--shadow);border-left:4px solid;
+  display:flex;align-items:center;gap:14px;
+}
+.stat-icon{
+  width:44px;height:44px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.stat-icon svg{width:22px;height:22px}
+.stat-val{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800}
+.stat-label{font-size:.75rem;color:var(--muted);font-weight:500;margin-top:2px}
+
+/* ── TABLE ── */
+.table-card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.table-toolbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 20px;border-bottom:1px solid var(--pale);flex-wrap:wrap;gap:12px;
+}
+.table-toolbar-title{font-weight:700;font-size:.95rem;color:var(--navy)}
+.search-box{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+  padding:7px 12px;
+}
+.search-box svg{width:15px;height:15px;color:var(--muted)}
+.search-box input{background:none;border:none;font-size:.85rem;width:200px;color:var(--text)}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+thead th{
+  background:var(--pale);padding:11px 16px;
+  text-align:left;font-weight:700;font-size:.75rem;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--blue);
+  white-space:nowrap;
+}
+tbody tr{border-bottom:1px solid #F5F7FA;transition:background .12s}
+tbody tr:hover{background:#F8FBFF}
+tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
+.badge{
+  display:inline-flex;align-items:center;padding:3px 10px;
+  border-radius:20px;font-size:.75rem;font-weight:600;white-space:nowrap;
+}
+.badge-blue  {background:#E3F2FD;color:var(--blue)}
+.badge-green {background:#E8F5E9;color:#2E7D32}
+.badge-red   {background:#FFEBEE;color:#C62828}
+.badge-orange{background:#FFF3E0;color:#E65100}
+.badge-grey  {background:#ECEFF1;color:#546E7A}
+
+/* ── FORM ELEMENTS ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid.single{grid-template-columns:1fr}
+.form-group{margin-bottom:0}
+.form-group.full{grid-column:1/-1}
+.form-label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.form-input,.form-select{
+  width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:9px;
+  font-size:.9rem;background:var(--bg);transition:border .2s,box-shadow .2s;color:var(--text);
+}
+.form-input:focus,.form-select:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.1)}
+.form-input.error{border-color:var(--red)}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 18px;border-radius:9px;font-size:.85rem;font-weight:600;
+  transition:all .15s;cursor:pointer;border:none;white-space:nowrap;
+}
+.btn svg{width:15px;height:15px;flex-shrink:0}
+.btn-blue{background:var(--blue);color:white;box-shadow:0 2px 10px rgba(21,101,192,.3)}
+.btn-blue:hover{background:var(--mid);transform:translateY(-1px)}
+.btn-outline{background:transparent;color:var(--blue);border:1.5px solid var(--blue)}
+.btn-outline:hover{background:var(--pale)}
+.btn-red{background:var(--red);color:white}
+.btn-red:hover{background:#D32F2F}
+.btn-green{background:var(--green);color:white}
+.btn-green:hover{background:#00A040}
+.btn-sm{padding:6px 13px;font-size:.78rem}
+.btn-icon{padding:7px;border-radius:7px}
+
+/* ── REPORT CARD ── */
+.report-card{background:var(--card);border-radius:var(--r);padding:24px;box-shadow:var(--shadow)}
+.report-header-grid{display:grid;grid-template-columns:1fr auto;gap:16px;margin-bottom:20px;align-items:start}
+.report-info-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px}
+.report-info-item{font-size:.85rem}
+.report-info-item strong{color:var(--blue);display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.summary-band{
+  display:flex;gap:0;border-radius:10px;overflow:hidden;margin:16px 0;
+}
+.summary-cell{
+  flex:1;padding:12px;text-align:center;
+  background:var(--blue);color:white;
+}
+.summary-cell:nth-child(even){background:var(--mid)}
+.summary-cell .val{font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800}
+.summary-cell .lbl{font-size:.68rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em}
+.grade-A{color:#00C853;font-weight:700}
+.grade-B{color:#1565C0;font-weight:700}
+.grade-C{color:#FF6D00;font-weight:700}
+.grade-D{color:#FF9800;font-weight:700}
+.grade-F{color:#F44336;font-weight:700}
+.fail-row td{color:var(--red)!important}
+
+/* ── SCORE SHEET ── */
+.scoresheet-table{font-size:.78rem}
+.scoresheet-table thead th{padding:8px 10px;font-size:.68rem}
+.scoresheet-table tbody td{padding:8px 10px}
+
+/* ── MARKS ENTRY ── */
+.marks-student-row{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 16px;background:var(--bg);border-radius:9px;margin-bottom:8px;
+}
+.marks-student-name{flex:1;font-weight:600;font-size:.9rem}
+.marks-score-input{
+  width:80px;padding:7px 10px;border:1.5px solid var(--border);
+  border-radius:7px;font-size:.9rem;text-align:center;
+  background:white;
+}
+.marks-score-input:focus{border-color:var(--mid);box-shadow:0 0 0 2px rgba(25,118,210,.1)}
+.marks-saved-badge{font-size:.72rem;color:var(--green);font-weight:600;min-width:50px}
+
+/* ── EMPTY STATE ── */
+.empty-state{
+  padding:60px 20px;text-align:center;
+}
+.empty-state svg{width:56px;height:56px;color:var(--border);margin-bottom:14px}
+.empty-state p{color:var(--muted);font-size:.9rem}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:4px;background:var(--pale);padding:4px;border-radius:10px;margin-bottom:20px;flex-wrap:wrap}
+.tab{
+  padding:8px 18px;border-radius:8px;font-size:.85rem;font-weight:600;
+  color:var(--muted);cursor:pointer;transition:all .15s;
+}
+.tab.active{background:white;color:var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+
+/* ── SECTION CARD ── */
+.section-card{background:var(--card);border-radius:var(--r);padding:22px 24px;box-shadow:var(--shadow);margin-bottom:20px}
+.section-card-title{font-weight:700;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.section-card-title svg{width:18px;height:18px;color:var(--blue)}
+
+/* ── PROGRESS BAR ── */
+.progress-bar{height:6px;background:var(--pale);border-radius:3px;overflow:hidden;margin-top:4px}
+.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),var(--accent));transition:width .4s ease}
+
+/* ── SPINNER ── */
+.spinner{
+  width:32px;height:32px;border:3px solid var(--pale);
+  border-top-color:var(--blue);border-radius:50%;
+  animation:spin .7s linear infinite;margin:40px auto;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── PDF DOWNLOAD BUTTON ── */
+.btn-pdf{background:#FF6D00;color:white;box-shadow:0 2px 10px rgba(255,109,0,.3)}
+.btn-pdf:hover{background:#E65100;transform:translateY(-1px)}
+
+/* ── TERM BANNER ── */
+.term-banner{
+  background:linear-gradient(90deg,var(--blue),var(--mid));
+  color:white;padding:8px 20px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:.82rem;font-weight:600;flex-wrap:wrap;gap:8px;
+}
+.term-banner.closed{background:linear-gradient(90deg,#B71C1C,#E53935)}
+.term-banner.none{background:linear-gradient(90deg,#424242,#616161)}
+.term-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.18);border-radius:20px;padding:3px 12px;
+}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  #sidebar{position:fixed;left:-240px;z-index:100;transition:left .25s;height:100vh}
+  #sidebar.open{left:0}
+  #main{padding:20px 16px}
+  .form-grid{grid-template-columns:1fr}
+  .stats-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- ══════════════ LOGIN PAGE ══════════════ -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+      </div>
+      <div>
+        <h1>SchoolManager</h1>
+        <span>Academic Management System</span>
+      </div>
+    </div>
+    <p class="login-subtitle">Sign in to your account to continue</p>
+    <div class="login-error" id="login-error"></div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="login-user" placeholder="Enter username" autocomplete="username"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password"/>
+    </div>
+    <button class="btn-primary" id="login-btn">Sign In</button>
+  </div>
+</div>
+
+<!-- ══════════════ APP ══════════════ -->
+<div id="app">
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+        </div>
+        <div>
+          <h2>SchoolManager</h2>
+          <span>Academic System</span>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="sidebar-user-badge">
+        <span class="sidebar-user-dot"></span>
+        <span id="sidebar-username">—</span>
+        <span id="sidebar-role-badge" style="margin-left:4px;opacity:.6"></span>
+      </div>
+    </div>
+    <div class="sidebar-nav" id="sidebar-nav"></div>
+    <div class="sidebar-footer">
+      <button class="btn-logout" id="logout-btn">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+        Logout
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main id="main">
+    <!-- TERM BANNER -->
+    <div id="term-banner" style="display:none;margin:-28px -32px 20px -32px">
+      <div class="term-banner" id="term-banner-bar">
+        <div class="term-badge" id="term-badge-label">No active term</div>
+        <div id="term-banner-detail" style="opacity:.85;font-size:.75rem"></div>
+      </div>
+    </div>
+
+    <!-- ── DASHBOARD ── -->
+    <div class="page" id="page-dashboard">
+      <div class="page-header">
+        <h2 class="page-title">Dashboard</h2>
+        <p class="page-sub">Welcome back — here's a quick overview</p>
+      </div>
+      <div class="stats-grid" id="dash-stats"></div>
+      <div class="section-card">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          Recent Students
+        </div>
+        <div id="dash-recent-students"></div>
+      </div>
+    </div>
+
+    <!-- ── STUDENTS ── -->
+    <div class="page" id="page-students">
+      <div class="page-header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 class="page-title">Students</h2>
+            <p class="page-sub">Manage all enrolled students</p>
+          </div>
+          <button class="btn btn-blue" id="btn-add-student">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+            Add Student
+          </button>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-toolbar">
+          <span class="table-toolbar-title">All Students</span>
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="text" id="student-search" placeholder="Search students…"/>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Name</th><th>Class</th><th>Actions</th></tr></thead>
+            <tbody id="students-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TEACHERS (admin) ── -->
+    <div class="page" id="page-teachers">
+      <div class="page-header">
+        <h2 class="page-title">Teachers</h2>
+        <p class="page-sub">Create accounts and manage assignments. Only admin can do this.</p>
+      </div>
+      <!-- Create teacher -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          Create Teacher Account
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-input" id="new-teacher-user" placeholder="e.g. mrjones"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password (set with teacher present)</label>
+            <input type="password" class="form-input" id="new-teacher-pass" placeholder="Min 4 characters"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="btn-create-teacher" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+              Create Account
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Teachers table -->
+      <div class="table-card" style="margin-bottom:20px">
+        <div class="table-toolbar">
+          <span class="table-toolbar-title">All Teachers</span>
+          <button class="btn btn-blue btn-sm" id="btn-assign-teacher">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+            Assign Subject
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Username</th><th>Class Teacher Of</th><th>Assignments</th><th>Actions</th></tr></thead>
+            <tbody id="teachers-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MARKS ENTRY ── -->
+    <div class="page" id="page-marks">
+      <div class="page-header">
+        <h2 class="page-title">Enter Marks</h2>
+        <p class="page-sub">Enter CA and exam marks for your students</p>
+      </div>
+      <div class="section-card">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+          Mark Entry Configuration
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <select class="form-select" id="marks-subject"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Class</label>
+            <select class="form-select" id="marks-class"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assessment Type</label>
+            <select class="form-select" id="marks-type"></select>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-blue" id="marks-load-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+            Load Students
+          </button>
+        </div>
+      </div>
+      <div class="section-card" id="marks-entry-section" style="display:none">
+        <div class="section-card-title" id="marks-entry-title">Students</div>
+        <div id="marks-students-list"></div>
+        <div style="margin-top:16px">
+          <button class="btn btn-green" id="marks-save-all-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+            Save All Marks
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── REPORT CARD VIEW ── -->
+    <div class="page" id="page-reports">
+      <div class="page-header">
+        <h2 class="page-title">Report Cards</h2>
+        <p class="page-sub">View and download student report cards</p>
+      </div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Student ID</label>
+            <input type="number" class="form-input" id="report-student-id" placeholder="Enter student ID"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="report-view-btn" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+              View Report
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="report-output"></div>
+    </div>
+
+    <!-- ── TERMS ── -->
+    <div class="page" id="page-terms">
+      <div class="page-header">
+        <h2 class="page-title">Terms</h2>
+        <p class="page-sub">Manage academic terms — open, view, and close them</p>
+      </div>
+      <!-- Create new term (admin only) -->
+      <div class="section-card" style="margin-bottom:20px" id="create-term-card">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+          Open New Term
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Term Label (e.g. "Term 1 2026")</label>
+            <input type="text" class="form-input" id="term-label" placeholder="Term 1 2026"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Number of CAs</label>
+            <input type="number" class="form-input" id="term-ca-count" min="1" max="10" value="2"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">CA Weight (%)</label>
+            <input type="number" class="form-input" id="term-ca-weight" min="1" max="99" value="30"
+                   oninput="document.getElementById('term-exam-weight').value=100-parseInt(this.value||0)"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Exam Weight (%) — auto</label>
+            <input type="number" class="form-input" id="term-exam-weight" value="70" readonly
+                   style="background:#eee;cursor:not-allowed"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="btn-open-term" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+              Open Term
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Terms list -->
+      <div class="table-card">
+        <div class="table-toolbar">
+          <span class="table-toolbar-title">All Terms</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Label</th><th>CAs</th><th>CA Weight</th><th>Exam Weight</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="terms-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SCORE SHEETS ── -->
+    <div class="page" id="page-sheets">
+      <div class="page-header">
+        <h2 class="page-title">Score Sheets</h2>
+        <p class="page-sub">Class-wide score sheets and PDF exports</p>
+      </div>
+      <div class="tabs" id="sheets-tabs">
+        <div class="tab active" data-tab="ca">CA Score Sheet</div>
+        <div class="tab" data-tab="exam">Exam Score Sheet</div>
+        <div class="tab" data-tab="terminal">Terminal Score Sheet</div>
+      </div>
+
+      <!-- CA tab -->
+      <div id="sheets-tab-ca">
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Class</label>
+              <select class="form-select" id="ca-sheet-class"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assessment</label>
+              <select class="form-select" id="ca-sheet-assess"></select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+              <button class="btn btn-blue" id="ca-sheet-view-btn" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z"/></svg>
+                View
+              </button>
+              <button class="btn btn-pdf" id="ca-sheet-pdf-btn" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/></svg>
+                PDF
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="ca-sheet-output"></div>
+      </div>
+
+      <!-- Exam tab -->
+      <div id="sheets-tab-exam" style="display:none">
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Class</label>
+              <select class="form-select" id="exam-sheet-class"></select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+              <button class="btn btn-blue" id="exam-sheet-view-btn" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z"/></svg>
+                View
+              </button>
+              <button class="btn btn-pdf" id="exam-sheet-pdf-btn" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                PDF
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="exam-sheet-output"></div>
+      </div>
+
+      <!-- Terminal tab -->
+      <div id="sheets-tab-terminal" style="display:none">
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Class</label>
+              <select class="form-select" id="term-sheet-class"></select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+              <button class="btn btn-blue" id="term-sheet-view-btn" style="flex:1">View</button>
+              <button class="btn btn-pdf" id="term-sheet-pdf-btn" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                PDF
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="term-sheet-output"></div>
+      </div>
+    </div>
+
+    <!-- ── PAST TERMS ── -->
+    <div class="page" id="page-past">
+      <div class="page-header">
+        <h2 class="page-title">Past Terms</h2>
+        <p class="page-sub">View marks from closed terms (read-only)</p>
+      </div>
+      <div class="tabs" id="past-tabs">
+        <div class="tab active" data-ptab="marks">Subject Marks Table</div>
+        <div class="tab" data-ptab="report">Student Report Card</div>
+      </div>
+
+      <!-- Subject marks table -->
+      <div id="past-tab-marks">
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Select Term</label>
+              <select class="form-select" id="past-term-sel"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Subject</label>
+              <select class="form-select" id="past-subject-sel"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Class</label>
+              <select class="form-select" id="past-class-sel"></select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="past-marks-btn" style="width:100%">Show Marks</button>
+            </div>
+          </div>
+        </div>
+        <div id="past-marks-output"></div>
+      </div>
+
+      <!-- Report card -->
+      <div id="past-tab-report" style="display:none">
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Select Term</label>
+              <select class="form-select" id="past-term-sel2"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Student ID</label>
+              <input type="number" class="form-input" id="past-student-id" placeholder="Enter student ID"/>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="past-view-btn" style="width:100%">View Report</button>
+            </div>
+          </div>
+        </div>
+        <div id="past-report-output"></div>
+      </div>
+    </div>
+
+    <!-- ── RANKINGS ── -->
+    <div class="page" id="page-rankings">
+      <div class="page-header">
+        <h2 class="page-title">Rankings</h2>
+        <p class="page-sub">Rank students by subject and assessment</p>
+      </div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Class</label>
+            <select class="form-select" id="rank-class-sel"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <select class="form-select" id="rank-subj-sel"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assessment</label>
+            <select class="form-select" id="rank-assess-sel"></select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="rank-show-btn" style="width:100%">Show Ranking</button>
+          </div>
+        </div>
+      </div>
+      <div id="rank-output"></div>
+    </div>
+
+    <!-- ── REMARKS ── -->
+    <div class="page" id="page-remarks">
+      <div class="page-header">
+        <h2 class="page-title">Student Remarks</h2>
+        <p class="page-sub">Add or edit remarks on student report cards</p>
+      </div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Student ID</label>
+            <input type="number" class="form-input" id="remark-student-id" placeholder="Enter student ID"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="remark-load-btn" style="width:100%">Load Student</button>
+          </div>
+          <div class="form-group full">
+            <label class="form-label" id="remark-field-label">Remark</label>
+            <textarea class="form-input" id="remark-text" rows="3" placeholder="Enter remark…" style="resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-green" id="remark-save-btn">Save Remark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONFIG (admin) ── -->
+    <div class="page" id="page-config">
+      <div class="page-header">
+        <h2 class="page-title">Configuration</h2>
+        <p class="page-sub">System information — manage term structure from the Terms page</p>
+      </div>
+      <div class="section-card">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          Active Term
+        </div>
+        <div id="config-term-info" style="color:var(--muted);font-size:.9rem;padding:8px 0">Loading...</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════════ MODALS ══════════════ -->
+<div class="modal-backdrop" id="modal-add-student" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Add New Student</div>
+    <div class="form-grid single">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" class="form-input" id="new-student-name" placeholder="Student full name"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Class</label>
+        <select class="form-select" id="new-student-class"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-add-student')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-add-student">Add Student</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-assign-teacher" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Assign Teacher</div>
+    <div class="form-grid single">
+      <div class="form-group">
+        <label class="form-label">Teacher Username</label>
+        <select class="form-select" id="assign-teacher-user"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <select class="form-select" id="assign-teacher-subject"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Class</label>
+        <select class="form-select" id="assign-teacher-class"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Set Class Teacher Modal -->
+<div class="modal-backdrop" id="modal-set-ct" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Class Teacher Assignment</div>
+    <input type="hidden" id="ct-username"/>
+    <div class="form-grid single">
+      <div class="form-group">
+        <label class="form-label">
+          <input type="checkbox" id="ct-is-ct" onchange="toggleCTClass()" style="margin-right:8px"/>
+          This teacher is a class teacher
+        </label>
+      </div>
+      <div class="form-group" id="ct-class-group" style="display:none">
+        <label class="form-label">Assigned Class</label>
+        <select class="form-select" id="ct-class"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-set-ct')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-set-ct">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ JAVASCRIPT ══════════════ -->
+<script>
+const API = "http://localhost:5000/api";
+let currentUser = null;
+let config = {ca_count:2, allowed_subjects:[], classes:[]};
+
+// ── UTILS ──────────────────────────────────────────────
+function toast(msg, type="info"){
+  const el = document.createElement("div");
+  const icons = {
+    success:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`,
+    error:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`,
+    info:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`,
+  };
+  el.className = `toast ${type}`;
+  el.innerHTML = `${icons[type]||icons.info}<span>${msg}</span>`;
+  document.getElementById("toast-container").appendChild(el);
+  setTimeout(()=>el.remove(),3800);
+}
+
+function closeModal(id){document.getElementById(id).style.display="none"}
+function openModal(id){document.getElementById(id).style.display="flex"}
+
+async function api(path, method="GET", body=null){
+  const opts = {method, headers:{"Content-Type":"application/json"}};
+  if(body) opts.body = JSON.stringify(body);
+  const r = await fetch(API+path, opts);
+  return r.json();
+}
+
+function gradeClass(g){return `grade-${g}`}
+
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s}
+
+function populateSelect(sel, items, valFn, labelFn){
+  sel.innerHTML="";
+  items.forEach(i=>{
+    const o=document.createElement("option");
+    o.value=valFn(i); o.textContent=labelFn(i);
+    sel.appendChild(o);
+  });
+}
+
+// ── LOGIN ──────────────────────────────────────────────
+document.getElementById("login-btn").addEventListener("click", doLogin);
+document.getElementById("login-pass").addEventListener("keydown", e=>e.key==="Enter"&&doLogin());
+
+async function doLogin(){
+  const u = document.getElementById("login-user").value.trim();
+  const p = document.getElementById("login-pass").value;
+  const errEl = document.getElementById("login-error");
+  errEl.style.display="none";
+  if(!u||!p){errEl.textContent="Please enter username and password";errEl.style.display="block";return;}
+  try{
+    const res = await api("/login","POST",{username:u,password:p});
+    if(res.ok){
+      currentUser = res.user;
+      await loadConfig();
+      bootApp();
+    } else {
+      errEl.textContent = res.error||"Invalid credentials";
+      errEl.style.display="block";
+    }
+  }catch(e){
+    errEl.textContent="Cannot connect to server. Make sure app.py is running.";
+    errEl.style.display="block";
+  }
+}
+
+// ── CONFIG (handled by new loadConfig below) ──
+
+// ── BOOT APP ──────────────────────────────────────────────
+async function bootApp(){
+  document.getElementById("login-page").style.display="none";
+  document.getElementById("app").style.display="flex";
+  document.getElementById("sidebar-username").textContent=currentUser.username;
+  document.getElementById("sidebar-role-badge").textContent=`[${currentUser.role}]`;
+
+  buildNav();
+  await refreshTermBanner();
+  const defaultPage = currentUser.role==="admin" ? "dashboard" : "marks";
+  showPage(defaultPage);
+  loadDashboard();
+}
+
+// ── NAV ──────────────────────────────────────────────
+const NAV_ADMIN = [
+  {id:"dashboard", icon:homeSVG(),    label:"Dashboard"},
+  {id:"students",  icon:peopleSVG(),  label:"Students"},
+  {id:"teachers",  icon:teacherSVG(), label:"Teachers"},
+  {id:"terms",     icon:calSVG(),     label:"Terms"},
+  {id:"reports",   icon:reportSVG(),  label:"Report Cards"},
+  {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},
+  {id:"rankings",  icon:starSVG(),    label:"Rankings"},
+  {id:"remarks",   icon:chatSVG(),    label:"Remarks"},
+  {id:"past",      icon:historySVG(), label:"Past Terms"},
+  {id:"config",    icon:gearSVG(),    label:"Config"},
+];
+
+function buildTeacherNav(user){
+  const items = [
+    {id:"marks",   icon:editSVG(),   label:"Enter Marks"},
+    {id:"rankings",icon:starSVG(),   label:"Rankings"},
+  ];
+  if(user.is_class_teacher){
+    items.push({id:"reports", icon:reportSVG(), label:"Report Cards"});
+    items.push({id:"sheets",  icon:tableSVG(),  label:"Score Sheets"});
+    items.push({id:"remarks", icon:chatSVG(),   label:"Remarks"});
+  }
+  items.push({id:"past", icon:historySVG(), label:"Past Terms"});
+  return items;
+}
+
+function buildNav(){
+  const items = currentUser.role==="admin"
+    ? NAV_ADMIN
+    : buildTeacherNav(currentUser);
+  const nav = document.getElementById("sidebar-nav");
+  nav.innerHTML="";
+  items.forEach(item=>{
+    const el=document.createElement("div");
+    el.className="nav-item";
+    el.dataset.page=item.id;
+    el.innerHTML=`${item.icon}<span>${item.label}</span>`;
+    el.addEventListener("click",()=>showPage(item.id));
+    nav.appendChild(el);
+  });
+}
+
+function showPage(id){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
+  const pg = document.getElementById("page-"+id);
+  if(pg) pg.classList.add("active");
+  const ni = document.querySelector(`.nav-item[data-page="${id}"]`);
+  if(ni) ni.classList.add("active");
+
+  // lazy load
+  if(id==="students")  loadStudents();
+  if(id==="teachers")  loadTeachers();
+  if(id==="marks")     { setupMarks(); populateMarksSelects(); }
+  if(id==="sheets")    setupSheets();
+  if(id==="rankings")  setupRankings();
+  if(id==="terms")     loadTerms();
+  if(id==="past")      setupPastTerms();
+  if(id==="config")    loadConfig();
+}
+
+// ── LOGOUT ──────────────────────────────────────────────
+document.getElementById("logout-btn").addEventListener("click",()=>{
+  currentUser=null;
+  document.getElementById("app").style.display="none";
+  document.getElementById("login-page").style.display="flex";
+  document.getElementById("login-pass").value="";
+  document.getElementById("login-error").style.display="none";
+});
+
+// ── DASHBOARD ──────────────────────────────────────────────
+async function loadDashboard(){
+  const studs = await api("/students");
+  const stats = document.getElementById("dash-stats");
+  const byClass = {};
+  studs.forEach(s=>{byClass[s.class_name]=(byClass[s.class_name]||0)+1});
+  const entries = [
+    {val:studs.length,                    label:"Total Students",  col:"#1565C0", bg:"#E3F2FD"},
+    {val:Object.keys(byClass).length,     label:"Active Classes",  col:"#00B0FF", bg:"#E1F5FE"},
+    {val:studs.filter(s=>s.class_name==="form 1"||s.class_name==="form 2").length, label:"Lower School", col:"#00C853", bg:"#E8F5E9"},
+    {val:studs.filter(s=>s.class_name==="form 3"||s.class_name==="form 4").length, label:"Upper School",  col:"#FF6D00", bg:"#FFF3E0"},
+  ];
+  stats.innerHTML = entries.map(e=>`
+    <div class="stat-card" style="border-color:${e.col}">
+      <div class="stat-icon" style="background:${e.bg}">
+        <svg viewBox="0 0 24 24" fill="${e.col}" width="22" height="22"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      </div>
+      <div><div class="stat-val" style="color:${e.col}">${e.val}</div><div class="stat-label">${e.label}</div></div>
+    </div>`).join("");
+
+  const recent = studs.slice(-8).reverse();
+  document.getElementById("dash-recent-students").innerHTML = recent.length
+    ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Class</th></tr></thead><tbody>
+       ${recent.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td><span class="badge badge-blue">${cap(s.class_name)}</span></td></tr>`).join("")}
+       </tbody></table></div>`
+    : `<div class="empty-state">${emptySVG()}<p>No students yet</p></div>`;
+}
+
+// ── STUDENTS ──────────────────────────────────────────────
+let allStudents=[];
+async function loadStudents(){
+  allStudents = await api("/students");
+  renderStudents(allStudents);
+}
+function renderStudents(list){
+  const tb = document.getElementById("students-tbody");
+  if(!list.length){
+    tb.innerHTML=`<tr><td colspan="4"><div class="empty-state">${emptySVG()}<p>No students found</p></div></td></tr>`;
+    return;
+  }
+  tb.innerHTML=list.map((s,i)=>`
+    <tr>
+      <td style="color:var(--muted);font-size:.8rem">${s.id}</td>
+      <td style="font-weight:600">${s.name}</td>
+      <td><span class="badge badge-blue">${cap(s.class_name)}</span></td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id})">
+            ${reportSVG()} Report
+          </button>
+          <button class="btn btn-sm btn-red btn-icon" onclick="deleteStudent(${s.id},'${s.name}')">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`).join("");
+}
+
+document.getElementById("student-search").addEventListener("input",function(){
+  const q=this.value.toLowerCase();
+  renderStudents(allStudents.filter(s=>s.name.toLowerCase().includes(q)||s.class_name.includes(q)));
+});
+
+document.getElementById("btn-add-student").addEventListener("click",()=>{
+  const sel = document.getElementById("new-student-class");
+  populateSelect(sel, config.classes, c=>c, c=>cap(c));
+  openModal("modal-add-student");
+});
+document.getElementById("confirm-add-student").addEventListener("click", async()=>{
+  const name  = document.getElementById("new-student-name").value.trim();
+  const cls   = document.getElementById("new-student-class").value;
+  if(!name){toast("Enter a student name","error");return;}
+  const r = await api("/students","POST",{name,class_name:cls});
+  if(r.ok){toast("Student added!","success");closeModal("modal-add-student");loadStudents();document.getElementById("new-student-name").value="";}
+  else toast(r.error||"Failed","error");
+});
+
+async function deleteStudent(id,name){
+  if(!confirm(`Delete "${name}"? This also removes all their marks.`))return;
+  const r = await api(`/students/${id}`,"DELETE");
+  if(r.ok){toast("Student removed","success");loadStudents();}
+  else toast(r.error||"Failed","error");
+}
+
+function quickReport(sid){
+  document.getElementById("report-student-id").value=sid;
+  showPage("reports");
+  viewReport(sid);
+}
+
+// ── TEACHERS ──────────────────────────────────────────────
+async function loadTeachers(){
+  const teachers = await api("/teachers");
+  const tb = document.getElementById("teachers-tbody");
+  if(!teachers.length){
+    tb.innerHTML=`<tr><td colspan="5"><div class="empty-state">${emptySVG()}<p>No teachers yet. Create one above.</p></div></td></tr>`;
+  } else {
+    tb.innerHTML=teachers.map(t=>`
+      <tr>
+        <td style="font-weight:600">${t.username}</td>
+        <td>${t.is_class_teacher
+          ? `<span class="badge badge-green">${cap(t.class_name)}</span>`
+          : `<span class="badge badge-grey">No</span>`}</td>
+        <td style="font-size:.8rem;color:var(--muted)">${
+          t.assignments.length
+            ? t.assignments.map(a=>`${cap(a.subject)} (${cap(a.class_name)})`).join(", ")
+            : "—"
+        }</td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" onclick="openSetClassTeacher('${t.username}','${t.is_class_teacher?t.class_name:""}',${t.is_class_teacher})">
+              ${t.is_class_teacher?"Edit CT":"Set as CT"}
+            </button>
+            <button class="btn btn-sm btn-red btn-icon" onclick="deleteTeacher('${t.username}')">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`).join("");
+  }
+
+  // populate assign modal
+  const userSel = document.getElementById("assign-teacher-user");
+  userSel.innerHTML=teachers.map(t=>`<option value="${t.username}">${t.username}</option>`).join("");
+  populateSelect(document.getElementById("assign-teacher-subject"), config.allowed_subjects, s=>s, s=>cap(s));
+  populateSelect(document.getElementById("assign-teacher-class"), config.classes, c=>c, c=>cap(c));
+}
+
+async function deleteTeacher(username){
+  if(!confirm(`Delete teacher "${username}"? All their assignments will be removed.`))return;
+  const r=await api(`/teachers/${username}`,"DELETE");
+  if(r.ok){toast("Teacher removed","success");loadTeachers();}
+  else toast(r.error||"Failed","error");
+}
+
+function openSetClassTeacher(username, currentClass, isCT){
+  document.getElementById("ct-username").value=username;
+  document.getElementById("ct-is-ct").checked=isCT;
+  const sel=document.getElementById("ct-class");
+  populateSelect(sel, config.classes, c=>c, c=>cap(c));
+  if(currentClass) sel.value=currentClass;
+  toggleCTClass();
+  openModal("modal-set-ct");
+}
+function toggleCTClass(){
+  const isCT=document.getElementById("ct-is-ct").checked;
+  document.getElementById("ct-class-group").style.display=isCT?"block":"none";
+}
+
+document.getElementById("btn-assign-teacher").addEventListener("click",()=>openModal("modal-assign-teacher"));
+document.getElementById("confirm-assign-teacher").addEventListener("click", async()=>{
+  const u=document.getElementById("assign-teacher-user").value;
+  const s=document.getElementById("assign-teacher-subject").value;
+  const c=document.getElementById("assign-teacher-class").value;
+  const r=await api("/assign_teacher","POST",{username:u,subject:s,class_name:c});
+  if(r.ok){toast("Teacher assigned!","success");closeModal("modal-assign-teacher");loadTeachers();}
+  else toast(r.error||"Failed","error");
+});
+
+document.getElementById("btn-create-teacher").addEventListener("click", async()=>{
+  const username=document.getElementById("new-teacher-user").value.trim();
+  const password=document.getElementById("new-teacher-pass").value.trim();
+  if(!username||!password){toast("Fill in both fields","error");return;}
+  const r=await api("/teachers","POST",{username,password});
+  if(r.ok){
+    toast(`Account created for ${username}!`,"success");
+    document.getElementById("new-teacher-user").value="";
+    document.getElementById("new-teacher-pass").value="";
+    loadTeachers();
+  } else toast(r.error||"Failed","error");
+});
+
+document.getElementById("confirm-set-ct").addEventListener("click", async()=>{
+  const username=document.getElementById("ct-username").value;
+  const is_class_teacher=document.getElementById("ct-is-ct").checked;
+  const class_name=document.getElementById("ct-class").value;
+  const r=await api(`/teachers/${username}/class_teacher`,"POST",{is_class_teacher,class_name});
+  if(r.ok){toast("Updated!","success");closeModal("modal-set-ct");loadTeachers();}
+  else toast(r.error||"Failed","error");
+});
+
+async function unassign(u,s,c){
+  if(!confirm(`Remove ${u} from ${s} (${c})?`))return;
+  const r=await api("/unassign_teacher","POST",{username:u,subject:s,class_name:c});
+  if(r.ok){toast("Removed","success");loadTeachers();}
+  else toast(r.error||"Failed","error");
+}
+
+// ── MARKS ──────────────────────────────────────────────
+let teacherAssignments = []; // populated on login for teachers
+
+function is_teacher_allowed_local(subject, class_name){
+  if(currentUser.role==="admin") return true;
+  return teacherAssignments.some(a=>a.subject===subject && a.class_name===class_name);
+}
+
+async function populateMarksSelects(){
+  const subjSel = document.getElementById("marks-subject");
+  const clsSel  = document.getElementById("marks-class");
+
+  if(currentUser.role==="teacher"){
+    // load only this teacher's assigned subjects and classes
+    const teachers = await api("/teachers");
+    const me = teachers.find(t=>t.username===currentUser.username);
+    teacherAssignments = me ? me.assignments : [];
+    if(!teacherAssignments.length){
+      toast("You have no subject assignments yet. Contact admin.","error");
+      return;
+    }
+    const mySubjects = [...new Set(teacherAssignments.map(a=>a.subject))];
+    const myClasses  = [...new Set(teacherAssignments.map(a=>a.class_name))];
+    populateSelect(subjSel, mySubjects, s=>s, s=>cap(s));
+    populateSelect(clsSel,  myClasses,  c=>c, c=>cap(c));
+  } else {
+    populateSelect(subjSel, config.allowed_subjects, s=>s, s=>cap(s));
+    populateSelect(clsSel,  config.classes, c=>c, c=>cap(c));
+  }
+  rebuildMarksTypeSelect();
+}
+
+function rebuildMarksTypeSelect(){
+  const typeSel=document.getElementById("marks-type");
+  typeSel.innerHTML="";
+  const ca_count = (config.active_term ? config.active_term.ca_count : null) || config.ca_count || 2;
+  for(let i=1;i<=ca_count;i++){
+    const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;typeSel.appendChild(o);
+  }
+  const ex=document.createElement("option");ex.value="exam";ex.textContent="Exam";typeSel.appendChild(ex);
+}
+
+function setupMarks(){populateMarksSelects();} // async inside
+
+let marksStudents=[];
+document.getElementById("marks-load-btn").addEventListener("click", async()=>{
+  const subject    = document.getElementById("marks-subject").value;
+  const class_name = document.getElementById("marks-class").value;
+  const type       = document.getElementById("marks-type").value;
+
+  // verify teacher is allowed before even loading
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_name)){
+    toast("You are not assigned to this subject/class","error");
+    return;
+  }
+
+  // get students in class from backend
+  const allStudents = await api("/students");
+  const studs = allStudents.filter(s=>s.class_name===class_name);
+  if(!studs.length){toast("No students found in this class","error");return;}
+
+  // fetch existing scores for each student via their report
+  // we build a score map: student_id -> existing score for this subject+type
+  const scoreMap = {};
+  await Promise.all(studs.map(async s=>{
+    const r = await api(`/report/${s.id}`);
+    if(!r.ok) return;
+    const row = r.rows.find(row=>row.subject===subject);
+    if(!row) return;
+    if(type==="exam"){
+      scoreMap[s.id] = row.exam;
+    } else {
+      scoreMap[s.id] = row.ca[type] ?? null;
+    }
+  }));
+
+  marksStudents = studs;
+  document.getElementById("marks-entry-section").style.display="block";
+  document.getElementById("marks-entry-title").textContent=
+    `${cap(subject)} – ${cap(class_name)} – ${type==="exam"?"Exam":type}`;
+
+  const list = document.getElementById("marks-students-list");
+  list.innerHTML = studs.map(s=>{
+    const existing = scoreMap[s.id] ?? null;
+    return `
+    <div class="marks-student-row">
+      <div>
+        <div class="marks-student-name">${s.name}</div>
+        <div style="font-size:.75rem;color:var(--muted)">ID: ${s.id}</div>
+      </div>
+      <input type="number" class="marks-score-input" id="mscore-${s.id}"
+             min="0" max="100" step="0.5"
+             value="${existing!==null?existing:""}"
+             placeholder="—"/>
+      <span class="marks-saved-badge" id="msaved-${s.id}">${existing!==null?"✓ saved":""}</span>
+    </div>`;
+  }).join("");
+});
+
+document.getElementById("marks-save-all-btn").addEventListener("click", async()=>{
+  const subject    = document.getElementById("marks-subject").value;
+  const class_name = document.getElementById("marks-class").value;
+  const type       = document.getElementById("marks-type").value;
+  let saved=0, errors=0;
+
+  for(const s of marksStudents){
+    const inp = document.getElementById(`mscore-${s.id}`);
+    const raw = inp.value.trim();
+    if(raw==="") continue;
+    const score = parseFloat(raw);
+    if(isNaN(score)||score<0||score>100){
+      inp.classList.add("error");
+      toast(`Invalid score for ${s.name} (must be 0–100)`,"error");
+      errors++;
+      continue;
+    }
+    inp.classList.remove("error");
+    let r;
+    if(type==="exam"){
+      r=await api("/marks/exam","POST",{username:currentUser.username,subject,class_name,student_id:s.id,score});
+    } else {
+      r=await api("/marks/ca","POST",{username:currentUser.username,subject,class_name,student_id:s.id,ca_name:type,score});
+    }
+    if(r.ok){
+      document.getElementById(`msaved-${s.id}`).textContent="✓ saved";
+      saved++;
+    } else {
+      toast(`${s.name}: ${r.error}`,"error");
+      errors++;
+    }
+  }
+  if(saved>0) toast(`${saved} mark(s) saved!`,"success");
+  if(errors===0&&saved===0) toast("No new scores entered","info");
+});
+
+// ── REPORT CARDS ──────────────────────────────────────────────
+document.getElementById("report-view-btn").addEventListener("click",()=>{
+  const sid=parseInt(document.getElementById("report-student-id").value);
+  if(!sid){toast("Enter a student ID","error");return;}
+  viewReport(sid);
+});
+
+async function viewReport(sid){
+  const out = document.getElementById("report-output");
+  out.innerHTML=`<div class="spinner"></div>`;
+  const d = await api(`/report/${sid}`);
+  if(!d.ok){out.innerHTML=`<div class="section-card"><p style="color:var(--red)">${d.error||"Not found"}</p></div>`;return;}
+  renderReportCard(out, d, false);
+}
+
+function renderReportCard(out, d, readOnly){
+  const sid = d.student.id;
+  const term_id = d.term ? d.term.id : "";
+  const caHeaders = Array.from({length:d.ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
+  const rows = d.rows.map(r=>{
+    const caVals = Array.from({length:d.ca_count},(_,i)=>`<td>${r.ca[`CA${i+1}`]??"-"}</td>`).join("");
+    const isFail = r.final!==null&&r.final<50;
+    return `<tr class="${isFail?"fail-row":""}">
+      <td style="font-weight:500;text-transform:capitalize">${r.subject}</td>
+      ${caVals}
+      <td>${r.exam??"-"}</td>
+      <td>${r.final??"-"}</td>
+      <td>${r.position}</td>
+      <td class="${r.grade!=="-"?gradeClass(r.grade):""}">${r.grade}</td>
+    </tr>`;
+  }).join("");
+
+  const termLabel = d.term ? d.term.label : "—";
+  const pdfUrl = `${API}/pdf/report/${sid}${term_id?"?term_id="+term_id:""}`;
+
+  out.innerHTML=`
+  <div class="report-card">
+    <div class="report-header-grid">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:800;color:var(--navy)">${d.student.name}</div>
+        <div style="font-size:.85rem;color:var(--muted);margin-top:4px">Student Report Card${readOnly?' <span style="color:var(--orange);font-size:.75rem">(Read-only – closed term)</span>':''}</div>
+      </div>
+      <a href="${pdfUrl}" target="_blank" class="btn btn-pdf btn-sm">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+        Download PDF
+      </a>
+    </div>
+    <div class="report-info-row">
+      <div class="report-info-item"><strong>Class</strong>${cap(d.student.class_name)}</div>
+      <div class="report-info-item"><strong>Term</strong>${termLabel}</div>
+      <div class="report-info-item"><strong>Weights</strong>CA ${d.ca_weight||30}% / Exam ${d.exam_weight||70}%</div>
+    </div>
+    <div class="summary-band">
+      <div class="summary-cell"><div class="val">${d.average}</div><div class="lbl">Average</div></div>
+      <div class="summary-cell"><div class="val">${d.grade}</div><div class="lbl">Grade</div></div>
+      <div class="summary-cell"><div class="val">${d.position}/${d.total_students}</div><div class="lbl">Position</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Subject</th>${caHeaders}<th>Exam</th><th>Final</th><th>Pos</th><th>Grade</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="background:var(--pale);border-radius:9px;padding:14px">
+        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Class Teacher Remark</div>
+        <div style="font-size:.9rem">${d.class_teacher_remark||"—"}</div>
+      </div>
+      <div style="background:var(--pale);border-radius:9px;padding:14px">
+        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Head of School Remark</div>
+        <div style="font-size:.9rem">${d.head_remark||"—"}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── SCORE SHEETS ──────────────────────────────────────────────
+function setupSheets(){
+  const availClasses = (currentUser.is_class_teacher && currentUser.class_name)
+    ? [currentUser.class_name]
+    : config.classes;
+
+  populateSelect(document.getElementById("ca-sheet-class"),   availClasses, c=>c, c=>cap(c));
+  populateSelect(document.getElementById("exam-sheet-class"), availClasses, c=>c, c=>cap(c));
+  populateSelect(document.getElementById("term-sheet-class"), availClasses, c=>c, c=>cap(c));
+
+  const asSel = document.getElementById("ca-sheet-assess");
+  asSel.innerHTML="";
+  const ca_count = config.ca_count || 2;
+  for(let i=1;i<=ca_count;i++){
+    const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;asSel.appendChild(o);
+  }
+
+  // tab switching
+  document.querySelectorAll("#sheets-tabs .tab").forEach(t=>{
+    t.addEventListener("click",()=>{
+      document.querySelectorAll("#sheets-tabs .tab").forEach(x=>x.classList.remove("active"));
+      t.classList.add("active");
+      document.getElementById("sheets-tab-ca").style.display       = t.dataset.tab==="ca"      ?"block":"none";
+      document.getElementById("sheets-tab-exam").style.display     = t.dataset.tab==="exam"    ?"block":"none";
+      document.getElementById("sheets-tab-terminal").style.display = t.dataset.tab==="terminal"?"block":"none";
+    });
+  });
+}
+
+document.getElementById("ca-sheet-view-btn").addEventListener("click", async()=>{
+  const cls = document.getElementById("ca-sheet-class").value;
+  const ca  = document.getElementById("ca-sheet-assess").value;
+  const d   = await api(`/scoresheet?mode=ca&class_name=${encodeURIComponent(cls)}&ca_name=${ca}`);
+  renderScoreSheet(document.getElementById("ca-sheet-output"), d, ca);
+});
+
+document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
+  const cls=document.getElementById("ca-sheet-class").value;
+  const ca =document.getElementById("ca-sheet-assess").value;
+  window.open(`${API}/pdf/ca_sheet?class_name=${encodeURIComponent(cls)}&ca_name=${ca}`,"_blank");
+});
+
+document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
+  const cls=document.getElementById("term-sheet-class").value;
+  const d=await api(`/scoresheet?mode=terminal&class_name=${encodeURIComponent(cls)}`);
+  renderScoreSheet(document.getElementById("term-sheet-output"), d, "Terminal");
+});
+
+document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
+  const cls=document.getElementById("term-sheet-class").value;
+  window.open(`${API}/pdf/terminal_sheet?class_name=${encodeURIComponent(cls)}`,"_blank");
+});
+
+document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
+  const cls = document.getElementById("exam-sheet-class").value;
+  const d   = await api(`/scoresheet?mode=exam&class_name=${encodeURIComponent(cls)}`);
+  renderScoreSheet(document.getElementById("exam-sheet-output"), d, "Exam");
+});
+
+document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
+  const cls = document.getElementById("exam-sheet-class").value;
+  window.open(`${API}/pdf/ca_sheet?class_name=${encodeURIComponent(cls)}&ca_name=exam`,"_blank");
+});
+
+function renderScoreSheet(container, d, label){
+  if(!d.results||!d.results.length){
+    container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return;
+  }
+  const subs = d.subjects;
+  const hdr  = `<tr><th>#</th><th>Student</th>${subs.map(s=>`<th title="${s}">${s.substring(0,5).toUpperCase()}</th>`).join("")}<th>Total</th><th>Avg</th><th>Pos</th><th>Grd</th></tr>`;
+  const rows = d.results.map((r,i)=>{
+    const cells=subs.map(s=>{
+      const v=r.scores[s];
+      const fail=v!==null&&v!==undefined&&v<50;
+      return `<td style="${fail?"color:var(--red)":""}">${v!==null&&v!==undefined?v:"-"}</td>`;
+    }).join("");
+    const avgFail=r.average>0&&r.average<50;
+    return `<tr>
+      <td style="color:var(--muted)">${r.position}</td>
+      <td style="font-weight:600">${r.name}</td>
+      ${cells}
+      <td style="font-weight:600">${r.count>0?r.total.toFixed(1):"-"}</td>
+      <td style="font-weight:600;color:${avgFail?"var(--red)":"var(--blue)"}">${r.average>0?r.average:"-"}</td>
+      <td>${r.position}</td>
+      <td class="${r.grade?gradeClass(r.grade):""}">${r.grade||"-"}</td>
+    </tr>`;
+  }).join("");
+  container.innerHTML=`
+  <div class="table-card">
+    <div class="table-toolbar">
+      <span class="table-toolbar-title">${label} – ${d.results.length} students</span>
+    </div>
+    <div class="table-wrap">
+      <table class="scoresheet-table">
+        <thead>${hdr}</thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ── RANKINGS ──────────────────────────────────────────────
+function setupRankings(){
+  // classes
+  populateSelect(document.getElementById("rank-class-sel"), config.classes, c=>c, c=>cap(c));
+
+  // subjects — teachers only see their assigned
+  const rankSubjSel = document.getElementById("rank-subj-sel");
+  if(currentUser.role==="teacher"){
+    const mySubjs = [...new Set(teacherAssignments.map(a=>a.subject))];
+    populateSelect(rankSubjSel, mySubjs.length ? mySubjs : config.allowed_subjects, s=>s, s=>cap(s));
+  } else {
+    populateSelect(rankSubjSel, config.allowed_subjects, s=>s, s=>cap(s));
+  }
+
+  // assessment options built from active term ca_count
+  rebuildRankAssessSelect();
+}
+
+function rebuildRankAssessSelect(){
+  const sel = document.getElementById("rank-assess-sel");
+  sel.innerHTML="";
+  const ca_count = config.ca_count || 2;
+  for(let i=1;i<=ca_count;i++){
+    const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;sel.appendChild(o);
+  }
+  const ex=document.createElement("option");ex.value="exam";ex.textContent="Final Exam";sel.appendChild(ex);
+}
+
+document.getElementById("rank-show-btn").addEventListener("click", async()=>{
+  const cls    = document.getElementById("rank-class-sel").value;
+  const subj   = document.getElementById("rank-subj-sel").value;
+  const assess = document.getElementById("rank-assess-sel").value;
+
+  // teacher access check
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subj, cls)){
+    toast("You are not assigned to this subject/class","error"); return;
+  }
+
+  const d = await api(`/ranking/subject?subject=${encodeURIComponent(subj)}&class_name=${encodeURIComponent(cls)}&assess=${assess}`);
+  const out = document.getElementById("rank-output");
+  if(!d.length){
+    out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No marks entered yet for ${cap(subj)} – ${assess}</p></div>`;
+    return;
+  }
+  renderRanking(out, d, "score", `${cap(subj)} – ${assess} – ${cap(cls)}`);
+});
+
+function renderRanking(container, rows, scoreKey, title=""){
+  if(!rows.length){container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data</p></div>`;return;}
+  container.innerHTML=`
+  <div class="table-card">
+    <div class="table-toolbar"><span class="table-toolbar-title">${title}</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Pos</th><th>Student</th><th>Score</th><th>Grade</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td><span class="badge ${r.position<=3?"badge-orange":"badge-grey"}">${r.position===1?"🥇":r.position===2?"🥈":r.position===3?"🥉":r.position}</span></td>
+        <td style="font-weight:600">${r.name}</td>
+        <td>
+          <div style="font-weight:600">${r[scoreKey].toFixed(1)}</div>
+          <div class="progress-bar" style="width:120px"><div class="progress-fill" style="width:${Math.min(r[scoreKey],100)}%"></div></div>
+        </td>
+        <td class="${gradeClass(r.grade)}">${r.grade}</td>
+      </tr>`).join("")}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ── TERMS ──────────────────────────────────────────────
+let allTerms = [];
+
+async function refreshTermBanner(){
+  const r = await api("/terms/active");
+  const banner = document.getElementById("term-banner");
+  const bar    = document.getElementById("term-banner-bar");
+  const label  = document.getElementById("term-badge-label");
+  const detail = document.getElementById("term-banner-detail");
+  banner.style.display="flex";
+  if(r.ok && r.term){
+    config.ca_count   = r.term.ca_count;
+    config.active_term= r.term;
+    bar.className="term-banner";
+    label.textContent = "📅 " + r.term.label;
+    detail.textContent= `CAs: ${r.term.ca_count}  |  CA Weight: ${r.term.ca_weight}%  |  Exam Weight: ${r.term.exam_weight}%  |  Status: OPEN`;
+  } else {
+    config.active_term = null;
+    bar.className="term-banner none";
+    label.textContent="⚠ No active term";
+    detail.textContent="Admin must open a term before marks can be entered";
+  }
+}
+
+async function loadTerms(){
+  const terms = await api("/terms");
+  allTerms = terms;
+  const tb = document.getElementById("terms-tbody");
+  if(!terms.length){
+    tb.innerHTML=`<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No terms yet. Create one above.</td></tr>`;
+    return;
+  }
+  tb.innerHTML=terms.map(t=>`<tr>
+    <td style="font-weight:600">${t.label}</td>
+    <td>${t.ca_count}</td>
+    <td>${t.ca_weight}%</td>
+    <td>${t.exam_weight}%</td>
+    <td><span class="badge ${t.status==='open'?'badge-green':'badge-grey'}">${t.status.toUpperCase()}</span></td>
+    <td>${t.status==='open'
+      ? `<button class="btn btn-sm btn-red" onclick="closeTerm(${t.id},'${t.label}')">Close Term</button>`
+      : '<span style="color:var(--muted);font-size:.8rem">Locked</span>'
+    }</td>
+  </tr>`).join("");
+}
+
+document.getElementById("btn-open-term").addEventListener("click", async()=>{
+  const label     = document.getElementById("term-label").value.trim();
+  const ca_count  = parseInt(document.getElementById("term-ca-count").value);
+  const ca_weight = parseInt(document.getElementById("term-ca-weight").value);
+  const exam_weight = 100 - ca_weight;
+  if(!label){toast("Enter a term label","error");return;}
+  const r = await api("/terms","POST",{label,ca_count,ca_weight,exam_weight});
+  if(r.ok){
+    toast(`${label} opened!`,"success");
+    document.getElementById("term-label").value="";
+    await loadTerms();
+    await refreshTermBanner();
+  } else toast(r.error||"Failed","error");
+});
+
+async function closeTerm(id, label){
+  if(!confirm(`Close "${label}"?
+
+All marks for this term will be LOCKED and cannot be edited. This cannot be undone.`)) return;
+  const r = await api(`/terms/${id}/close`,"POST",{});
+  if(r.ok){
+    toast(`${label} closed and locked.`,"success");
+    await loadTerms();
+    await refreshTermBanner();
+  } else toast(r.error||"Failed","error");
+}
+
+// ── PAST TERMS ──────────────────────────────────────────────
+async function setupPastTerms(){
+  const terms  = await api("/terms");
+  const closed = terms.filter(t=>t.status==="closed");
+
+  // populate both term selects
+  ["past-term-sel","past-term-sel2"].forEach(id=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    sel.innerHTML = closed.length
+      ? closed.map(t=>`<option value="${t.id}">${t.label}</option>`).join("")
+      : `<option disabled>No closed terms yet</option>`;
+  });
+
+  // subjects — teachers see only their assignments, admin/CT see all
+  const subjSel  = document.getElementById("past-subject-sel");
+  const classSel = document.getElementById("past-class-sel");
+
+  if(currentUser.role==="teacher"){
+    const mySubjs   = [...new Set(teacherAssignments.map(a=>a.subject))];
+    const myClasses = [...new Set(teacherAssignments.map(a=>a.class_name))];
+    populateSelect(subjSel,  mySubjs.length   ? mySubjs   : config.allowed_subjects, s=>s, s=>cap(s));
+    populateSelect(classSel, myClasses.length ? myClasses : config.classes,           c=>c, c=>cap(c));
+  } else {
+    const availClasses = (currentUser.is_class_teacher && currentUser.class_name)
+      ? [currentUser.class_name] : config.classes;
+    populateSelect(subjSel,  config.allowed_subjects, s=>s, s=>cap(s));
+    populateSelect(classSel, availClasses,             c=>c, c=>cap(c));
+  }
+
+  // tab switching
+  document.querySelectorAll("#past-tabs .tab").forEach(t=>{
+    t.addEventListener("click",()=>{
+      document.querySelectorAll("#past-tabs .tab").forEach(x=>x.classList.remove("active"));
+      t.classList.add("active");
+      document.getElementById("past-tab-marks").style.display  = t.dataset.ptab==="marks" ?"block":"none";
+      document.getElementById("past-tab-report").style.display = t.dataset.ptab==="report"?"block":"none";
+    });
+  });
+}
+
+// Past: show subject marks table
+document.getElementById("past-marks-btn").addEventListener("click", async()=>{
+  const term_id    = document.getElementById("past-term-sel").value;
+  const subject    = document.getElementById("past-subject-sel").value;
+  const class_name = document.getElementById("past-class-sel").value;
+  if(!term_id){toast("Select a term","error");return;}
+
+  // teacher access check
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_name)){
+    toast("Access denied — not your assignment","error"); return;
+  }
+
+  const out = document.getElementById("past-marks-output");
+  out.innerHTML=`<div class="spinner"></div>`;
+
+  // fetch term info for CA count
+  const terms  = await api("/terms");
+  const term   = terms.find(t=>t.id==term_id);
+  const ca_count = term ? term.ca_count : 2;
+
+  // fetch all students in class
+  const allStudents = await api("/students");
+  const studs = allStudents.filter(s=>s.class_name===class_name);
+  if(!studs.length){
+    out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No students in this class</p></div>`;return;
+  }
+
+  // fetch marks per student
+  const rows = await Promise.all(studs.map(async s=>{
+    const r = await api(`/report/${s.id}?term_id=${term_id}`);
+    if(!r.ok) return {name:s.name, cas:{}, exam:null};
+    const row = r.rows.find(x=>x.subject===subject);
+    return {name:s.name, cas: row ? row.ca : {}, exam: row ? row.exam : null, final: row ? row.final : null};
+  }));
+
+  // build CA headers dynamically from term
+  const caHeaders = Array.from({length:ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
+  const bodyRows  = rows.map((r,i)=>{
+    const caCells = Array.from({length:ca_count},(_,j)=>{
+      const v = r.cas[`CA${j+1}`];
+      const fail = v!==null&&v!==undefined&&v<50;
+      return `<td style="${fail?"color:var(--red);font-weight:600":""}">${v!==null&&v!==undefined?v:"-"}</td>`;
+    }).join("");
+    const examFail = r.exam!==null&&r.exam<50;
+    const finalFail = r.final!==null&&r.final<50;
+    return `<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:600">${r.name}</td>
+      ${caCells}
+      <td style="${examFail?"color:var(--red);font-weight:600":""}">${r.exam!==null?r.exam:"-"}</td>
+      <td style="${finalFail?"color:var(--red);font-weight:600":"font-weight:600;color:var(--blue)"}">${r.final!==null?r.final:"-"}</td>
+    </tr>`;
+  }).join("");
+
+  out.innerHTML=`
+  <div class="table-card">
+    <div class="table-toolbar">
+      <span class="table-toolbar-title">${cap(subject)} — ${cap(class_name)} — ${term?term.label:""}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Student</th>${caHeaders}<th>Exam</th><th>Final</th></tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  </div>`;
+});
+
+// Past: show student report card
+document.getElementById("past-view-btn").addEventListener("click", async()=>{
+  const term_id = document.getElementById("past-term-sel2").value;
+  const sid     = parseInt(document.getElementById("past-student-id").value);
+  if(!term_id){toast("Select a term","error");return;}
+  if(!sid){toast("Enter a student ID","error");return;}
+
+  if(currentUser.is_class_teacher){
+    const studs = await api("/students");
+    const s = studs.find(x=>x.id===sid);
+    if(!s||s.class_name!==currentUser.class_name){
+      toast("Access denied — not your class","error"); return;
+    }
+  }
+
+  const out = document.getElementById("past-report-output");
+  out.innerHTML=`<div class="spinner"></div>`;
+  const d = await api(`/report/${sid}?term_id=${term_id}`);
+  if(!d.ok){out.innerHTML=`<div class="section-card"><p style="color:var(--red)">${d.error||"Not found"}</p></div>`;return;}
+  renderReportCard(out, d, true);
+});
+
+// ── REMARKS ──────────────────────────────────────────────
+document.getElementById("remark-load-btn").addEventListener("click", async()=>{
+  const sid=parseInt(document.getElementById("remark-student-id").value);
+  if(!sid){toast("Enter a student ID","error");return;}
+  const d=await api(`/report/${sid}`);
+  if(!d.ok){toast(d.error||"Not found","error");return;}
+  const role=currentUser.role;
+  const isAdmin = role==="admin";
+  const field = isAdmin?"head_remark":"class_teacher_remark";
+  document.getElementById("remark-field-label").textContent=
+    isAdmin?"Head of School Remark":"Class Teacher Remark";
+  document.getElementById("remark-text").value=d[field]||"";
+  toast(`Loaded: ${d.student.name}`,"info");
+});
+document.getElementById("remark-save-btn").addEventListener("click", async()=>{
+  const sid=parseInt(document.getElementById("remark-student-id").value);
+  const remark=document.getElementById("remark-text").value.trim();
+  if(!sid){toast("Enter a student ID","error");return;}
+  const r=await api("/remarks","POST",{username:currentUser.username,role:currentUser.role,is_class_teacher:currentUser.is_class_teacher,student_id:sid,remark});
+  if(r.ok) toast("Remark saved!","success");
+  else toast(r.error||"Failed","error");
+});
+
+// ── CONFIG ──────────────────────────────────────────────
+async function loadConfig(){
+  const c = await api("/config");
+  config = {...config, ...c};
+  const infoEl = document.getElementById("config-term-info");
+  if(infoEl){
+    if(c.active_term){
+      infoEl.innerHTML=`
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
+          <div style="background:var(--pale);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px">Term</div>
+            <div style="font-weight:600">${c.active_term.label}</div>
+          </div>
+          <div style="background:var(--pale);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px">CAs</div>
+            <div style="font-weight:600">${c.active_term.ca_count}</div>
+          </div>
+          <div style="background:var(--pale);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px">CA Weight</div>
+            <div style="font-weight:600">${c.active_term.ca_weight}%</div>
+          </div>
+          <div style="background:var(--pale);border-radius:8px;padding:12px">
+            <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px">Exam Weight</div>
+            <div style="font-weight:600">${c.active_term.exam_weight}%</div>
+          </div>
+        </div>`;
+    } else {
+      infoEl.innerHTML=`<p style="color:var(--orange);margin-top:8px">⚠ No active term. Go to <strong>Terms</strong> to open one.</p>`;
+    }
+  }
+}
+
+// ── SVG HELPERS ──────────────────────────────────────────────
+function homeSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>`}
+function peopleSVG()  {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`}
+function teacherSVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>`}
+function editSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`}
+function reportSVG()  {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`}
+function tableSVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 10.02h5V21h-5zM17 21h3c1.1 0 2-.9 2-2v-9h-5v11zm3-18H5c-1.1 0-2 .9-2 2v3h19V5c0-1.1-.9-2-2-2zM3 19c0 1.1.9 2 2 2h3V10H3v9z"/></svg>`}
+function starSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`}
+function chatSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>`}
+function gearSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`}
+function calSVG()     {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>`}
+function historySVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`}
+function emptySVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px;height:48px;color:var(--border)"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4zm-6.5-4c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35-1.13-.75-2-1.56-2-2.35C11.5 2.87 12.37 2 13.5 2zM4.5 2c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35C3.37 5.25 2.5 4.44 2.5 3.65 2.5 2.87 3.37 2 4.5 2zM4 18l-1.5-10h15L16 18H4z"/></svg>`}
+</script>
+</body>
+</html>
