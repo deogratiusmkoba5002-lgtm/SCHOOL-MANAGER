@@ -945,8 +945,7 @@ def index():
     return send_from_directory(BASE_DIR, "index.html")
 
 if __name__ == "__main__":
-    if not os.path.exists(DB_FILE):
-        print("\n⚠  Database not found. Run:  python setup_admin.py  first.\n")
-    else:
-        print("\n🎓  School Manager running at  http://localhost:5000\n")
-        app.run(debug=True, port=5000)
+     print("\n🎓  School Manager running...\n")
+     app.run(host="0.0.0.0", port=5000)
+    
+       
