@@ -1364,65 +1364,142 @@ function rebuildMarksTypeSelect(){
 function setupMarks(){populateMarksSelects();} // async inside
 
 let marksStudents=[];
+let marksSubject="", marksClass="", marksType="";
+let autoSaveTimers={};  // per-student debounce timers
+
+// ── Save a single student's mark to server ──────────────────
+async function saveOneMark(sid, score){
+  const badge = document.getElementById(`msaved-${sid}`);
+  badge.textContent="⏳";
+  badge.style.color="var(--orange)";
+  let r;
+  if(marksType==="exam"){
+    r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:sid,score});
+  } else {
+    r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:sid,ca_name:marksType,score});
+  }
+  if(r.ok){
+    badge.textContent="✓ saved";
+    badge.style.color="var(--green)";
+  } else {
+    badge.textContent="✗ error";
+    badge.style.color="var(--red)";
+    toast(`${r.error}`,"error");
+  }
+}
+
+// ── Autosave on input (debounced 1.5s after last keystroke) ─
+function attachAutosave(sid){
+  const inp = document.getElementById(`mscore-${sid}`);
+  if(!inp) return;
+  inp.addEventListener("input", ()=>{
+    const badge = document.getElementById(`msaved-${sid}`);
+    badge.textContent="unsaved";
+    badge.style.color="var(--muted)";
+    clearTimeout(autoSaveTimers[sid]);
+    autoSaveTimers[sid] = setTimeout(async()=>{
+      const raw = inp.value.trim();
+      if(raw==="") return;
+      const score = parseFloat(raw);
+      if(isNaN(score)||score<0||score>100){
+        inp.classList.add("error");
+        badge.textContent="invalid";
+        badge.style.color="var(--red)";
+        return;
+      }
+      inp.classList.remove("error");
+      await saveOneMark(sid, score);
+    }, 1500);  // save 1.5 seconds after teacher stops typing
+  });
+  // Also save immediately on blur (when teacher taps next field)
+  inp.addEventListener("blur", async()=>{
+    clearTimeout(autoSaveTimers[sid]);
+    const raw = inp.value.trim();
+    if(raw==="") return;
+    const score = parseFloat(raw);
+    if(isNaN(score)||score<0||score>100) return;
+    inp.classList.remove("error");
+    await saveOneMark(sid, score);
+  });
+}
+
 document.getElementById("marks-load-btn").addEventListener("click", async()=>{
   const subject    = document.getElementById("marks-subject").value;
   const class_name = document.getElementById("marks-class").value;
   const type       = document.getElementById("marks-type").value;
 
-  // verify teacher is allowed before even loading
   if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_name)){
     toast("You are not assigned to this subject/class","error");
     return;
   }
 
-  // get students in class from backend
-  const allStudents = await api("/students");
-  const studs = allStudents.filter(s=>s.class_name===class_name);
-  if(!studs.length){toast("No students found in this class","error");return;}
+  // Show loading state
+  const loadBtn = document.getElementById("marks-load-btn");
+  loadBtn.textContent="Loading...";
+  loadBtn.disabled=true;
 
-  // fetch existing scores for each student via their report
-  // we build a score map: student_id -> existing score for this subject+type
-  const scoreMap = {};
-  await Promise.all(studs.map(async s=>{
-    const r = await api(`/report/${s.id}`);
-    if(!r.ok) return;
-    const row = r.rows.find(row=>row.subject===subject);
-    if(!row) return;
-    if(type==="exam"){
-      scoreMap[s.id] = row.exam;
-    } else {
-      scoreMap[s.id] = row.ca[type] ?? null;
+  try{
+    // Store current context
+    marksSubject = subject;
+    marksClass   = class_name;
+    marksType    = type;
+    autoSaveTimers = {};
+
+    // Single request for all students
+    const allStudents = await api("/students");
+    const studs = allStudents.filter(s=>s.class_name===class_name);
+    if(!studs.length){toast("No students found in this class","error");return;}
+
+    // Single scoresheet request instead of one per student — much faster
+    const sheetMode = type==="exam" ? "exam" : "ca";
+    const caParam   = type!=="exam" ? `&ca_name=${type}` : "";
+    const sheet     = await api(`/scoresheet?mode=${sheetMode}&class_name=${encodeURIComponent(class_name)}${caParam}`);
+
+    // Build score map from scoresheet response
+    const scoreMap={};
+    if(sheet && sheet.results){
+      sheet.results.forEach(r=>{
+        const score = r.scores[subject];
+        if(score!==null && score!==undefined) scoreMap[r.id]=score;
+      });
     }
-  }));
 
-  marksStudents = studs;
-  document.getElementById("marks-entry-section").style.display="block";
-  document.getElementById("marks-entry-title").textContent=
-    `${cap(subject)} – ${cap(class_name)} – ${type==="exam"?"Exam":type}`;
+    marksStudents = studs;
+    document.getElementById("marks-entry-section").style.display="block";
+    document.getElementById("marks-entry-title").textContent=
+      `${cap(subject)} – ${cap(class_name)} – ${type==="exam"?"Exam":type}`;
 
-  const list = document.getElementById("marks-students-list");
-  list.innerHTML = studs.map(s=>{
-    const existing = scoreMap[s.id] ?? null;
-    return `
-    <div class="marks-student-row">
-      <div>
-        <div class="marks-student-name">${s.name}</div>
-        <div style="font-size:.75rem;color:var(--muted)">ID: ${s.id}</div>
-      </div>
-      <input type="number" class="marks-score-input" id="mscore-${s.id}"
-             min="0" max="100" step="0.5"
-             value="${existing!==null?existing:""}"
-             placeholder="—"/>
-      <span class="marks-saved-badge" id="msaved-${s.id}">${existing!==null?"✓ saved":""}</span>
-    </div>`;
-  }).join("");
+    const list = document.getElementById("marks-students-list");
+    list.innerHTML = studs.map(s=>{
+      const existing = scoreMap[s.id] ?? null;
+      return `
+      <div class="marks-student-row">
+        <div>
+          <div class="marks-student-name">${s.name}</div>
+          <div style="font-size:.75rem;color:var(--muted)">ID: ${s.id}</div>
+        </div>
+        <input type="number" class="marks-score-input" id="mscore-${s.id}"
+               min="0" max="100" step="0.5"
+               value="${existing!==null?existing:""}"
+               placeholder="—"/>
+        <span class="marks-saved-badge" id="msaved-${s.id}"
+              style="color:${existing!==null?'var(--green)':'var(--muted)'}">${existing!==null?"✓ saved":""}</span>
+      </div>`;
+    }).join("");
+
+    // Attach autosave to every input
+    studs.forEach(s=>attachAutosave(s.id));
+
+  } finally {
+    loadBtn.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg> Load Students`;
+    loadBtn.disabled=false;
+  }
 });
 
 document.getElementById("marks-save-all-btn").addEventListener("click", async()=>{
-  const subject    = document.getElementById("marks-subject").value;
-  const class_name = document.getElementById("marks-class").value;
-  const type       = document.getElementById("marks-type").value;
   let saved=0, errors=0;
+  const btn = document.getElementById("marks-save-all-btn");
+  btn.textContent="Saving..."; btn.disabled=true;
 
   for(const s of marksStudents){
     const inp = document.getElementById(`mscore-${s.id}`);
@@ -1432,26 +1509,29 @@ document.getElementById("marks-save-all-btn").addEventListener("click", async()=
     if(isNaN(score)||score<0||score>100){
       inp.classList.add("error");
       toast(`Invalid score for ${s.name} (must be 0–100)`,"error");
-      errors++;
-      continue;
+      errors++; continue;
     }
     inp.classList.remove("error");
     let r;
-    if(type==="exam"){
-      r=await api("/marks/exam","POST",{username:currentUser.username,subject,class_name,student_id:s.id,score});
+    if(marksType==="exam"){
+      r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:s.id,score});
     } else {
-      r=await api("/marks/ca","POST",{username:currentUser.username,subject,class_name,student_id:s.id,ca_name:type,score});
+      r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:s.id,ca_name:marksType,score});
     }
     if(r.ok){
-      document.getElementById(`msaved-${s.id}`).textContent="✓ saved";
+      const badge=document.getElementById(`msaved-${s.id}`);
+      badge.textContent="✓ saved"; badge.style.color="var(--green)";
       saved++;
     } else {
-      toast(`${s.name}: ${r.error}`,"error");
-      errors++;
+      toast(`${s.name}: ${r.error}`,"error"); errors++;
     }
   }
+
+  btn.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Save All Marks`;
+  btn.disabled=false;
+
   if(saved>0) toast(`${saved} mark(s) saved!`,"success");
-  if(errors===0&&saved===0) toast("No new scores entered","info");
+  if(errors===0&&saved===0) toast("All marks already saved","info");
 });
 
 // ── REPORT CARDS ──────────────────────────────────────────────
