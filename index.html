@@ -83,13 +83,17 @@ input,select,textarea{font-family:inherit;outline:none}
 }
 .login-card{
   background:var(--card);border-radius:20px;
-  padding:48px 44px;width:min(420px,90vw);
+  padding:clamp(28px,6vw,48px) clamp(20px,6vw,44px);
+  width:min(420px,92vw);
   box-shadow:0 24px 80px rgba(0,0,0,.35);
   position:relative;z-index:1;
 }
 .login-logo{
   display:flex;align-items:center;gap:12px;margin-bottom:32px;
+  flex-wrap:nowrap;min-width:0;
 }
+.login-logo h1{white-space:nowrap;font-size:clamp(1rem,4vw,1.4rem)}
+.login-logo>div{min-width:0;overflow:hidden}
 .login-logo-icon{
   width:48px;height:48px;background:linear-gradient(135deg,var(--blue),var(--accent));
   border-radius:14px;display:flex;align-items:center;justify-content:center;
@@ -362,13 +366,41 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   background:rgba(255,255,255,.18);border-radius:20px;padding:3px 12px;
 }
 
+/* ── HAMBURGER ── */
+#hamburger{
+  display:none;
+  position:fixed;top:14px;left:14px;z-index:200;
+  width:42px;height:42px;border-radius:10px;
+  background:var(--blue);color:white;
+  align-items:center;justify-content:center;
+  cursor:pointer;box-shadow:0 2px 12px rgba(21,101,192,.4);
+  flex-direction:column;gap:5px;padding:10px;border:none;
+}
+#hamburger span{
+  display:block;width:100%;height:2px;
+  background:white;border-radius:2px;
+  transition:all .25s;
+}
+#overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.45);z-index:99;
+}
+
 /* ── RESPONSIVE ── */
 @media(max-width:768px){
+  #hamburger{display:flex}
   #sidebar{position:fixed;left:-240px;z-index:100;transition:left .25s;height:100vh}
   #sidebar.open{left:0}
-  #main{padding:20px 16px}
+  #overlay.show{display:block}
+  #main{padding:68px 16px 20px 16px}
   .form-grid{grid-template-columns:1fr}
   .stats-grid{grid-template-columns:1fr 1fr}
+  .page-title{font-size:1.3rem}
+  #term-banner{margin:-68px -16px 20px -16px!important}
+  .summary-band{flex-wrap:wrap}
+  .summary-cell{min-width:80px}
+  .table-wrap{font-size:.8rem}
+  .modal{padding:24px 20px}
 }
 </style>
 </head>
@@ -402,6 +434,12 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 </div>
 
 <!-- ══════════════ APP ══════════════ -->
+<!-- Hamburger -->
+<button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+  <span></span><span></span><span></span>
+</button>
+<div id="overlay" onclick="closeSidebar()"></div>
+
 <div id="app">
   <!-- SIDEBAR -->
   <nav id="sidebar">
@@ -1932,6 +1970,31 @@ function gearSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path
 function calSVG()     {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>`}
 function historySVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`}
 function emptySVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px;height:48px;color:var(--border)"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4zm-6.5-4c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35-1.13-.75-2-1.56-2-2.35C11.5 2.87 12.37 2 13.5 2zM4.5 2c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35C3.37 5.25 2.5 4.44 2.5 3.65 2.5 2.87 3.37 2 4.5 2zM4 18l-1.5-10h15L16 18H4z"/></svg>`}
+
+// ── MOBILE SIDEBAR ──────────────────────────────────────────
+function toggleSidebar(){
+  const sidebar  = document.getElementById("sidebar");
+  const overlay  = document.getElementById("overlay");
+  const isOpen   = sidebar.classList.contains("open");
+  if(isOpen){ closeSidebar(); } else { openSidebar(); }
+}
+function openSidebar(){
+  document.getElementById("sidebar").classList.add("open");
+  document.getElementById("overlay").classList.add("show");
+}
+function closeSidebar(){
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("overlay").classList.remove("show");
+}
+// Close sidebar when a nav item is clicked on mobile
+document.addEventListener("DOMContentLoaded",()=>{
+  document.getElementById("sidebar-nav").addEventListener("click", ()=>{
+    if(window.innerWidth<=768) closeSidebar();
+  });
+  document.getElementById("logout-btn").addEventListener("click", ()=>{
+    if(window.innerWidth<=768) closeSidebar();
+  });
+});
 </script>
 </body>
 </html>
