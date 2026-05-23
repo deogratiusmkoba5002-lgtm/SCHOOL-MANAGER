@@ -861,31 +861,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       <div id="rank-output"></div>
     </div>
 
-    <!-- ── REMARKS ── -->
-    <div class="page" id="page-remarks">
-      <div class="page-header">
-        <h2 class="page-title">Student Remarks</h2>
-        <p class="page-sub">Add or edit remarks on student report cards</p>
-      </div>
-      <div class="section-card">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Student ID</label>
-            <input type="number" class="form-input" id="remark-student-id" placeholder="Enter student ID"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="remark-load-btn" style="width:100%">Load Student</button>
-          </div>
-          <div class="form-group full">
-            <label class="form-label" id="remark-field-label">Remark</label>
-            <textarea class="form-input" id="remark-text" rows="3" placeholder="Enter remark…" style="resize:vertical"></textarea>
-          </div>
-        </div>
-        <div style="margin-top:16px">
-          <button class="btn btn-green" id="remark-save-btn">Save Remark</button>
-        </div>
-      </div>
-    </div>
+
 
     <!-- ── CONFIG (admin) ── -->
     <div class="page" id="page-config">
@@ -902,7 +878,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         <div class="form-grid" style="max-width:500px">
           <div class="form-group">
             <label class="form-label">Name (appears on all PDFs and score sheets)</label>
-            <input type="text" class="form-input" id="config-school-name" placeholder="e.g. Immaculata Schools"/>
+            <input type="text" class="form-input" id="config-school-name" placeholder="e.g. St. Mary's Secondary School"/>
           </div>
           <div class="form-group" style="display:flex;align-items:flex-end">
             <button class="btn btn-blue" id="config-school-save-btn" style="width:100%">
@@ -1088,7 +1064,6 @@ const NAV_ADMIN = [
   {id:"reports",   icon:reportSVG(),  label:"Report Cards"},
   {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},
   {id:"rankings",  icon:starSVG(),    label:"Rankings"},
-  {id:"remarks",   icon:chatSVG(),    label:"Remarks"},
   {id:"past",      icon:historySVG(), label:"Past Terms"},
   {id:"config",    icon:gearSVG(),    label:"Config"},
 ];
@@ -1101,7 +1076,6 @@ function buildTeacherNav(user){
   if(user.is_class_teacher){
     items.push({id:"reports", icon:reportSVG(), label:"Report Cards"});
     items.push({id:"sheets",  icon:tableSVG(),  label:"Score Sheets"});
-    items.push({id:"remarks", icon:chatSVG(),   label:"Remarks"});
   }
   items.push({id:"past", icon:historySVG(), label:"Past Terms"});
   return items;
@@ -1569,9 +1543,75 @@ async function viewReport(sid){
   renderReportCard(out, d, false);
 }
 
+// ── REMARK TEMPLATES ────────────────────────────────────────
+const REMARK_TEMPLATES = {
+  excellent:[
+    "Shows outstanding academic performance with consistent excellence across all subjects. Keep up the high discipline and focus.",
+    "A highly motivated learner who demonstrates excellent understanding and application of concepts.",
+    "Consistently performs at a very high level. Maintain this strong academic discipline and continue striving for excellence.",
+    "Excellent work. The learner shows maturity, confidence, and strong grasp of all subject content.",
+    "Outstanding performance. Keep maintaining this level of commitment and effort in all academic areas."
+  ],
+  very_good:[
+    "Demonstrates strong understanding of most subjects. Keep working on consistency to reach excellence.",
+    "A hardworking learner with good academic performance and positive progress.",
+    "Shows good effort and understanding. A little more consistency will lead to excellent results.",
+    "Good performance overall. Continue practicing and revising regularly for improvement.",
+    "A promising learner with solid performance. Can achieve higher results with more focus."
+  ],
+  average:[
+    "Shows average understanding of subject content. More revision and practice is recommended.",
+    "Performance is fair but inconsistent. The learner should increase effort and concentration.",
+    "Has potential but needs to improve study habits and class participation.",
+    "Satisfactory performance. Focus on weak areas is necessary for improvement.",
+    "Average achievement. Regular revision and attention in class will improve results."
+  ],
+  below_average:[
+    "Performance is below expectation. The learner needs to improve effort and discipline.",
+    "Struggles with understanding key concepts. Extra support and revision are strongly recommended.",
+    "Requires consistent study habits and more attention in class.",
+    "Weak performance observed. Immediate improvement in study approach is needed.",
+    "Needs to improve focus and complete assigned tasks regularly."
+  ],
+  poor:[
+    "Very low academic performance. Immediate intervention and consistent support required.",
+    "Demonstrates serious difficulty in understanding subject content. Urgent improvement needed.",
+    "Performance is unsatisfactory. Increased effort and discipline are necessary.",
+    "Struggling significantly in most areas. Close monitoring is recommended.",
+    "Needs strong academic support and commitment to improve."
+  ]
+};
+
+function remarkTemplateHTML(textareaId){
+  const cats = {excellent:"🌟 Excellent",very_good:"👍 Very Good",average:"📊 Average",below_average:"⚠️ Below Average",poor:"❌ Poor"};
+  const opts = Object.entries(cats).map(([k,label])=>`
+    <optgroup label="${label}">
+      ${REMARK_TEMPLATES[k].map((t,i)=>`<option value="${t}">${label} – Option ${i+1}</option>`).join("")}
+    </optgroup>`).join("");
+  return `
+    <div style="margin-bottom:8px">
+      <label style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
+        Quick Template
+      </label>
+      <select onchange="if(this.value){document.getElementById('${textareaId}').value=this.value;this.selectedIndex=0;}"
+              style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;margin-top:4px;background:var(--bg)">
+        <option value="">— Pick a template or type below —</option>
+        ${opts}
+      </select>
+    </div>`;
+}
+
 function renderReportCard(out, d, readOnly){
-  const sid = d.student.id;
+  const sid     = d.student.id;
   const term_id = d.term ? d.term.id : "";
+  const isAdmin = currentUser.role==="admin";
+  const isCT    = currentUser.is_class_teacher;
+
+  // Can this user edit remarks on THIS report?
+  // readOnly = past term (closed) → no edits ever
+  const canEditCT   = !readOnly && (isCT && d.student.class_name===currentUser.class_name);
+  const canEditHead = !readOnly && isAdmin;
+
   const caHeaders = Array.from({length:d.ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
   const rows = d.rows.map(r=>{
     const caVals = Array.from({length:d.ca_count},(_,i)=>`<td>${r.ca[`CA${i+1}`]??"-"}</td>`).join("");
@@ -1587,14 +1627,39 @@ function renderReportCard(out, d, readOnly){
   }).join("");
 
   const termLabel = d.term ? d.term.label : "—";
-  const pdfUrl = `${API}/pdf/report/${sid}${term_id?"?term_id="+term_id:""}`;
+  const pdfUrl    = `${API}/pdf/report/${sid}${term_id?"?term_id="+term_id:""}`;
+
+  // Remark boxes — editable or read-only depending on role
+  const ctBox = canEditCT ? `
+    ${remarkTemplateHTML("remark-ct-"+sid)}
+    <textarea id="remark-ct-${sid}" rows="3"
+      style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit"
+      placeholder="Write class teacher remark…">${d.class_teacher_remark||""}</textarea>
+    <button class="btn btn-green btn-sm" style="margin-top:8px;width:100%"
+      onclick="saveRemark(${sid},'class_teacher','remark-ct-${sid}')">
+      💾 Save Class Teacher Remark
+    </button>` :
+    `<div style="font-size:.9rem;color:${d.class_teacher_remark?'var(--text)':'var(--muted)'}">${d.class_teacher_remark||"—"}</div>`;
+
+  const headBox = canEditHead ? `
+    ${remarkTemplateHTML("remark-head-"+sid)}
+    <textarea id="remark-head-${sid}" rows="3"
+      style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit"
+      placeholder="Write head of school remark…">${d.head_remark||""}</textarea>
+    <button class="btn btn-green btn-sm" style="margin-top:8px;width:100%"
+      onclick="saveRemark(${sid},'head','remark-head-${sid}')">
+      💾 Save Head of School Remark
+    </button>` :
+    `<div style="font-size:.9rem;color:${d.head_remark?'var(--text)':'var(--muted)'}">${d.head_remark||"—"}</div>`;
 
   out.innerHTML=`
   <div class="report-card">
     <div class="report-header-grid">
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:800;color:var(--navy)">${d.student.name}</div>
-        <div style="font-size:.85rem;color:var(--muted);margin-top:4px">Student Report Card${readOnly?' <span style="color:var(--orange);font-size:.75rem">(Read-only – closed term)</span>':''}</div>
+        <div style="font-size:.85rem;color:var(--muted);margin-top:4px">Student Report Card
+          ${readOnly?'<span style="color:var(--orange);font-size:.75rem"> (Read-only – closed term)</span>':''}
+        </div>
       </div>
       <a href="${pdfUrl}" target="_blank" class="btn btn-pdf btn-sm">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
@@ -1619,15 +1684,28 @@ function renderReportCard(out, d, readOnly){
     </div>
     <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div style="background:var(--pale);border-radius:9px;padding:14px">
-        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Class Teacher Remark</div>
-        <div style="font-size:.9rem">${d.class_teacher_remark||"—"}</div>
+        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Class Teacher Remark</div>
+        ${ctBox}
       </div>
       <div style="background:var(--pale);border-radius:9px;padding:14px">
-        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Head of School Remark</div>
-        <div style="font-size:.9rem">${d.head_remark||"—"}</div>
+        <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Head of School Remark</div>
+        ${headBox}
       </div>
     </div>
   </div>`;
+}
+
+async function saveRemark(sid, type, textareaId){
+  const remark = document.getElementById(textareaId).value.trim();
+  const role   = currentUser.role;
+  const is_ct  = currentUser.is_class_teacher;
+  const r = await api("/remarks","POST",{
+    username: currentUser.username,
+    role, is_class_teacher: is_ct,
+    student_id: sid, remark
+  });
+  if(r.ok) toast("Remark saved!","success");
+  else toast(r.error||"Failed","error");
 }
 
 // ── SCORE SHEETS ──────────────────────────────────────────────
@@ -2013,27 +2091,7 @@ document.getElementById("past-view-btn").addEventListener("click", async()=>{
 });
 
 // ── REMARKS ──────────────────────────────────────────────
-document.getElementById("remark-load-btn").addEventListener("click", async()=>{
-  const sid=parseInt(document.getElementById("remark-student-id").value);
-  if(!sid){toast("Enter a student ID","error");return;}
-  const d=await api(`/report/${sid}`);
-  if(!d.ok){toast(d.error||"Not found","error");return;}
-  const role=currentUser.role;
-  const isAdmin = role==="admin";
-  const field = isAdmin?"head_remark":"class_teacher_remark";
-  document.getElementById("remark-field-label").textContent=
-    isAdmin?"Head of School Remark":"Class Teacher Remark";
-  document.getElementById("remark-text").value=d[field]||"";
-  toast(`Loaded: ${d.student.name}`,"info");
-});
-document.getElementById("remark-save-btn").addEventListener("click", async()=>{
-  const sid=parseInt(document.getElementById("remark-student-id").value);
-  const remark=document.getElementById("remark-text").value.trim();
-  if(!sid){toast("Enter a student ID","error");return;}
-  const r=await api("/remarks","POST",{username:currentUser.username,role:currentUser.role,is_class_teacher:currentUser.is_class_teacher,student_id:sid,remark});
-  if(r.ok) toast("Remark saved!","success");
-  else toast(r.error||"Failed","error");
-});
+// remarks handled inline on report card
 
 // ── CONFIG ──────────────────────────────────────────────
 async function loadConfig(){
