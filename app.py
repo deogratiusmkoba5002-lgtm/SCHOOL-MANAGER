@@ -36,7 +36,7 @@ SUBJECT_ABBR = {
     "english":        "ENG",
     "literature":     "LIT",
     "kiswahili":      "KIS",
-    "bible knowledge":"BKN",
+    "bible knowledge":"BK",
     "book keeping":   "BKP",
     "commerce":       "COM",
     "business studies":"BS",
@@ -139,11 +139,31 @@ def init_db():
         head_remark          TEXT DEFAULT '',
         PRIMARY KEY(student_id, term_id)
     );
+
+    CREATE TABLE IF NOT EXISTS school_config (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+
+    INSERT INTO school_config(key,value) VALUES('school_name','School Name')
+    ON CONFLICT(key) DO NOTHING;
     """)
     con.commit()
     cur.close()
     con.close()
     print("✓ Database tables ready.")
+
+# ── SCHOOL CONFIG ───────────────────────────────────────────
+def get_school_name():
+    try:
+        con = get_db()
+        cur = con.cursor()
+        cur.execute("SELECT value FROM school_config WHERE key='school_name'")
+        row = cur.fetchone()
+        cur.close(); con.close()
+        return row[0] if row else "School Name"
+    except Exception:
+        return "School Name"
 
 # ── PASSWORD ─────────────────────────────────────────────────
 def hash_password(pw):
@@ -185,10 +205,10 @@ def term_weights(term_id):
 
 # ── GRADE / SCORE ────────────────────────────────────────────
 def get_grade(score):
-    if score >= 80.5: return "A"
-    if score >= 64.5: return "B"
-    if score >= 49.5: return "C"
-    if score >= 39.5: return "D"
+    if score >= 80: return "A"
+    if score >= 70: return "B"
+    if score >= 60: return "C"
+    if score >= 50: return "D"
     return "F"
 
 def calc_ca_avg(student_id, subject, term_id):
@@ -850,7 +870,22 @@ def api_config():
         "classes":          classes,
         "active_term":      term,
         "ca_count":         term["ca_count"] if term else 2,
+        "school_name":      get_school_name(),
     })
+
+@app.route("/api/config/school_name", methods=["POST"])
+def api_set_school_name():
+    name = request.json.get("school_name","").strip()
+    if not name:
+        return jsonify({"ok":False,"error":"School name cannot be empty"}), 400
+    con = get_db()
+    cur = con.cursor()
+    cur.execute(
+        "INSERT INTO school_config(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+        ("school_name", name)
+    )
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
 
 # ── PDF ──────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4, landscape
@@ -874,7 +909,7 @@ def _blue_sheet_pdf(filename, subtitle, class_students, subjects, get_score_fn, 
     t_s = ParagraphStyle("T",parent=styles["Title"],fontSize=14,textColor=H_BG,spaceAfter=2)
     s_s = ParagraphStyle("S",parent=styles["Normal"],fontSize=8,alignment=1,spaceAfter=6)
     term_label = term["label"] if term else ""
-    story += [Paragraph("SCHOOL NAME",t_s),
+    story += [Paragraph(get_school_name(),t_s),
               Paragraph(f"{subtitle}  {'| '+term_label if term_label else ''}",s_s),
               Spacer(1,0.3*cm)]
 
@@ -967,7 +1002,7 @@ def pdf_report(sid):
 
     t_s = ParagraphStyle("T",parent=styles["Title"],fontSize=16,textColor=H_BG,spaceAfter=2)
     s_s = ParagraphStyle("S",parent=styles["Normal"],fontSize=9,alignment=1,spaceAfter=4)
-    story += [Paragraph("SCHOOL NAME",t_s), Paragraph("STUDENT REPORT CARD",s_s), Spacer(1,0.3*cm)]
+    story += [Paragraph(get_school_name(),t_s), Paragraph("STUDENT REPORT CARD",s_s), Spacer(1,0.3*cm)]
 
     info = [
         ["Name:",     student["name"],      "Class:",    student["class_name"].title()],

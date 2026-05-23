@@ -891,8 +891,28 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <div class="page" id="page-config">
       <div class="page-header">
         <h2 class="page-title">Configuration</h2>
-        <p class="page-sub">System information — manage term structure from the Terms page</p>
+        <p class="page-sub">School settings and active term information</p>
       </div>
+      <!-- School Name -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+          School Name
+        </div>
+        <div class="form-grid" style="max-width:500px">
+          <div class="form-group">
+            <label class="form-label">Name (appears on all PDFs and score sheets)</label>
+            <input type="text" class="form-input" id="config-school-name" placeholder="e.g. St. Mary's Secondary School"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="config-school-save-btn" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+              Save Name
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Active Term Info -->
       <div class="section-card">
         <div class="section-card-title">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -1679,7 +1699,7 @@ const SUBJECT_ABBR = {
   "mathematics":"MATH","physics":"PHY","chemistry":"CHEM",
   "biology":"BIO","geography":"GEO","history":"HIST",
   "civics":"CIV","english":"ENG","literature":"LIT",
-  "kiswahili":"KIS","bible knowledge":"BKN",
+  "kiswahili":"KIS","bible knowledge":"BK",
   "book keeping":"BKP","commerce":"COM","business studies":"BS",
 };
 function subAbbr(s){ return SUBJECT_ABBR[s.toLowerCase()] || s.substring(0,5).toUpperCase(); }
@@ -2019,6 +2039,9 @@ document.getElementById("remark-save-btn").addEventListener("click", async()=>{
 async function loadConfig(){
   const c = await api("/config");
   config = {...config, ...c};
+  // populate school name field
+  const nameInput = document.getElementById("config-school-name");
+  if(nameInput && c.school_name) nameInput.value = c.school_name;
   const infoEl = document.getElementById("config-term-info");
   if(infoEl){
     if(c.active_term){
@@ -2057,6 +2080,21 @@ function tableSVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor"><path
 function starSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`}
 function chatSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>`}
 function gearSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`}
+document.addEventListener("DOMContentLoaded", ()=>{
+  const btn = document.getElementById("config-school-save-btn");
+  if(btn){
+    btn.addEventListener("click", async()=>{
+      const name = document.getElementById("config-school-name").value.trim();
+      if(!name){toast("Enter a school name","error");return;}
+      const r = await api("/config/school_name","POST",{school_name:name});
+      if(r.ok){
+        config.school_name = name;
+        toast("School name saved!","success");
+      } else toast(r.error||"Failed","error");
+    });
+  }
+});
+
 function calSVG()     {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>`}
 function historySVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`}
 function emptySVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px;height:48px;color:var(--border)"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4zm-6.5-4c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35-1.13-.75-2-1.56-2-2.35C11.5 2.87 12.37 2 13.5 2zM4.5 2c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35C3.37 5.25 2.5 4.44 2.5 3.65 2.5 2.87 3.37 2 4.5 2zM4 18l-1.5-10h15L16 18H4z"/></svg>`}
