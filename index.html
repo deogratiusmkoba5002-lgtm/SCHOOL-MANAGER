@@ -1674,12 +1674,22 @@ document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   window.open(`${API}/pdf/ca_sheet?class_name=${encodeURIComponent(cls)}&ca_name=exam`,"_blank");
 });
 
+const SUBJECT_ABBR = {
+  "historia ya tanzania na maadili":"HTM",
+  "mathematics":"MATH","physics":"PHY","chemistry":"CHEM",
+  "biology":"BIO","geography":"GEO","history":"HIST",
+  "civics":"CIV","english":"ENG","literature":"LIT",
+  "kiswahili":"KIS","bible knowledge":"BK",
+  "book keeping":"BKP","commerce":"COM","business studies":"BS",
+};
+function subAbbr(s){ return SUBJECT_ABBR[s.toLowerCase()] || s.substring(0,5).toUpperCase(); }
+
 function renderScoreSheet(container, d, label){
   if(!d.results||!d.results.length){
     container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return;
   }
   const subs = d.subjects;
-  const hdr  = `<tr><th>#</th><th>Student</th>${subs.map(s=>`<th title="${s}">${s.substring(0,5).toUpperCase()}</th>`).join("")}<th>Total</th><th>Avg</th><th>Pos</th><th>Grd</th></tr>`;
+  const hdr  = `<tr><th>#</th><th>Student</th>${subs.map(s=>`<th title="${s}">${subAbbr(s)}</th>`).join("")}<th>Total</th><th>Avg</th><th>Pos</th><th>Grd</th></tr>`;
   const rows = d.results.map((r,i)=>{
     const cells=subs.map(s=>{
       const v=r.scores[s];
