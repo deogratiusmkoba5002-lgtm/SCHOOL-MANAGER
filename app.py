@@ -36,7 +36,7 @@ SUBJECT_ABBR = {
     "english":        "ENG",
     "literature":     "LIT",
     "kiswahili":      "KIS",
-    "bible knowledge":"BK",
+    "bible knowledge":"BKN",
     "book keeping":   "BKP",
     "commerce":       "COM",
     "business studies":"BS",
@@ -185,10 +185,10 @@ def term_weights(term_id):
 
 # ── GRADE / SCORE ────────────────────────────────────────────
 def get_grade(score):
-    if score >= 80: return "A"
-    if score >= 70: return "B"
-    if score >= 60: return "C"
-    if score >= 50: return "D"
+    if score >= 80.5: return "A"
+    if score >= 64.5: return "B"
+    if score >= 49.5: return "C"
+    if score >= 39.5: return "D"
     return "F"
 
 def calc_ca_avg(student_id, subject, term_id):
