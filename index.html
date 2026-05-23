@@ -1046,7 +1046,10 @@ async function bootApp(){
   document.getElementById("login-page").style.display="none";
   document.getElementById("app").style.display="flex";
   document.getElementById("sidebar-username").textContent=currentUser.username;
-  document.getElementById("sidebar-role-badge").textContent=`[${currentUser.role}]`;
+  const roleLabel = currentUser.is_class_teacher
+    ? `[Class Teacher – ${cap(currentUser.class_name)}]`
+    : `[${currentUser.role}]`;
+  document.getElementById("sidebar-role-badge").textContent=roleLabel;
 
   buildNav();
   await refreshTermBanner();
@@ -1609,7 +1612,9 @@ function renderReportCard(out, d, readOnly){
 
   // Can this user edit remarks on THIS report?
   // readOnly = past term (closed) → no edits ever
-  const canEditCT   = !readOnly && (isCT && d.student.class_name===currentUser.class_name);
+  // compare lowercase to avoid "Form 2" vs "form 2" mismatch
+  const canEditCT   = !readOnly && isCT &&
+                      (d.student.class_name||"").toLowerCase() === (currentUser.class_name||"").toLowerCase();
   const canEditHead = !readOnly && isAdmin;
 
   const caHeaders = Array.from({length:d.ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
