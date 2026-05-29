@@ -242,6 +242,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 .badge-red   {background:#FFEBEE;color:#C62828}
 .badge-orange{background:#FFF3E0;color:#E65100}
 .badge-grey  {background:#ECEFF1;color:#546E7A}
+.badge-orange{background:#FFF3E0;color:#E65100}
 
 /* ── FORM ELEMENTS ── */
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -520,11 +521,44 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>Name</th><th>Class</th><th>Actions</th></tr></thead>
+            <thead><tr><th>#</th><th>Name</th><th>Class</th><th>Stream</th><th>Actions</th></tr></thead>
             <tbody id="students-tbody"></tbody>
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- ── CLASSES (admin) ── -->
+    <div class="page" id="page-classes">
+      <div class="page-header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 class="page-title">Classes &amp; Streams</h2>
+            <p class="page-sub">Create classes and optional streams under each class</p>
+          </div>
+        </div>
+      </div>
+      <!-- Add class -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+          Add New Class
+        </div>
+        <div class="form-grid" style="max-width:500px">
+          <div class="form-group">
+            <label class="form-label">Class Name (e.g. Form 1, Grade 7)</label>
+            <input type="text" class="form-input" id="new-class-name" placeholder="e.g. Form 1"/>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="btn-add-class" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+              Add Class
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Classes list -->
+      <div id="classes-list"></div>
     </div>
 
     <!-- ── TEACHERS (admin) ── -->
@@ -901,7 +935,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   </main>
 </div>
 
-<!-- ══════════════ MODALS ══════════════ -->
+<!-- Add Student Modal (updated with stream) -->
 <div class="modal-backdrop" id="modal-add-student" style="display:none">
   <div class="modal">
     <div class="modal-title">Add New Student</div>
@@ -912,7 +946,13 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       </div>
       <div class="form-group">
         <label class="form-label">Class</label>
-        <select class="form-select" id="new-student-class"></select>
+        <select class="form-select" id="new-student-class" onchange="onStudentClassChange()"></select>
+      </div>
+      <div class="form-group" id="new-student-stream-group" style="display:none">
+        <label class="form-label">Stream (optional)</label>
+        <select class="form-select" id="new-student-stream">
+          <option value="">— No stream / Overall —</option>
+        </select>
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -922,9 +962,43 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   </div>
 </div>
 
+<!-- ══════════════ MODALS ══════════════ -->
+
+<!-- Force Password Change Modal -->
+<div class="modal-backdrop" id="modal-change-password" style="display:none;z-index:2000">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:56px;height:56px;background:var(--pale);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg viewBox="0 0 24 24" fill="var(--blue)" width="28" height="28"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+      </div>
+      <div class="modal-title" style="margin-bottom:6px">Set Your Password</div>
+      <p style="font-size:.85rem;color:var(--muted)">Your account was created by the admin. Please set your own password before continuing.</p>
+    </div>
+    <div class="form-grid single">
+      <div class="form-group">
+        <label class="form-label">Current Password (given by admin)</label>
+        <input type="password" class="form-input" id="cp-old" placeholder="Enter current password"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input type="password" class="form-input" id="cp-new" placeholder="At least 6 characters"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input type="password" class="form-input" id="cp-confirm" placeholder="Repeat new password"/>
+      </div>
+      <div class="login-error" id="cp-error" style="display:none;margin-bottom:0"></div>
+    </div>
+    <button class="btn btn-blue" id="cp-save-btn" style="width:100%;margin-top:20px;padding:13px">
+      Set Password & Continue
+    </button>
+  </div>
+</div>
+
+
 <div class="modal-backdrop" id="modal-assign-teacher" style="display:none">
   <div class="modal">
-    <div class="modal-title">Assign Teacher</div>
+    <div class="modal-title">Assign Teacher to Subject</div>
     <div class="form-grid single">
       <div class="form-group">
         <label class="form-label">Teacher Username</label>
@@ -935,13 +1009,29 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         <select class="form-select" id="assign-teacher-subject"></select>
       </div>
       <div class="form-group">
-        <label class="form-label">Class</label>
+        <label class="form-label">Class / Stream ("Overall" = all streams)</label>
         <select class="form-select" id="assign-teacher-class"></select>
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
       <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Stream Modal -->
+<div class="modal-backdrop" id="modal-add-stream" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Add Stream</div>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">Adding stream to: <strong id="add-stream-class-label"></strong></p>
+    <div class="form-group">
+      <label class="form-label">Stream Name (e.g. A, B, Science, Arts)</label>
+      <input type="text" class="form-input" id="new-stream-name" placeholder="e.g. A"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-add-stream')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-add-stream">Add Stream</button>
     </div>
   </div>
 </div>
@@ -959,8 +1049,9 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         </label>
       </div>
       <div class="form-group" id="ct-class-group" style="display:none">
-        <label class="form-label">Assigned Class</label>
+        <label class="form-label">Assigned Class / Stream</label>
         <select class="form-select" id="ct-class"></select>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Select "Overall" to be class teacher of all streams</p>
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -975,6 +1066,52 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 const API = "/api";
 let currentUser = null;
 let config = {ca_count:2, allowed_subjects:[], classes:[]};
+
+// ── GLOBALS ─────────────────────────────────────────────────
+let allClasses = [];   // [{id, class_name, streams:[{id,stream_name}]}]
+
+function getClassById(id){ return allClasses.find(c=>c.id==id)||null; }
+function getStreamById(class_id, stream_id){
+  const c = getClassById(class_id);
+  if(!c||!stream_id) return null;
+  return c.streams.find(s=>s.id==stream_id)||null;
+}
+function classLabel(class_id, stream_id){
+  const c = getClassById(class_id);
+  if(!c) return "—";
+  const s = stream_id ? getStreamById(class_id, stream_id) : null;
+  return s ? `${c.class_name} ${s.stream_name}` : c.class_name;
+}
+// Populate a class select, optionally with "Overall" option per class
+function populateClassSelect(sel, includeStreams=false, includeOverall=false){
+  sel.innerHTML="";
+  allClasses.forEach(c=>{
+    if(includeStreams && c.streams.length>0){
+      const grp=document.createElement("optgroup");
+      grp.label=c.class_name;
+      if(includeOverall){
+        const o=document.createElement("option");
+        o.value=`${c.id}:0`; o.textContent=`${c.class_name} — Overall`;
+        grp.appendChild(o);
+      }
+      c.streams.forEach(s=>{
+        const o=document.createElement("option");
+        o.value=`${c.id}:${s.id}`; o.textContent=`${c.class_name} ${s.stream_name}`;
+        grp.appendChild(o);
+      });
+      sel.appendChild(grp);
+    } else {
+      const o=document.createElement("option");
+      o.value=`${c.id}:0`; o.textContent=c.class_name;
+      sel.appendChild(o);
+    }
+  });
+}
+// Parse "class_id:stream_id" value from select
+function parseClassStream(val){
+  const [cid,sid]=val.split(":").map(Number);
+  return {class_id:cid, stream_id:sid||null};
+}
 
 // ── UTILS ──────────────────────────────────────────────
 function toast(msg, type="info"){
@@ -1052,16 +1189,25 @@ async function bootApp(){
   document.getElementById("sidebar-role-badge").textContent=roleLabel;
 
   buildNav();
+  // Load classes first — everything else depends on them
+  const classData = await api("/classes");
+  allClasses = classData;
   await refreshTermBanner();
   const defaultPage = currentUser.role==="admin" ? "dashboard" : "marks";
   showPage(defaultPage);
   loadDashboard();
+
+  // Force password change if flagged
+  if(currentUser.must_change_password){
+    openModal("modal-change-password");
+  }
 }
 
 // ── NAV ──────────────────────────────────────────────
 const NAV_ADMIN = [
   {id:"dashboard", icon:homeSVG(),    label:"Dashboard"},
   {id:"students",  icon:peopleSVG(),  label:"Students"},
+  {id:"classes",   icon:schoolSVG(),  label:"Classes"},
   {id:"teachers",  icon:teacherSVG(), label:"Teachers"},
   {id:"terms",     icon:calSVG(),     label:"Terms"},
   {id:"reports",   icon:reportSVG(),  label:"Report Cards"},
@@ -1110,6 +1256,7 @@ function showPage(id){
 
   // lazy load
   if(id==="students")  loadStudents();
+  if(id==="classes")   loadClasses();
   if(id==="teachers")  loadTeachers();
   if(id==="marks")     { setupMarks(); populateMarksSelects(); }
   if(id==="sheets")    setupSheets();
@@ -1165,14 +1312,15 @@ async function loadStudents(){
 function renderStudents(list){
   const tb = document.getElementById("students-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="4"><div class="empty-state">${emptySVG()}<p>No students found</p></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="5"><div class="empty-state">${emptySVG()}<p>No students found</p></div></td></tr>`;
     return;
   }
-  tb.innerHTML=list.map((s,i)=>`
+  tb.innerHTML=list.map(s=>`
     <tr>
       <td style="color:var(--muted);font-size:.8rem">${s.id}</td>
       <td style="font-weight:600">${s.name}</td>
-      <td><span class="badge badge-blue">${cap(s.class_name)}</span></td>
+      <td><span class="badge badge-blue">${s.class_name}</span></td>
+      <td>${s.stream_name ? `<span class="badge badge-grey">${s.stream_name}</span>` : '<span style="color:var(--muted);font-size:.8rem">—</span>'}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id})">
@@ -1193,16 +1341,38 @@ document.getElementById("student-search").addEventListener("input",function(){
 
 document.getElementById("btn-add-student").addEventListener("click",()=>{
   const sel = document.getElementById("new-student-class");
-  populateSelect(sel, config.classes, c=>c, c=>cap(c));
+  sel.innerHTML = allClasses.map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
+  onStudentClassChange();
   openModal("modal-add-student");
 });
+
+function onStudentClassChange(){
+  const class_id = parseInt(document.getElementById("new-student-class").value);
+  const c = getClassById(class_id);
+  const grp = document.getElementById("new-student-stream-group");
+  const streamSel = document.getElementById("new-student-stream");
+  if(c && c.streams.length > 0){
+    streamSel.innerHTML = `<option value="">— No stream / Overall —</option>` +
+      c.streams.map(s=>`<option value="${s.id}">${s.stream_name}</option>`).join("");
+    grp.style.display="block";
+  } else {
+    streamSel.innerHTML=""; grp.style.display="none";
+  }
+}
+
 document.getElementById("confirm-add-student").addEventListener("click", async()=>{
-  const name  = document.getElementById("new-student-name").value.trim();
-  const cls   = document.getElementById("new-student-class").value;
+  const name      = document.getElementById("new-student-name").value.trim();
+  const class_id  = parseInt(document.getElementById("new-student-class").value);
+  const stream_id = document.getElementById("new-student-stream").value || null;
   if(!name){toast("Enter a student name","error");return;}
-  const r = await api("/students","POST",{name,class_name:cls});
-  if(r.ok){toast("Student added!","success");closeModal("modal-add-student");loadStudents();document.getElementById("new-student-name").value="";}
-  else toast(r.error||"Failed","error");
+  if(!class_id){toast("Select a class","error");return;}
+  const r = await api("/students","POST",{name, class_id, stream_id: stream_id ? parseInt(stream_id) : null});
+  if(r.ok){
+    toast("Student added!","success");
+    closeModal("modal-add-student");
+    loadStudents();
+    document.getElementById("new-student-name").value="";
+  } else toast(r.error||"Failed","error");
 });
 
 async function deleteStudent(id,name){
@@ -1218,27 +1388,100 @@ function quickReport(sid){
   viewReport(sid);
 }
 
-// ── TEACHERS ──────────────────────────────────────────────
+// ── CLASSES ──────────────────────────────────────────────────
+async function loadClasses(){
+  const classes = await api("/classes");
+  allClasses = classes;
+  const container = document.getElementById("classes-list");
+  if(!classes.length){
+    container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No classes yet. Add one above.</p></div>`;
+    return;
+  }
+  container.innerHTML = classes.map(c=>`
+    <div class="section-card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700;font-size:1rem;color:var(--navy)">${c.class_name}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:.78rem;color:var(--muted)">${c.streams.length} stream(s)</span>
+          <button class="btn btn-sm btn-outline" onclick="openAddStream(${c.id},'${c.class_name}')">+ Add Stream</button>
+          <button class="btn btn-sm btn-red btn-icon" onclick="deleteClass(${c.id},'${c.class_name}')">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </div>
+      ${c.streams.length>0 ? `
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${c.streams.map(s=>`
+            <div style="display:flex;align-items:center;gap:6px;background:var(--pale);border-radius:8px;padding:6px 12px">
+              <span style="font-size:.85rem;font-weight:600;color:var(--blue)">${s.stream_name}</span>
+              <button onclick="deleteStream(${s.id},'${c.class_name} ${s.stream_name}')"
+                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;line-height:1;padding:0">✕</button>
+            </div>`).join("")}
+        </div>` : `<p style="color:var(--muted);font-size:.85rem">No streams — all students in one group</p>`}
+    </div>`).join("");
+}
+
+document.getElementById("btn-add-class").addEventListener("click", async()=>{
+  const name = document.getElementById("new-class-name").value.trim();
+  if(!name){toast("Enter a class name","error");return;}
+  const r = await api("/classes","POST",{class_name:name});
+  if(r.ok){ toast(`${name} added!`,"success"); document.getElementById("new-class-name").value=""; await loadClasses(); }
+  else toast(r.error||"Failed","error");
+});
+
+let addStreamTargetId=null, addStreamTargetName="";
+function openAddStream(class_id, class_name){
+  addStreamTargetId=class_id; addStreamTargetName=class_name;
+  document.getElementById("add-stream-class-label").textContent=class_name;
+  document.getElementById("new-stream-name").value="";
+  openModal("modal-add-stream");
+}
+document.getElementById("confirm-add-stream").addEventListener("click", async()=>{
+  const name = document.getElementById("new-stream-name").value.trim();
+  if(!name){toast("Enter a stream name","error");return;}
+  const r = await api(`/classes/${addStreamTargetId}/streams`,"POST",{stream_name:name});
+  if(r.ok){ toast(`Stream ${name} added!`,"success"); closeModal("modal-add-stream"); await loadClasses(); }
+  else toast(r.error||"Failed","error");
+});
+async function deleteClass(id, name){
+  if(!confirm(`Delete class "${name}"? All its streams will also be deleted.`))return;
+  const r = await api(`/classes/${id}`,"DELETE");
+  if(r.ok){toast("Class deleted","success"); loadClasses();}
+  else toast(r.error||"Failed","error");
+}
+async function deleteStream(id, name){
+  if(!confirm(`Delete stream "${name}"?`))return;
+  const r = await api(`/streams/${id}`,"DELETE");
+  if(r.ok){toast("Stream deleted","success"); loadClasses();}
+  else toast(r.error||"Failed","error");
+}
+
+// ── TEACHERS ──────────────────────────────────────────────────
 async function loadTeachers(){
   const teachers = await api("/teachers");
   const tb = document.getElementById("teachers-tbody");
   if(!teachers.length){
-    tb.innerHTML=`<tr><td colspan="5"><div class="empty-state">${emptySVG()}<p>No teachers yet. Create one above.</p></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="4"><div class="empty-state">${emptySVG()}<p>No teachers yet. Create one above.</p></div></td></tr>`;
   } else {
     tb.innerHTML=teachers.map(t=>`
       <tr>
-        <td style="font-weight:600">${t.username}</td>
+        <td>
+          <span style="font-weight:600">${t.username}</span>
+          ${t.must_change_password
+            ? `<span class="badge badge-orange" style="margin-left:6px;font-size:.68rem">⏳ Pending</span>`
+            : `<span class="badge badge-green" style="margin-left:6px;font-size:.68rem">✓ Active</span>`}
+        </td>
         <td>${t.is_class_teacher
-          ? `<span class="badge badge-green">${cap(t.class_name)}</span>`
+          ? `<span class="badge badge-green">${t.class_name}${t.stream_name?" "+t.stream_name:""}</span>`
           : `<span class="badge badge-grey">No</span>`}</td>
-        <td style="font-size:.8rem;color:var(--muted)">${
+        <td style="font-size:.78rem;color:var(--muted)">${
           t.assignments.length
-            ? t.assignments.map(a=>`${cap(a.subject)} (${cap(a.class_name)})`).join(", ")
+            ? t.assignments.map(a=>`${cap(a.subject)} (${a.class_name}${a.stream_name?" "+a.stream_name:" – All"})`).join(", ")
             : "—"
         }</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-sm btn-outline" onclick="openSetClassTeacher('${t.username}','${t.is_class_teacher?t.class_name:""}',${t.is_class_teacher})">
+            <button class="btn btn-sm btn-outline" onclick="openSetClassTeacher('${t.username}',${t.class_id||"null"},${t.stream_id||"null"},${t.is_class_teacher})">
               ${t.is_class_teacher?"Edit CT":"Set as CT"}
             </button>
             <button class="btn btn-sm btn-red btn-icon" onclick="deleteTeacher('${t.username}')">
@@ -1248,12 +1491,12 @@ async function loadTeachers(){
         </td>
       </tr>`).join("");
   }
-
   // populate assign modal
   const userSel = document.getElementById("assign-teacher-user");
   userSel.innerHTML=teachers.map(t=>`<option value="${t.username}">${t.username}</option>`).join("");
   populateSelect(document.getElementById("assign-teacher-subject"), config.allowed_subjects, s=>s, s=>cap(s));
-  populateSelect(document.getElementById("assign-teacher-class"), config.classes, c=>c, c=>cap(c));
+  // class+stream select for assignment
+  populateClassSelect(document.getElementById("assign-teacher-class"), true, true);
 }
 
 async function deleteTeacher(username){
@@ -1263,12 +1506,15 @@ async function deleteTeacher(username){
   else toast(r.error||"Failed","error");
 }
 
-function openSetClassTeacher(username, currentClass, isCT){
+function openSetClassTeacher(username, class_id, stream_id, isCT){
   document.getElementById("ct-username").value=username;
   document.getElementById("ct-is-ct").checked=isCT;
   const sel=document.getElementById("ct-class");
-  populateSelect(sel, config.classes, c=>c, c=>cap(c));
-  if(currentClass) sel.value=currentClass;
+  populateClassSelect(sel, true, true);
+  if(class_id){
+    const val=`${class_id}:${stream_id||0}`;
+    if([...sel.options].some(o=>o.value===val)) sel.value=val;
+  }
   toggleCTClass();
   openModal("modal-set-ct");
 }
@@ -1279,10 +1525,10 @@ function toggleCTClass(){
 
 document.getElementById("btn-assign-teacher").addEventListener("click",()=>openModal("modal-assign-teacher"));
 document.getElementById("confirm-assign-teacher").addEventListener("click", async()=>{
-  const u=document.getElementById("assign-teacher-user").value;
-  const s=document.getElementById("assign-teacher-subject").value;
-  const c=document.getElementById("assign-teacher-class").value;
-  const r=await api("/assign_teacher","POST",{username:u,subject:s,class_name:c});
+  const u  = document.getElementById("assign-teacher-user").value;
+  const s  = document.getElementById("assign-teacher-subject").value;
+  const {class_id, stream_id} = parseClassStream(document.getElementById("assign-teacher-class").value);
+  const r  = await api("/assign_teacher","POST",{username:u,subject:s,class_id,stream_id});
   if(r.ok){toast("Teacher assigned!","success");closeModal("modal-assign-teacher");loadTeachers();}
   else toast(r.error||"Failed","error");
 });
@@ -1303,15 +1549,15 @@ document.getElementById("btn-create-teacher").addEventListener("click", async()=
 document.getElementById("confirm-set-ct").addEventListener("click", async()=>{
   const username=document.getElementById("ct-username").value;
   const is_class_teacher=document.getElementById("ct-is-ct").checked;
-  const class_name=document.getElementById("ct-class").value;
-  const r=await api(`/teachers/${username}/class_teacher`,"POST",{is_class_teacher,class_name});
+  const {class_id, stream_id} = parseClassStream(document.getElementById("ct-class").value);
+  const r=await api(`/teachers/${username}/class_teacher`,"POST",{is_class_teacher,class_id,stream_id});
   if(r.ok){toast("Updated!","success");closeModal("modal-set-ct");loadTeachers();}
   else toast(r.error||"Failed","error");
 });
 
-async function unassign(u,s,c){
-  if(!confirm(`Remove ${u} from ${s} (${c})?`))return;
-  const r=await api("/unassign_teacher","POST",{username:u,subject:s,class_name:c});
+async function unassign(u,s,class_id,stream_id){
+  if(!confirm(`Remove this assignment?`))return;
+  const r=await api("/unassign_teacher","POST",{username:u,subject:s,class_id,stream_id});
   if(r.ok){toast("Removed","success");loadTeachers();}
   else toast(r.error||"Failed","error");
 }
@@ -1319,9 +1565,12 @@ async function unassign(u,s,c){
 // ── MARKS ──────────────────────────────────────────────
 let teacherAssignments = []; // populated on login for teachers
 
-function is_teacher_allowed_local(subject, class_name){
+function is_teacher_allowed_local(subject, class_id, stream_id=null){
   if(currentUser.role==="admin") return true;
-  return teacherAssignments.some(a=>a.subject===subject && a.class_name===class_name);
+  return teacherAssignments.some(a=>
+    a.subject===subject && a.class_id==class_id &&
+    (a.stream_id==stream_id || a.stream_id==null)
+  );
 }
 
 async function populateMarksSelects(){
@@ -1329,7 +1578,6 @@ async function populateMarksSelects(){
   const clsSel  = document.getElementById("marks-class");
 
   if(currentUser.role==="teacher"){
-    // load only this teacher's assigned subjects and classes
     const teachers = await api("/teachers");
     const me = teachers.find(t=>t.username===currentUser.username);
     teacherAssignments = me ? me.assignments : [];
@@ -1338,12 +1586,23 @@ async function populateMarksSelects(){
       return;
     }
     const mySubjects = [...new Set(teacherAssignments.map(a=>a.subject))];
-    const myClasses  = [...new Set(teacherAssignments.map(a=>a.class_name))];
     populateSelect(subjSel, mySubjects, s=>s, s=>cap(s));
-    populateSelect(clsSel,  myClasses,  c=>c, c=>cap(c));
+    // build class+stream options from assignments
+    clsSel.innerHTML="";
+    const seen = new Set();
+    teacherAssignments.forEach(a=>{
+      const key = `${a.class_id}:${a.stream_id||0}`;
+      if(!seen.has(key)){
+        seen.add(key);
+        const o=document.createElement("option");
+        o.value=key;
+        o.textContent=a.class_name+(a.stream_name?" "+a.stream_name:" – All streams");
+        clsSel.appendChild(o);
+      }
+    });
   } else {
     populateSelect(subjSel, config.allowed_subjects, s=>s, s=>cap(s));
-    populateSelect(clsSel,  config.classes, c=>c, c=>cap(c));
+    populateClassSelect(clsSel, true, true);
   }
   rebuildMarksTypeSelect();
 }
@@ -1361,7 +1620,7 @@ function rebuildMarksTypeSelect(){
 function setupMarks(){populateMarksSelects();} // async inside
 
 let marksStudents=[];
-let marksSubject="", marksClass="", marksType="";
+let marksSubject="", marksClass=null, marksStream=null, marksType="";
 let autoSaveTimers={};  // per-student debounce timers
 
 // ── Save a single student's mark to server ──────────────────
@@ -1371,9 +1630,9 @@ async function saveOneMark(sid, score){
   badge.style.color="var(--orange)";
   let r;
   if(marksType==="exam"){
-    r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:sid,score});
+    r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:sid,score});
   } else {
-    r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:sid,ca_name:marksType,score});
+    r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:sid,ca_name:marksType,score});
   }
   if(r.ok){
     badge.textContent="✓ saved";
@@ -1421,11 +1680,12 @@ function attachAutosave(sid){
 }
 
 document.getElementById("marks-load-btn").addEventListener("click", async()=>{
-  const subject    = document.getElementById("marks-subject").value;
-  const class_name = document.getElementById("marks-class").value;
-  const type       = document.getElementById("marks-type").value;
+  const subject  = document.getElementById("marks-subject").value;
+  const clsVal   = document.getElementById("marks-class").value;
+  const type     = document.getElementById("marks-type").value;
+  const {class_id, stream_id} = parseClassStream(clsVal);
 
-  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_name)){
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_id, stream_id)){
     toast("You are not assigned to this subject/class","error");
     return;
   }
@@ -1438,19 +1698,19 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
   try{
     // Store current context
     marksSubject = subject;
-    marksClass   = class_name;
+    marksClass   = class_id;
+    marksStream  = stream_id;
     marksType    = type;
     autoSaveTimers = {};
 
-    // Single request for all students
-    const allStudents = await api("/students");
-    const studs = allStudents.filter(s=>s.class_name===class_name);
-    if(!studs.length){toast("No students found in this class","error");return;}
-
-    // Single scoresheet request instead of one per student — much faster
+    // Single scoresheet request — much faster than per-student calls
     const sheetMode = type==="exam" ? "exam" : "ca";
     const caParam   = type!=="exam" ? `&ca_name=${type}` : "";
-    const sheet     = await api(`/scoresheet?mode=${sheetMode}&class_name=${encodeURIComponent(class_name)}${caParam}`);
+    const streamParam = stream_id ? `&stream_id=${stream_id}` : "";
+    const sheet = await api(`/scoresheet?mode=${sheetMode}&class_id=${class_id}${streamParam}${caParam}`);
+    const allStudents = await api("/students");
+    const studs = allStudents.filter(s=>s.class_id==class_id && (stream_id ? s.stream_id==stream_id : true));
+    if(!studs.length){toast("No students found in this class/stream","error");return;}
 
     // Build score map from scoresheet response
     const scoreMap={};
@@ -1511,9 +1771,9 @@ document.getElementById("marks-save-all-btn").addEventListener("click", async()=
     inp.classList.remove("error");
     let r;
     if(marksType==="exam"){
-      r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:s.id,score});
+      r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:s.id,score});
     } else {
-      r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_name:marksClass,student_id:s.id,ca_name:marksType,score});
+      r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:s.id,ca_name:marksType,score});
     }
     if(r.ok){
       const badge=document.getElementById(`msaved-${s.id}`);
@@ -1614,7 +1874,7 @@ function renderReportCard(out, d, readOnly){
   // readOnly = past term (closed) → no edits ever
   // compare lowercase to avoid "Form 2" vs "form 2" mismatch
   const canEditCT   = !readOnly && isCT &&
-                      (d.student.class_name||"").toLowerCase() === (currentUser.class_name||"").toLowerCase();
+                      d.student.class_id == currentUser.class_id;
   const canEditHead = !readOnly && isAdmin;
 
   const caHeaders = Array.from({length:d.ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
@@ -1679,7 +1939,8 @@ function renderReportCard(out, d, readOnly){
     <div class="summary-band">
       <div class="summary-cell"><div class="val">${d.average}</div><div class="lbl">Average</div></div>
       <div class="summary-cell"><div class="val">${d.grade}</div><div class="lbl">Grade</div></div>
-      <div class="summary-cell"><div class="val">${d.position}/${d.total_students}</div><div class="lbl">Position</div></div>
+      <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">Class Position</div></div>
+      ${d.stream_position!=null?`<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Position</div></div>`:""}
     </div>
     <div class="table-wrap">
       <table>
@@ -1715,13 +1976,24 @@ async function saveRemark(sid, type, textareaId){
 
 // ── SCORE SHEETS ──────────────────────────────────────────────
 function setupSheets(){
-  const availClasses = (currentUser.is_class_teacher && currentUser.class_name)
-    ? [currentUser.class_name]
-    : config.classes;
-
-  populateSelect(document.getElementById("ca-sheet-class"),   availClasses, c=>c, c=>cap(c));
-  populateSelect(document.getElementById("exam-sheet-class"), availClasses, c=>c, c=>cap(c));
-  populateSelect(document.getElementById("term-sheet-class"), availClasses, c=>c, c=>cap(c));
+  const buildSheetSel=(sel)=>{
+    if(currentUser.is_class_teacher && currentUser.class_id){
+      const c=getClassById(currentUser.class_id);
+      if(!c){sel.innerHTML="<option>—</option>";return;}
+      sel.innerHTML="";
+      const addOpt=(val,txt)=>{const o=document.createElement("option");o.value=val;o.textContent=txt;sel.appendChild(o);};
+      if(currentUser.stream_id){
+        const s=getStreamById(currentUser.class_id,currentUser.stream_id);
+        addOpt(`${c.id}:${currentUser.stream_id}`,`${c.class_name} ${s?s.stream_name:""}`);
+      } else {
+        addOpt(`${c.id}:0`,`${c.class_name} — Overall`);
+        c.streams.forEach(s=>addOpt(`${c.id}:${s.id}`,`${c.class_name} ${s.stream_name}`));
+      }
+    } else { populateClassSelect(sel,true,true); }
+  };
+  buildSheetSel(document.getElementById("ca-sheet-class"));
+  buildSheetSel(document.getElementById("exam-sheet-class"));
+  buildSheetSel(document.getElementById("term-sheet-class"));
 
   const asSel = document.getElementById("ca-sheet-assess");
   asSel.innerHTML="";
@@ -1743,38 +2015,42 @@ function setupSheets(){
 }
 
 document.getElementById("ca-sheet-view-btn").addEventListener("click", async()=>{
-  const cls = document.getElementById("ca-sheet-class").value;
-  const ca  = document.getElementById("ca-sheet-assess").value;
-  const d   = await api(`/scoresheet?mode=ca&class_name=${encodeURIComponent(cls)}&ca_name=${ca}`);
-  renderScoreSheet(document.getElementById("ca-sheet-output"), d, ca);
+  const {class_id,stream_id}=parseClassStream(document.getElementById("ca-sheet-class").value);
+  const ca=document.getElementById("ca-sheet-assess").value;
+  const sp=stream_id?`&stream_id=${stream_id}`:"";
+  const d=await api(`/scoresheet?mode=ca&class_id=${class_id}${sp}&ca_name=${ca}`);
+  renderScoreSheet(document.getElementById("ca-sheet-output"),d,ca);
 });
 
 document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
-  const cls=document.getElementById("ca-sheet-class").value;
-  const ca =document.getElementById("ca-sheet-assess").value;
-  window.open(`${API}/pdf/ca_sheet?class_name=${encodeURIComponent(cls)}&ca_name=${ca}`,"_blank");
+  const {class_id:cc,stream_id:cs}=parseClassStream(document.getElementById("ca-sheet-class").value);
+  const ca=document.getElementById("ca-sheet-assess").value;
+  const sp=cs?`&stream_id=${cs}`:"";
+  window.open(`${API}/pdf/ca_sheet?class_id=${cc}${sp}&ca_name=${ca}`,"_blank");
 });
 
 document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
-  const cls=document.getElementById("term-sheet-class").value;
-  const d=await api(`/scoresheet?mode=terminal&class_name=${encodeURIComponent(cls)}`);
-  renderScoreSheet(document.getElementById("term-sheet-output"), d, "Terminal");
+  const {class_id,stream_id}=parseClassStream(document.getElementById("term-sheet-class").value);
+  const sp=stream_id?`&stream_id=${stream_id}`:"";
+  const d=await api(`/scoresheet?mode=terminal&class_id=${class_id}${sp}`);
+  renderScoreSheet(document.getElementById("term-sheet-output"),d,"Terminal");
 });
 
 document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
-  const cls=document.getElementById("term-sheet-class").value;
-  window.open(`${API}/pdf/terminal_sheet?class_name=${encodeURIComponent(cls)}`,"_blank");
+  const {class_id:tc,stream_id:ts}=parseClassStream(document.getElementById("term-sheet-class").value);
+  const tsp=ts?`&stream_id=${ts}`:"";
+  window.open(`${API}/pdf/terminal_sheet?class_id=${tc}${tsp}`,"_blank");
 });
 
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
   const cls = document.getElementById("exam-sheet-class").value;
-  const d   = await api(`/scoresheet?mode=exam&class_name=${encodeURIComponent(cls)}`);
-  renderScoreSheet(document.getElementById("exam-sheet-output"), d, "Exam");
+  const d   = await api(`/scoresheet?mode=exam&class_id=${class_id}${sp}`);
+  renderScoreSheet(document.getElementById("exam-sheet-output"),d,"Exam");
 });
 
 document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   const cls = document.getElementById("exam-sheet-class").value;
-  window.open(`${API}/pdf/ca_sheet?class_name=${encodeURIComponent(cls)}&ca_name=exam`,"_blank");
+  window.open(`${API}/pdf/ca_sheet?class_id=${class_id}${sp}&ca_name=exam`,"_blank");
 });
 
 const SUBJECT_ABBR = {
@@ -1827,7 +2103,7 @@ function renderScoreSheet(container, d, label){
 // ── RANKINGS ──────────────────────────────────────────────
 function setupRankings(){
   // classes
-  populateSelect(document.getElementById("rank-class-sel"), config.classes, c=>c, c=>cap(c));
+  populateClassSelect(document.getElementById("rank-class-sel"),true,true);
 
   // subjects — teachers only see their assigned
   const rankSubjSel = document.getElementById("rank-subj-sel");
@@ -1853,16 +2129,16 @@ function rebuildRankAssessSelect(){
 }
 
 document.getElementById("rank-show-btn").addEventListener("click", async()=>{
-  const cls    = document.getElementById("rank-class-sel").value;
+  const {class_id,stream_id}=parseClassStream(document.getElementById("rank-class-sel").value);
   const subj   = document.getElementById("rank-subj-sel").value;
   const assess = document.getElementById("rank-assess-sel").value;
 
   // teacher access check
-  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subj, cls)){
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subj,class_id,stream_id)){
     toast("You are not assigned to this subject/class","error"); return;
   }
 
-  const d = await api(`/ranking/subject?subject=${encodeURIComponent(subj)}&class_name=${encodeURIComponent(cls)}&assess=${assess}`);
+  const sp=stream_id?`&stream_id=${stream_id}`:""; const d=await api(`/ranking/subject?subject=${encodeURIComponent(subj)}&class_id=${class_id}${sp}&assess=${assess}`);
   const out = document.getElementById("rank-output");
   if(!d.length){
     out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No marks entered yet for ${cap(subj)} – ${assess}</p></div>`;
@@ -1984,14 +2260,18 @@ async function setupPastTerms(){
 
   if(currentUser.role==="teacher"){
     const mySubjs   = [...new Set(teacherAssignments.map(a=>a.subject))];
-    const myClasses = [...new Set(teacherAssignments.map(a=>a.class_name))];
-    populateSelect(subjSel,  mySubjs.length   ? mySubjs   : config.allowed_subjects, s=>s, s=>cap(s));
-    populateSelect(classSel, myClasses.length ? myClasses : config.classes,           c=>c, c=>cap(c));
+    populateSelect(subjSel,mySubjs.length?mySubjs:config.allowed_subjects,s=>s,s=>cap(s));
+    classSel.innerHTML="";
+    const seenPT=new Set();
+    teacherAssignments.forEach(a=>{
+      const key=`${a.class_id}:${a.stream_id||0}`;
+      if(!seenPT.has(key)){seenPT.add(key);
+        const o=document.createElement("option");o.value=key;
+        o.textContent=a.class_name+(a.stream_name?" "+a.stream_name:" – All");classSel.appendChild(o);}
+    });
   } else {
-    const availClasses = (currentUser.is_class_teacher && currentUser.class_name)
-      ? [currentUser.class_name] : config.classes;
-    populateSelect(subjSel,  config.allowed_subjects, s=>s, s=>cap(s));
-    populateSelect(classSel, availClasses,             c=>c, c=>cap(c));
+    populateSelect(subjSel,config.allowed_subjects,s=>s,s=>cap(s));
+    populateClassSelect(classSel,true,true);
   }
 
   // tab switching
@@ -2007,29 +2287,26 @@ async function setupPastTerms(){
 
 // Past: show subject marks table
 document.getElementById("past-marks-btn").addEventListener("click", async()=>{
-  const term_id    = document.getElementById("past-term-sel").value;
-  const subject    = document.getElementById("past-subject-sel").value;
-  const class_name = document.getElementById("past-class-sel").value;
+  const term_id  = document.getElementById("past-term-sel").value;
+  const subject  = document.getElementById("past-subject-sel").value;
+  const {class_id, stream_id} = parseClassStream(document.getElementById("past-class-sel").value);
   if(!term_id){toast("Select a term","error");return;}
 
-  // teacher access check
-  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_name)){
+  if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject,class_id,stream_id)){
     toast("Access denied — not your assignment","error"); return;
   }
 
   const out = document.getElementById("past-marks-output");
   out.innerHTML=`<div class="spinner"></div>`;
 
-  // fetch term info for CA count
   const terms  = await api("/terms");
   const term   = terms.find(t=>t.id==term_id);
   const ca_count = term ? term.ca_count : 2;
 
-  // fetch all students in class
   const allStudents = await api("/students");
-  const studs = allStudents.filter(s=>s.class_name===class_name);
+  const studs = allStudents.filter(s=>s.class_id==class_id&&(stream_id?s.stream_id==stream_id:true));
   if(!studs.length){
-    out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No students in this class</p></div>`;return;
+    out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No students in this class/stream</p></div>`;return;
   }
 
   // fetch marks per student
@@ -2062,7 +2339,7 @@ document.getElementById("past-marks-btn").addEventListener("click", async()=>{
   out.innerHTML=`
   <div class="table-card">
     <div class="table-toolbar">
-      <span class="table-toolbar-title">${cap(subject)} — ${cap(class_name)} — ${term?term.label:""}</span>
+      <span class="table-toolbar-title">${cap(subject)} — ${classLabel(class_id,stream_id)} — ${term?term.label:""}</span>
     </div>
     <div class="table-wrap">
       <table>
@@ -2083,7 +2360,7 @@ document.getElementById("past-view-btn").addEventListener("click", async()=>{
   if(currentUser.is_class_teacher){
     const studs = await api("/students");
     const s = studs.find(x=>x.id===sid);
-    if(!s||s.class_name!==currentUser.class_name){
+    if(!s||s.class_id!=currentUser.class_id){
       toast("Access denied — not your class","error"); return;
     }
   }
@@ -2158,9 +2435,64 @@ document.addEventListener("DOMContentLoaded", ()=>{
   }
 });
 
+function schoolSVG()  {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>`}
 function calSVG()     {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>`}
 function historySVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`}
 function emptySVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px;height:48px;color:var(--border)"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4zm-6.5-4c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35-1.13-.75-2-1.56-2-2.35C11.5 2.87 12.37 2 13.5 2zM4.5 2c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35C3.37 5.25 2.5 4.44 2.5 3.65 2.5 2.87 3.37 2 4.5 2zM4 18l-1.5-10h15L16 18H4z"/></svg>`}
+
+// ── FORCE PASSWORD CHANGE ───────────────────────────────────
+document.getElementById("cp-save-btn").addEventListener("click", async()=>{
+  const oldPw  = document.getElementById("cp-old").value;
+  const newPw  = document.getElementById("cp-new").value;
+  const confirm= document.getElementById("cp-confirm").value;
+  const errEl  = document.getElementById("cp-error");
+  errEl.style.display="none";
+
+  if(!oldPw||!newPw||!confirm){
+    errEl.textContent="Please fill in all fields.";
+    errEl.style.display="block"; return;
+  }
+  if(newPw.length < 6){
+    errEl.textContent="New password must be at least 6 characters.";
+    errEl.style.display="block"; return;
+  }
+  if(newPw !== confirm){
+    errEl.textContent="Passwords do not match.";
+    errEl.style.display="block"; return;
+  }
+  if(newPw === oldPw){
+    errEl.textContent="New password must be different from the current one.";
+    errEl.style.display="block"; return;
+  }
+
+  const btn = document.getElementById("cp-save-btn");
+  btn.textContent="Saving..."; btn.disabled=true;
+
+  const r = await api("/change_password","POST",{
+    username:     currentUser.username,
+    old_password: oldPw,
+    new_password: newPw,
+  });
+
+  btn.textContent="Set Password & Continue"; btn.disabled=false;
+
+  if(r.ok){
+    currentUser.must_change_password = false;
+    closeModal("modal-change-password");
+    toast("Password updated successfully! Only you know it now.","success");
+  } else {
+    errEl.textContent = r.error || "Failed. Try again.";
+    errEl.style.display="block";
+  }
+});
+
+// Prevent closing force-change modal by clicking backdrop
+document.getElementById("modal-change-password").addEventListener("click", function(e){
+  if(e.target === this && currentUser && currentUser.must_change_password){
+    // block dismissal — they MUST change password
+    e.stopPropagation();
+  }
+});
 
 // ── MOBILE SIDEBAR ──────────────────────────────────────────
 function toggleSidebar(){
