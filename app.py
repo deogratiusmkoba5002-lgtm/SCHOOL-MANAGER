@@ -139,6 +139,18 @@ def init_db():
     INSERT INTO school_config(key,value) VALUES('school_name','School Name')
     ON CONFLICT(key) DO NOTHING;
     """)
+    # ── Migrate existing tables — add columns if missing ──
+    migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS class_id INTEGER DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stream_id INTEGER DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS stream_id INTEGER DEFAULT NULL",
+    ]
+    for m in migrations:
+        try:
+            cur.execute(m)
+        except Exception as e:
+            print(f"Migration note: {e}")
     con.commit(); cur.close(); con.close()
     print("✓ Database ready.")
 
