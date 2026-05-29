@@ -1174,6 +1174,31 @@ def pdf_terminal_sheet():
                     studs,allowed_subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
+# ── ONE-TIME RESET ENDPOINT (remove after use) ──────────────
+@app.route("/api/reset_db", methods=["POST"])
+def api_reset_db():
+    secret = request.json.get("secret","")
+    if secret != os.environ.get("ADMIN_SETUP_SECRET",""):
+        return jsonify({"ok":False,"error":"Invalid secret"}), 403
+    con = get_db(); cur = con.cursor()
+    drops = [
+        "DROP TABLE IF EXISTS remarks CASCADE",
+        "DROP TABLE IF EXISTS exam_scores CASCADE",
+        "DROP TABLE IF EXISTS ca_scores CASCADE",
+        "DROP TABLE IF EXISTS subject_assignments CASCADE",
+        "DROP TABLE IF EXISTS students CASCADE",
+        "DROP TABLE IF EXISTS streams CASCADE",
+        "DROP TABLE IF EXISTS classes CASCADE",
+        "DROP TABLE IF EXISTS terms CASCADE",
+        "DROP TABLE IF EXISTS school_config CASCADE",
+        "DROP TABLE IF EXISTS users CASCADE",
+    ]
+    for d in drops:
+        cur.execute(d)
+    con.commit(); cur.close(); con.close()
+    init_db()
+    return jsonify({"ok":True,"message":"Database reset. Go to /setup to create admin."})
+
 # ── SERVE FRONTEND ────────────────────────────────────────────
 @app.route("/")
 def index(): return send_from_directory(BASE_DIR,"index.html")
