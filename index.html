@@ -1448,7 +1448,7 @@ document.getElementById("confirm-add-student").addEventListener("click", async()
   });
   if(r.ok){
     closeModal("modal-add-student");
-    loadStudents();
+    await loadStudents();
     document.getElementById("new-student-name").value="";
     document.getElementById("new-student-phone").value="";
     // Show credentials to admin
