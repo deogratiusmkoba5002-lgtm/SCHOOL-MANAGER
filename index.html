@@ -481,6 +481,25 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       </div>
     </div>
 
+    <!-- ── PARENT DASHBOARD ── -->
+    <div class="page" id="page-parent-dashboard">
+      <div id="parent-greeting-section">
+        <div style="text-align:center;padding:48px 20px 32px">
+          <div style="width:72px;height:72px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 24px rgba(21,101,192,.3)">
+            <svg viewBox="0 0 24 24" fill="white" width="36" height="36"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+          </div>
+          <h1 id="parent-greeting-text" style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--navy);margin-bottom:8px"></h1>
+          <p id="parent-greeting-sub" style="font-size:.95rem;color:var(--muted)"></p>
+        </div>
+        <div class="section-card" style="max-width:500px;margin:0 auto">
+          <div style="text-align:center;padding:8px 0">
+            <div style="font-size:.8rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">More features coming soon</div>
+            <p style="font-size:.875rem;color:var(--muted)">You will soon be able to view your child's report cards, marks, and academic progress directly from this portal.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── DASHBOARD ── -->
     <div class="page" id="page-dashboard">
       <div class="page-header">
@@ -954,6 +973,11 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
           <option value="">— No stream / Overall —</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Parent / Guardian Phone Number</label>
+        <input type="tel" class="form-input" id="new-student-phone" placeholder="e.g. 0712345678"/>
+        <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Used to generate login credentials for the parent portal</p>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeModal('modal-add-student')">Cancel</button>
@@ -1017,6 +1041,35 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
       <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
     </div>
+  </div>
+</div>
+
+<!-- Credentials Modal -->
+<div class="modal-backdrop" id="modal-credentials" style="display:none">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:56px;height:56px;background:#E8F5E9;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg viewBox="0 0 24 24" fill="#2E7D32" width="28" height="28"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      </div>
+      <div class="modal-title" style="margin-bottom:6px">Student Added Successfully!</div>
+      <p style="font-size:.85rem;color:var(--muted)">Parent login credentials for <strong id="cred-student-name"></strong></p>
+    </div>
+    <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Username</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--navy);word-break:break-all" id="cred-username"></div>
+        </div>
+        <div>
+          <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Temp Password</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--navy)" id="cred-password"></div>
+        </div>
+      </div>
+    </div>
+    <div style="background:#FFF8E1;border-left:3px solid #FFD600;border-radius:8px;padding:12px;font-size:.82rem;color:#5D4037;margin-bottom:20px">
+      ⚠ Write these down now. Give them to the parent. They will be asked to change the password on first login.
+    </div>
+    <button class="btn btn-blue" onclick="closeModal('modal-credentials')" style="width:100%">Done — I've noted the credentials</button>
   </div>
 </div>
 
@@ -1183,9 +1236,10 @@ async function bootApp(){
   document.getElementById("login-page").style.display="none";
   document.getElementById("app").style.display="flex";
   document.getElementById("sidebar-username").textContent=currentUser.username;
-  const roleLabel = currentUser.is_class_teacher
-    ? `[Class Teacher – ${cap(currentUser.class_name)}]`
-    : `[${currentUser.role}]`;
+  let roleLabel;
+  if(currentUser.role==="parent") roleLabel="[Parent Portal]";
+  else if(currentUser.is_class_teacher) roleLabel="[Class Teacher]";
+  else roleLabel="["+currentUser.role+"]";
   document.getElementById("sidebar-role-badge").textContent=roleLabel;
 
   buildNav();
@@ -1217,6 +1271,10 @@ const NAV_ADMIN = [
   {id:"config",    icon:gearSVG(),    label:"Config"},
 ];
 
+const NAV_PARENT = [
+  {id:"parent-dashboard", icon:homeSVG(), label:"Dashboard"},
+];
+
 function buildTeacherNav(user){
   const items = [
     {id:"marks",   icon:editSVG(),   label:"Enter Marks"},
@@ -1233,6 +1291,8 @@ function buildTeacherNav(user){
 function buildNav(){
   const items = currentUser.role==="admin"
     ? NAV_ADMIN
+    : currentUser.role==="parent"
+    ? NAV_PARENT
     : buildTeacherNav(currentUser);
   const nav = document.getElementById("sidebar-nav");
   nav.innerHTML="";
@@ -1255,6 +1315,7 @@ function showPage(id){
   if(ni) ni.classList.add("active");
 
   // lazy load
+  if(id==="parent-dashboard") loadParentDashboard();
   if(id==="students")  loadStudents();
   if(id==="classes")   loadClasses();
   if(id==="teachers")  loadTeachers();
@@ -1274,6 +1335,18 @@ document.getElementById("logout-btn").addEventListener("click",()=>{
   document.getElementById("login-pass").value="";
   document.getElementById("login-error").style.display="none";
 });
+
+// ── PARENT DASHBOARD ───────────────────────────────────────────
+async function loadParentDashboard(){
+  const conf = await api("/config");
+  const schoolName = conf.school_name || "our school";
+  const raw = currentUser.username.replace(/_/g," ");
+  const studentName = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  document.getElementById("parent-greeting-text").textContent = `${greeting}, ${studentName}!`;
+  document.getElementById("parent-greeting-sub").textContent  = `Welcome to ${schoolName} Student Portal`;
+}
 
 // ── DASHBOARD ──────────────────────────────────────────────
 async function loadDashboard(){
@@ -1361,19 +1434,34 @@ function onStudentClassChange(){
 }
 
 document.getElementById("confirm-add-student").addEventListener("click", async()=>{
-  const name      = document.getElementById("new-student-name").value.trim();
-  const class_id  = parseInt(document.getElementById("new-student-class").value);
-  const stream_id = document.getElementById("new-student-stream").value || null;
+  const name         = document.getElementById("new-student-name").value.trim();
+  const class_id     = parseInt(document.getElementById("new-student-class").value);
+  const stream_id    = document.getElementById("new-student-stream").value || null;
+  const phone_number = document.getElementById("new-student-phone").value.trim();
   if(!name){toast("Enter a student name","error");return;}
   if(!class_id){toast("Select a class","error");return;}
-  const r = await api("/students","POST",{name, class_id, stream_id: stream_id ? parseInt(stream_id) : null});
+  if(!phone_number){toast("Enter parent phone number","error");return;}
+  const r = await api("/students","POST",{
+    name, class_id,
+    stream_id: stream_id ? parseInt(stream_id) : null,
+    phone_number
+  });
   if(r.ok){
-    toast("Student added!","success");
     closeModal("modal-add-student");
     loadStudents();
     document.getElementById("new-student-name").value="";
+    document.getElementById("new-student-phone").value="";
+    // Show credentials to admin
+    openCredentialsModal(name, r.parent_username, r.temp_password);
   } else toast(r.error||"Failed","error");
 });
+
+function openCredentialsModal(studentName, username, tempPassword){
+  document.getElementById("cred-student-name").textContent = studentName;
+  document.getElementById("cred-username").textContent     = username;
+  document.getElementById("cred-password").textContent     = tempPassword;
+  openModal("modal-credentials");
+}
 
 async function deleteStudent(id,name){
   if(!confirm(`Delete "${name}"? This also removes all their marks.`))return;

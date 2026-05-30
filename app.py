@@ -58,11 +58,12 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users (
         username              TEXT PRIMARY KEY,
         password              TEXT NOT NULL,
-        role                  TEXT NOT NULL CHECK(role IN ('admin','teacher')),
+        role                  TEXT NOT NULL CHECK(role IN ('admin','teacher','parent')),
         is_class_teacher      INTEGER DEFAULT 0,
         class_id              INTEGER DEFAULT NULL,
         stream_id             INTEGER DEFAULT NULL,
-        must_change_password  INTEGER DEFAULT 0
+        must_change_password  INTEGER DEFAULT 0,
+        student_id            INTEGER DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS classes (
@@ -81,7 +82,8 @@ def init_db():
         id        SERIAL PRIMARY KEY,
         name      TEXT NOT NULL,
         class_id  INTEGER NOT NULL REFERENCES classes(id),
-        stream_id INTEGER DEFAULT NULL REFERENCES streams(id)
+        stream_id    INTEGER DEFAULT NULL REFERENCES streams(id),
+        phone_number TEXT DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS subject_assignments (
@@ -145,6 +147,10 @@ def init_db():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stream_id INTEGER DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS stream_id INTEGER DEFAULT NULL",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS phone_number TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id INTEGER DEFAULT NULL",
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
+        "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin','teacher','parent'))",
     ]
     for m in migrations:
         try:
@@ -360,6 +366,7 @@ def api_login():
         "class_id":             user["class_id"],
         "stream_id":            user["stream_id"],
         "must_change_password": bool(user["must_change_password"]),
+        "student_id":           user["student_id"],
     }})
 
 @app.route("/api/setup_admin", methods=["POST"])
@@ -510,10 +517,19 @@ def api_add_student():
     if cur.fetchone():
         cur.close(); con.close()
         return jsonify({"ok":False,"error":"Student already exists in this class/stream"}), 409
-    cur.execute("INSERT INTO students(name,class_id,stream_id) VALUES(%s,%s,%s)",
-                (name, class_id, stream_id))
+    phone_number = request.json.get("phone_number","").strip()
+    if not phone_number or len(phone_number) < 4:
+        return jsonify({"ok":False,"error":"Parent phone number required (min 4 digits)"}), 400
+    cur.execute("INSERT INTO students(name,class_id,stream_id,phone_number) VALUES(%s,%s,%s,%s) RETURNING id",
+                (name, class_id, stream_id, phone_number))
+    student_id = cur.fetchone()[0]
     con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True})
+    username, temp_pw = generate_parent_credentials(name, phone_number, student_id)
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO users(username,password,role,must_change_password,student_id) VALUES(%s,%s,'parent',1,%s)",
+                (username, hash_password(temp_pw), student_id))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"parent_username":username,"temp_password":temp_pw})
 
 @app.route("/api/students/<int:sid>", methods=["DELETE"])
 def api_delete_student(sid):
@@ -1174,6 +1190,30 @@ def pdf_terminal_sheet():
                     studs,allowed_subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
+# ── ONE-TIME RESET ENDPOINT (remove after use) ──────────────
+@app.route("/api/reset_db", methods=["POST"])
+def api_reset_db():
+    secret = request.json.get("secret","")
+    if secret != os.environ.get("ADMIN_SETUP_SECRET",""):
+        return jsonify({"ok":False,"error":"Invalid secret"}), 403
+    con = get_db(); cur = con.cursor()
+    drops = [
+        "DROP TABLE IF EXISTS remarks CASCADE",
+        "DROP TABLE IF EXISTS exam_scores CASCADE",
+        "DROP TABLE IF EXISTS ca_scores CASCADE",
+        "DROP TABLE IF EXISTS subject_assignments CASCADE",
+        "DROP TABLE IF EXISTS students CASCADE",
+        "DROP TABLE IF EXISTS streams CASCADE",
+        "DROP TABLE IF EXISTS classes CASCADE",
+        "DROP TABLE IF EXISTS terms CASCADE",
+        "DROP TABLE IF EXISTS school_config CASCADE",
+        "DROP TABLE IF EXISTS users CASCADE",
+    ]
+    for d in drops:
+        cur.execute(d)
+    con.commit(); cur.close(); con.close()
+    init_db()
+    return jsonify({"ok":True,"message":"Database reset. Go to /setup to create admin."})
 
 # ── SERVE FRONTEND ────────────────────────────────────────────
 @app.route("/")
