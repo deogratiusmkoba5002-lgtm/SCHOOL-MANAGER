@@ -140,6 +140,12 @@ def init_db():
 
     INSERT INTO school_config(key,value) VALUES('school_name','School Name')
     ON CONFLICT(key) DO NOTHING;
+
+    CREATE TABLE IF NOT EXISTS announcements (id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, target_classes TEXT NOT NULL DEFAULT 'all', posted_by TEXT NOT NULL, posted_at TIMESTAMP DEFAULT NOW());
+
+    CREATE TABLE IF NOT EXISTS announcement_reads (announcement_id INTEGER NOT NULL, student_id INTEGER NOT NULL, read_at TIMESTAMP DEFAULT NOW(), PRIMARY KEY(announcement_id,student_id));
+
+    CREATE TABLE IF NOT EXISTS results_published (term_id INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(term_id));
     """)
     # ── Migrate existing tables — add columns if missing ──
     migrations = [
@@ -1259,3 +1265,165 @@ with app.app_context():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT",5000))
     app.run(host="0.0.0.0",port=port,debug=False)
+
+
+# ── ANNOUNCEMENTS ─────────────────────────────────────────────
+@app.route("/api/announcements", methods=["GET"])
+def api_get_announcements():
+    student_id = request.args.get("student_id")
+    con = get_db(); cur = con.cursor()
+    if student_id:
+        sid = int(student_id)
+        cur.execute("SELECT class_id FROM students WHERE id=%s", (sid,))
+        row = cur.fetchone()
+        if not row: cur.close(); con.close(); return jsonify([])
+        cur.execute("SELECT class_name FROM classes WHERE id=%s", (row[0],))
+        cls_row = cur.fetchone(); class_name = cls_row[0] if cls_row else ""
+        cur.execute("""
+            SELECT a.id, a.title, a.body, a.target_classes,
+                   a.posted_by, a.posted_at::text,
+                   CASE WHEN ar.student_id IS NOT NULL THEN 1 ELSE 0 END as is_read
+            FROM announcements a
+            LEFT JOIN announcement_reads ar
+                ON ar.announcement_id=a.id AND ar.student_id=%s
+            WHERE a.target_classes='all' OR a.target_classes LIKE %s
+            ORDER BY a.posted_at DESC
+        """, (sid, f"%{class_name}%"))
+    else:
+        cur.execute("SELECT id,title,body,target_classes,posted_by,posted_at::text,0 as is_read FROM announcements ORDER BY posted_at DESC")
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return jsonify(rows)
+
+@app.route("/api/announcements", methods=["POST"])
+def api_post_announcement():
+    d              = request.json
+    title          = d.get("title","").strip()
+    body           = d.get("body","").strip()
+    posted_by      = d.get("posted_by","")
+    target_classes = d.get("target_classes","all").strip()
+    if not title or not body:
+        return jsonify({"ok":False,"error":"Title and body required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO announcements(title,body,target_classes,posted_by) VALUES(%s,%s,%s,%s) RETURNING id",
+                (title, body, target_classes, posted_by))
+    new_id = cur.fetchone()[0]
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"id":new_id})
+
+@app.route("/api/announcements/<int:aid>", methods=["DELETE"])
+def api_delete_announcement(aid):
+    con = get_db(); cur = con.cursor()
+    cur.execute("DELETE FROM announcements WHERE id=%s", (aid,))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+@app.route("/api/announcements/<int:aid>/read", methods=["POST"])
+def api_mark_read(aid):
+    student_id = request.json.get("student_id")
+    if not student_id: return jsonify({"ok":False,"error":"student_id required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO announcement_reads(announcement_id,student_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                (aid, int(student_id)))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── RESULTS PUBLISHING ────────────────────────────────────────
+@app.route("/api/results/status", methods=["GET"])
+def api_results_status():
+    term_id = request.args.get("term_id")
+    if not term_id:
+        term = get_active_term()
+        if not term: return jsonify({"published":False,"term":None,"term_id":None})
+        term_id = term["id"]
+    else:
+        term_id = int(term_id)
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT published FROM results_published WHERE term_id=%s", (term_id,))
+    row = cur.fetchone(); cur.close(); con.close()
+    published = bool(row[0]) if row else False
+    return jsonify({"published":published,"term":get_term_by_id(term_id),"term_id":term_id})
+
+@app.route("/api/results/toggle", methods=["POST"])
+def api_toggle_results():
+    d       = request.json
+    term_id = d.get("term_id")
+    publish = bool(d.get("publish", True))
+    if not term_id: return jsonify({"ok":False,"error":"term_id required"}), 400
+    term_id = int(term_id)
+    term = get_term_by_id(term_id)
+    if not term: return jsonify({"ok":False,"error":"Term not found"}), 404
+    if term["status"] == "closed" and publish:
+        return jsonify({"ok":False,"error":"Cannot re-publish results of a closed term"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO results_published(term_id,published) VALUES(%s,%s) ON CONFLICT(term_id) DO UPDATE SET published=EXCLUDED.published",
+                (term_id, 1 if publish else 0))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"published":publish})
+
+# ── PARENT RESULTS ────────────────────────────────────────────
+@app.route("/api/parent/results", methods=["GET"])
+def api_parent_results():
+    student_id = request.args.get("student_id")
+    term_id    = request.args.get("term_id")
+    if not student_id: return jsonify({"ok":False,"error":"student_id required"}), 400
+    if not term_id:
+        term = get_active_term()
+        if not term: return jsonify({"ok":False,"error":"No active term"}), 400
+        term_id = term["id"]
+    else:
+        term_id = int(term_id)
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT published FROM results_published WHERE term_id=%s", (term_id,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row or not row[0]:
+        return jsonify({"ok":False,"error":"Results not yet published for this term"}), 403
+    sid  = int(student_id)
+    term = get_term_by_id(term_id)
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
+                   FROM students s JOIN classes c ON s.class_id=c.id
+                   LEFT JOIN streams st ON s.stream_id=st.id WHERE s.id=%s""", (sid,))
+    row = cur.fetchone(); student = to_dict(row,cur) if row else None
+    cur.close(); con.close()
+    if not student: return jsonify({"ok":False,"error":"Student not found"}), 404
+    ca_count  = term["ca_count"]
+    class_id  = student["class_id"]
+    stream_id = student["stream_id"]
+    results = []
+    for subject in allowed_subjects:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT ca_name,score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
+                    (sid, subject, term_id))
+        ca_rows = cur.fetchall()
+        cur.execute("SELECT score FROM exam_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
+                    (sid, subject, term_id))
+        exam_row = cur.fetchone(); cur.close(); con.close()
+        ca_map = {r[0]:r[1] for r in ca_rows}
+        if not ca_map and not exam_row: continue
+        ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1, ca_count+1)}
+        exam_val  = exam_row[0] if exam_row else None
+        final_val = calc_final(sid, subject, term_id)
+        subj_pos  = get_subject_position(sid,subject,class_id,stream_id,term_id) if final_val is not None else "-"
+        results.append({
+            "subject":subject,"ca":ca_scores,"exam":exam_val,
+            "final":round(final_val,1) if final_val is not None else None,
+            "grade":get_grade(final_val) if final_val is not None else "-",
+            "position":subj_pos,
+        })
+    c_pos,c_total,s_pos,s_total = get_positions(sid,class_id,stream_id,term_id)
+    avg = calc_student_average(sid,term_id)
+    return jsonify({
+        "ok":True,"student":student,"term":term,"results":results,
+        "ca_count":ca_count,"average":round(avg,2),"grade":get_grade(avg),
+        "class_position":c_pos,"class_total":c_total,
+        "stream_position":s_pos,"stream_total":s_total,
+    })
+
+@app.route("/api/parent/terms", methods=["GET"])
+def api_parent_terms():
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT t.id,t.label,t.ca_count,t.ca_weight,t.exam_weight,t.status
+                   FROM terms t JOIN results_published rp ON rp.term_id=t.id
+                   WHERE rp.published=1 ORDER BY t.id DESC""")
+    rows = to_dicts(cur.fetchall(),cur); cur.close(); con.close()
+    return jsonify(rows)

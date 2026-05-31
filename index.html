@@ -481,6 +481,74 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       </div>
     </div>
 
+    <!-- ── ADMIN PARENTS PAGE ── -->
+    <div class="page" id="page-parents">
+      <div class="page-header">
+        <h2 class="page-title">Parents</h2>
+        <p class="page-sub">Manage what parents can see and send announcements</p>
+      </div>
+
+      <!-- Results publishing card -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+          Results Visibility
+        </div>
+        <div id="results-status-display" style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">
+          Loading...
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-green" id="btn-publish-results">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            Update Results (Publish)
+          </button>
+          <button class="btn btn-red" id="btn-unpublish-results">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+            Hide Results
+          </button>
+        </div>
+      </div>
+
+      <!-- Announcements card -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+          Post Announcement
+        </div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label class="form-label">Title</label>
+            <input type="text" class="form-input" id="ann-title" placeholder="e.g. End of Term Exam Schedule"/>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Message</label>
+            <textarea class="form-input" id="ann-body" rows="4" placeholder="Type your announcement here..." style="resize:vertical"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Target Classes</label>
+            <select class="form-select" id="ann-target" multiple style="height:100px">
+              <option value="all" selected>All Classes</option>
+            </select>
+            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Select "All Classes" for everyone.</p>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="btn-post-announcement" style="width:100%">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              Post Announcement
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Existing announcements -->
+      <div class="table-card">
+        <div class="table-toolbar">
+          <span class="table-toolbar-title">Posted Announcements</span>
+        </div>
+        <div id="announcements-admin-list" style="padding:16px"></div>
+      </div>
+    </div>
+
     <!-- ── PARENT DASHBOARD ── -->
     <div class="page" id="page-parent-dashboard">
       <!-- Big greeting hero -->
@@ -518,24 +586,29 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         </div>
       </div>
 
-      <!-- Coming soon notice -->
-      <div style="background:var(--pale);border-radius:12px;padding:20px;text-align:center;border:1.5px dashed var(--border)">
-        <div style="font-size:.8rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">More features coming soon</div>
-        <p style="font-size:.85rem;color:var(--muted);margin:0">Full report cards, subject marks, performance trends and more will be available shortly.</p>
-      </div>
+      <!-- Coming soon placeholder at bottom -->
     </div>
 
     <!-- ── PARENT REPORTS ── -->
     <div class="page" id="page-parent-reports">
       <div class="page-header">
-        <h2 class="page-title">View Reports</h2>
-        <p class="page-sub">Your child's academic report cards</p>
+        <h2 class="page-title">View Results &amp; Reports</h2>
+        <p class="page-sub">Select a term to see your child's marks and report card</p>
       </div>
-      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
-        <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z"/></svg>
-        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Reports Coming Soon</div>
-        <p style="font-size:.85rem;color:var(--muted)">Report cards will be available here once your school's admin publishes them.</p>
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Select Term</label>
+            <select class="form-select" id="parent-term-sel">
+              <option value="">Loading terms...</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button class="btn btn-blue" id="parent-view-results-btn" style="width:100%">View Results</button>
+          </div>
+        </div>
       </div>
+      <div id="parent-results-output"></div>
     </div>
 
     <!-- ── PARENT ANALYTICS ── -->
@@ -544,10 +617,10 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         <h2 class="page-title">Academic Analytics</h2>
         <p class="page-sub">Performance trends and subject breakdown</p>
       </div>
-      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
+      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center;border:1.5px dashed var(--border)">
         <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
         <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Analytics Coming Soon</div>
-        <p style="font-size:.85rem;color:var(--muted)">Detailed subject performance, rankings and progress charts will appear here.</p>
+        <p style="font-size:.85rem;color:var(--muted)">Performance charts and trends will appear here soon.</p>
       </div>
     </div>
 
@@ -557,11 +630,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         <h2 class="page-title">Announcements</h2>
         <p class="page-sub">School news and important notices</p>
       </div>
-      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
-        <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">No Announcements Yet</div>
-        <p style="font-size:.85rem;color:var(--muted)">School announcements will appear here when posted by the administration.</p>
-      </div>
+      <div id="parent-announcements-list"></div>
     </div>
 
     <!-- ── DASHBOARD ── -->
@@ -1338,6 +1407,7 @@ const NAV_ADMIN = [
   {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},
   {id:"rankings",  icon:starSVG(),    label:"Rankings"},
   {id:"past",      icon:historySVG(), label:"Past Terms"},
+  {id:"parents",   icon:peopleSVG(),  label:"Parents"},
   {id:"config",    icon:gearSVG(),    label:"Config"},
 ];
 
@@ -1388,10 +1458,11 @@ function showPage(id){
   if(ni) ni.classList.add("active");
 
   // lazy load
+  if(id==="parents")             loadParentsPage();
   if(id==="parent-dashboard")    loadParentDashboard();
-  if(id==="parent-reports")      {} // placeholder
-  if(id==="parent-analytics")    {} // placeholder
-  if(id==="parent-announcements"){} // placeholder
+  if(id==="parent-reports")       loadParentReports();
+  if(id==="parent-analytics")    {} // coming soon
+  if(id==="parent-announcements") loadParentAnnouncements();
   if(id==="students")  loadStudents();
   if(id==="classes")   loadClasses();
   if(id==="teachers")  loadTeachers();
@@ -1420,8 +1491,10 @@ async function loadParentDashboard(){
   const studentName = raw.charAt(0).toUpperCase() + raw.slice(1);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  document.getElementById("parent-greeting-text").textContent = `${greeting}, ${studentName}!`;
-  document.getElementById("parent-greeting-sub").textContent  = `Welcome to ${schoolName} Student Portal`;
+  document.getElementById("parent-greeting-text").textContent = greeting + ", " + studentName + "!";
+  document.getElementById("parent-greeting-sub").textContent  = "Welcome to " + schoolName + " Student Portal";
+  // Check for unread announcements and show dot
+  checkAnnouncementDot();
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────
@@ -2665,6 +2738,221 @@ document.getElementById("modal-change-password").addEventListener("click", funct
     e.stopPropagation();
   }
 });
+
+// ── ADMIN PARENTS PAGE ──────────────────────────────────────────
+async function loadParentsPage(){
+  // Load results status
+  const status = await api("/results/status");
+  const statusEl = document.getElementById("results-status-display");
+  if(status.term){
+    const pubColor = status.published ? "var(--green)" : "var(--orange)";
+    const pubText  = status.published ? "✅ Results are VISIBLE to parents" : "🔒 Results are HIDDEN from parents";
+    statusEl.innerHTML = `
+      <div style="font-weight:600;color:${pubColor};margin-bottom:4px">${pubText}</div>
+      <div style="font-size:.82rem;color:var(--muted)">Active term: <strong>${status.term.label}</strong>
+      (CA ${status.term.ca_weight}% + Exam ${status.term.exam_weight}%)</div>`;
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--muted)">No active term. Open a term first.</span>`;
+  }
+
+  // Populate announcement target classes
+  const annTarget = document.getElementById("ann-target");
+  annTarget.innerHTML = `<option value="all">All Classes</option>` +
+    allClasses.map(c=>`<option value="${c.class_name}">${c.class_name}</option>`).join("");
+
+  // Load announcements
+  const anns = await api("/announcements");
+  const annList = document.getElementById("announcements-admin-list");
+  if(!anns.length){
+    annList.innerHTML=`<p style="color:var(--muted);text-align:center;padding:20px">No announcements yet.</p>`;
+  } else {
+    annList.innerHTML = anns.map(a=>`
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${a.title}</div>
+            <div style="font-size:.82rem;color:var(--muted);margin-bottom:6px">
+              To: <strong>${a.target_classes==="all"?"All Classes":a.target_classes}</strong>
+              &nbsp;·&nbsp; ${a.posted_at ? a.posted_at.substring(0,16).replace("T"," ") : ""}
+            </div>
+            <div style="font-size:.88rem;color:var(--text)">${a.body}</div>
+          </div>
+          <button class="btn btn-sm btn-red btn-icon" onclick="deleteAnnouncement(${a.id})" style="flex-shrink:0">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </div>`).join("");
+  }
+}
+
+document.getElementById("btn-publish-results").addEventListener("click", async()=>{
+  const status = await api("/results/status");
+  if(!status.term_id){toast("No active term","error");return;}
+  const r = await api("/results/toggle","POST",{term_id:status.term_id,publish:true});
+  if(r.ok){toast("Results published! Parents can now see marks.","success");loadParentsPage();}
+  else toast(r.error||"Failed","error");
+});
+
+document.getElementById("btn-unpublish-results").addEventListener("click", async()=>{
+  const status = await api("/results/status");
+  if(!status.term_id){toast("No active term","error");return;}
+  if(!confirm("Hide results from parents?"))return;
+  const r = await api("/results/toggle","POST",{term_id:status.term_id,publish:false});
+  if(r.ok){toast("Results hidden from parents.","success");loadParentsPage();}
+  else toast(r.error||"Failed","error");
+});
+
+document.getElementById("btn-post-announcement").addEventListener("click", async()=>{
+  const title = document.getElementById("ann-title").value.trim();
+  const body  = document.getElementById("ann-body").value.trim();
+  const sel   = document.getElementById("ann-target");
+  const selected = [...sel.selectedOptions].map(o=>o.value);
+  const target_classes = selected.includes("all") ? "all" : selected.join(",");
+  if(!title||!body){toast("Title and message required","error");return;}
+  const r = await api("/announcements","POST",{title,body,target_classes,posted_by:currentUser.username});
+  if(r.ok){
+    toast("Announcement posted!","success");
+    document.getElementById("ann-title").value="";
+    document.getElementById("ann-body").value="";
+    loadParentsPage();
+  } else toast(r.error||"Failed","error");
+});
+
+async function deleteAnnouncement(id){
+  if(!confirm("Delete this announcement?"))return;
+  const r = await api(`/announcements/${id}`,"DELETE");
+  if(r.ok){toast("Deleted","success");loadParentsPage();}
+  else toast(r.error||"Failed","error");
+}
+
+// ── PARENT PORTAL FUNCTIONS ───────────────────────────────────
+async function loadParentReports(){
+  const sel = document.getElementById("parent-term-sel");
+  const terms = await api("/parent/terms");
+  if(!terms.length){
+    sel.innerHTML="<option value=''>No results published yet</option>";
+    return;
+  }
+  sel.innerHTML = terms.map(t=>`<option value="${t.id}">${t.label}</option>`).join("");
+}
+
+document.getElementById("parent-view-results-btn").addEventListener("click", async()=>{
+  const term_id = document.getElementById("parent-term-sel").value;
+  if(!term_id){toast("Select a term","error");return;}
+  const sid = currentUser.student_id;
+  if(!sid){toast("No student linked to this account","error");return;}
+  const out = document.getElementById("parent-results-output");
+  out.innerHTML=`<div class="spinner"></div>`;
+  const d = await api(`/parent/results?student_id=${sid}&term_id=${term_id}`);
+  if(!d.ok){
+    out.innerHTML=`<div class="section-card"><p style="color:var(--red);text-align:center;padding:20px">${d.error}</p></div>`;
+    return;
+  }
+  renderParentResults(out, d);
+});
+
+function renderParentResults(out, d){
+  const caHeaders = Array.from({length:d.ca_count},(_,i)=>`<th>CA${i+1}</th>`).join("");
+  const rows = d.results.map(r=>{
+    const caVals = Array.from({length:d.ca_count},(_,i)=>`<td>${r.ca["CA"+(i+1)]??"-"}</td>`).join("");
+    const isFail = r.final!==null&&r.final<50;
+    return `<tr style="${isFail?"color:var(--red)":""}">
+      <td style="font-weight:500;text-transform:capitalize">${r.subject}</td>
+      ${caVals}
+      <td>${r.exam??"-"}</td>
+      <td style="font-weight:700">${r.final??"-"}</td>
+      <td class="${r.grade!=="-"?gradeClass(r.grade):""}">${r.grade}</td>
+      <td style="font-weight:600;color:var(--blue)">${r.position}</td>
+    </tr>`;
+  }).join("");
+
+  const streamPos = d.stream_position!=null
+    ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>`
+    : "";
+
+  const pdfUrl = `${API}/pdf/report/${d.student.id}?term_id=${d.term.id}`;
+
+  out.innerHTML=`
+  <div class="report-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;color:var(--navy)">${d.student.name}</div>
+        <div style="font-size:.82rem;color:var(--muted)">${d.student.class_name}${d.student.stream_name?" "+d.student.stream_name:""} · ${d.term.label}</div>
+      </div>
+      <a href="${pdfUrl}" target="_blank" class="btn btn-pdf btn-sm">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+        Download PDF
+      </a>
+    </div>
+    <div class="summary-band" style="margin-bottom:16px">
+      <div class="summary-cell"><div class="val">${d.average}</div><div class="lbl">Average</div></div>
+      <div class="summary-cell"><div class="val">${d.grade}</div><div class="lbl">Grade</div></div>
+      <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">Class Pos</div></div>
+      ${streamPos}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Subject</th>${caHeaders}<th>Exam</th><th>Final</th><th>Grade</th><th>Pos</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:12px;text-align:center">
+      CA Weight: ${d.term.ca_weight}% · Exam Weight: ${d.term.exam_weight}%
+      · Only subjects with entered marks are shown
+    </p>
+  </div>`;
+}
+
+async function loadParentAnnouncements(){
+  const sid = currentUser.student_id;
+  const anns = sid ? await api(`/announcements?student_id=${sid}`) : [];
+  const list = document.getElementById("parent-announcements-list");
+  if(!anns.length){
+    list.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
+      <svg viewBox="0 0 24 24" fill="var(--border)" width="48" height="48" style="margin-bottom:12px"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+      <div>No announcements yet</div></div>`;
+    return;
+  }
+  // Mark all unread as read
+  const unread = anns.filter(a=>!a.is_read);
+  unread.forEach(a=>api(`/announcements/${a.id}/read`,"POST",{student_id:sid}));
+
+  list.innerHTML = anns.map(a=>`
+    <div style="background:var(--card);border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid ${a.is_read?"var(--border)":"var(--blue)"}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        ${!a.is_read?`<span style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0"></span>`:""}
+        <div style="font-weight:700;color:var(--navy);font-size:.95rem">${a.title}</div>
+      </div>
+      <div style="font-size:.88rem;color:var(--text);margin-bottom:8px">${a.body}</div>
+      <div style="font-size:.75rem;color:var(--muted)">${a.posted_at?a.posted_at.substring(0,16).replace("T"," "):""}</div>
+    </div>`).join("");
+
+  // Update nav dot
+  updateAnnouncementDot(0);
+}
+
+function updateAnnouncementDot(unreadCount){
+  const navItem = document.querySelector('.nav-item[data-page="parent-announcements"]');
+  if(!navItem) return;
+  const existing = navItem.querySelector(".ann-dot");
+  if(unreadCount>0 && !existing){
+    const dot=document.createElement("span");
+    dot.className="ann-dot";
+    dot.style.cssText="width:8px;height:8px;border-radius:50%;background:#FF6D00;margin-left:auto;flex-shrink:0";
+    navItem.appendChild(dot);
+  } else if(unreadCount===0 && existing){
+    existing.remove();
+  }
+}
+
+async function checkAnnouncementDot(){
+  if(currentUser.role!=="parent") return;
+  const sid = currentUser.student_id;
+  if(!sid) return;
+  const anns = await api(`/announcements?student_id=${sid}`);
+  const unread = anns.filter(a=>!a.is_read).length;
+  updateAnnouncementDot(unread);
+}
 
 // ── MOBILE SIDEBAR ──────────────────────────────────────────
 function toggleSidebar(){
