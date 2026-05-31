@@ -483,20 +483,84 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 
     <!-- ── PARENT DASHBOARD ── -->
     <div class="page" id="page-parent-dashboard">
-      <div id="parent-greeting-section">
-        <div style="text-align:center;padding:48px 20px 32px">
-          <div style="width:72px;height:72px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 24px rgba(21,101,192,.3)">
-            <svg viewBox="0 0 24 24" fill="white" width="36" height="36"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-          </div>
-          <h1 id="parent-greeting-text" style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--navy);margin-bottom:8px"></h1>
-          <p id="parent-greeting-sub" style="font-size:.95rem;color:var(--muted)"></p>
+      <!-- Big greeting hero -->
+      <div style="background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 60%,var(--light) 100%);border-radius:16px;padding:48px 32px;text-align:center;margin-bottom:28px;position:relative;overflow:hidden">
+        <div style="position:absolute;inset:0;opacity:.06;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFFFFF'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4z'/%3E%3C/g%3E%3C/svg%3E")"></div>
+        <div style="width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;border:3px solid rgba(255,255,255,.3)">
+          <svg viewBox="0 0 24 24" fill="white" width="40" height="40"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
         </div>
-        <div class="section-card" style="max-width:500px;margin:0 auto">
-          <div style="text-align:center;padding:8px 0">
-            <div style="font-size:.8rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">More features coming soon</div>
-            <p style="font-size:.875rem;color:var(--muted)">You will soon be able to view your child's report cards, marks, and academic progress directly from this portal.</p>
+        <h1 id="parent-greeting-text" style="font-family:'Syne',sans-serif;font-size:clamp(1.4rem,5vw,2.2rem);font-weight:800;color:white;margin-bottom:10px;line-height:1.2"></h1>
+        <p id="parent-greeting-sub" style="font-size:clamp(.9rem,3vw,1.1rem);color:rgba(255,255,255,.8);margin-bottom:0"></p>
+      </div>
+
+      <!-- Quick action cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+        <div onclick="showPage('parent-reports')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+          <div style="width:48px;height:48px;background:var(--pale);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+            <svg viewBox="0 0 24 24" fill="var(--blue)" width="24" height="24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
           </div>
+          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">View Reports</div>
+          <div style="font-size:.8rem;color:var(--muted)">See your child's report cards</div>
         </div>
+        <div onclick="showPage('parent-analytics')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+          <div style="width:48px;height:48px;background:#E8F5E9;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+            <svg viewBox="0 0 24 24" fill="#2E7D32" width="24" height="24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+          </div>
+          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Academic Analytics</div>
+          <div style="font-size:.8rem;color:var(--muted)">Track academic performance</div>
+        </div>
+        <div onclick="showPage('parent-announcements')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+          <div style="width:48px;height:48px;background:#FFF3E0;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+            <svg viewBox="0 0 24 24" fill="#E65100" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+          </div>
+          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Announcements</div>
+          <div style="font-size:.8rem;color:var(--muted)">School news and notices</div>
+        </div>
+      </div>
+
+      <!-- Coming soon notice -->
+      <div style="background:var(--pale);border-radius:12px;padding:20px;text-align:center;border:1.5px dashed var(--border)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">More features coming soon</div>
+        <p style="font-size:.85rem;color:var(--muted);margin:0">Full report cards, subject marks, performance trends and more will be available shortly.</p>
+      </div>
+    </div>
+
+    <!-- ── PARENT REPORTS ── -->
+    <div class="page" id="page-parent-reports">
+      <div class="page-header">
+        <h2 class="page-title">View Reports</h2>
+        <p class="page-sub">Your child's academic report cards</p>
+      </div>
+      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
+        <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z"/></svg>
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Reports Coming Soon</div>
+        <p style="font-size:.85rem;color:var(--muted)">Report cards will be available here once your school's admin publishes them.</p>
+      </div>
+    </div>
+
+    <!-- ── PARENT ANALYTICS ── -->
+    <div class="page" id="page-parent-analytics">
+      <div class="page-header">
+        <h2 class="page-title">Academic Analytics</h2>
+        <p class="page-sub">Performance trends and subject breakdown</p>
+      </div>
+      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
+        <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Analytics Coming Soon</div>
+        <p style="font-size:.85rem;color:var(--muted)">Detailed subject performance, rankings and progress charts will appear here.</p>
+      </div>
+    </div>
+
+    <!-- ── PARENT ANNOUNCEMENTS ── -->
+    <div class="page" id="page-parent-announcements">
+      <div class="page-header">
+        <h2 class="page-title">Announcements</h2>
+        <p class="page-sub">School news and important notices</p>
+      </div>
+      <div style="background:var(--pale);border-radius:12px;padding:40px;text-align:center">
+        <svg viewBox="0 0 24 24" fill="var(--border)" width="56" height="56" style="margin-bottom:14px"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">No Announcements Yet</div>
+        <p style="font-size:.85rem;color:var(--muted)">School announcements will appear here when posted by the administration.</p>
       </div>
     </div>
 
@@ -1243,18 +1307,24 @@ async function bootApp(){
   document.getElementById("sidebar-role-badge").textContent=roleLabel;
 
   buildNav();
-  // Load classes first — everything else depends on them
+
+  // ── PARENT: go straight to portal, skip school setup ──────
+  if(currentUser.role==="parent"){
+    await refreshTermBanner();
+    showPage("parent-dashboard");
+    loadParentDashboard();
+    if(currentUser.must_change_password) openModal("modal-change-password");
+    return;
+  }
+
+  // ── ADMIN / TEACHER: load classes then route normally ─────
   const classData = await api("/classes");
   allClasses = classData;
   await refreshTermBanner();
   const defaultPage = currentUser.role==="admin" ? "dashboard" : "marks";
   showPage(defaultPage);
   loadDashboard();
-
-  // Force password change if flagged
-  if(currentUser.must_change_password){
-    openModal("modal-change-password");
-  }
+  if(currentUser.must_change_password) openModal("modal-change-password");
 }
 
 // ── NAV ──────────────────────────────────────────────
@@ -1272,7 +1342,10 @@ const NAV_ADMIN = [
 ];
 
 const NAV_PARENT = [
-  {id:"parent-dashboard", icon:homeSVG(), label:"Dashboard"},
+  {id:"parent-dashboard",   icon:homeSVG(),    label:"Dashboard"},
+  {id:"parent-reports",     icon:reportSVG(),  label:"View Reports"},
+  {id:"parent-analytics",   icon:starSVG(),    label:"Academic Analytics"},
+  {id:"parent-announcements",icon:chatSVG(),   label:"Announcements"},
 ];
 
 function buildTeacherNav(user){
@@ -1315,7 +1388,10 @@ function showPage(id){
   if(ni) ni.classList.add("active");
 
   // lazy load
-  if(id==="parent-dashboard") loadParentDashboard();
+  if(id==="parent-dashboard")    loadParentDashboard();
+  if(id==="parent-reports")      {} // placeholder
+  if(id==="parent-analytics")    {} // placeholder
+  if(id==="parent-announcements"){} // placeholder
   if(id==="students")  loadStudents();
   if(id==="classes")   loadClasses();
   if(id==="teachers")  loadTeachers();
