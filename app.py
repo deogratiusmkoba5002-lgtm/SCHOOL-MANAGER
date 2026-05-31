@@ -389,6 +389,35 @@ def api_setup_admin():
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
 
+# ── PARENT ACCOUNT HELPERS ───────────────────────────────────
+def generate_parent_credentials(student_name, phone_number, student_id):
+    phone_clean   = phone_number.strip()
+    last4         = phone_clean[-4:]
+    username_base = student_name.strip().lower().replace(" ", "_")
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id FROM students WHERE phone_number=%s AND id!=%s ORDER BY id",
+                (phone_clean, student_id))
+    siblings = cur.fetchall()
+    cur.execute("SELECT username FROM users WHERE role='parent' AND username LIKE %s",
+                (username_base + "%",))
+    existing_usernames = [r[0] for r in cur.fetchall()]
+    cur.close(); con.close()
+    if siblings:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT id FROM students WHERE phone_number=%s ORDER BY id", (phone_clean,))
+        all_same = [r[0] for r in cur.fetchall()]
+        cur.close(); con.close()
+        try: idx = all_same.index(student_id) + 1
+        except ValueError: idx = len(all_same) + 1
+        temp_password = f"{last4}-{idx}"
+    else:
+        temp_password = last4
+    final_username = username_base
+    counter = 2
+    while final_username in existing_usernames:
+        final_username = f"{username_base}_{counter}"; counter += 1
+    return final_username, temp_password
+
 @app.route("/api/change_password", methods=["POST"])
 def api_change_password():
     d = request.json

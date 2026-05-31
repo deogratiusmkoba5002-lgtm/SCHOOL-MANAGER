@@ -1379,7 +1379,10 @@ async function loadDashboard(){
 // ── STUDENTS ──────────────────────────────────────────────
 let allStudents=[];
 async function loadStudents(){
-  allStudents = await api("/students");
+  // Show existing data immediately while fetching fresh
+  if(allStudents.length) renderStudents(allStudents);
+  const fresh = await api("/students");
+  allStudents = fresh;
   renderStudents(allStudents);
 }
 function renderStudents(list){
@@ -1447,12 +1450,14 @@ document.getElementById("confirm-add-student").addEventListener("click", async()
     phone_number
   });
   if(r.ok){
-    closeModal("modal-add-student");
-    await loadStudents();
+    // Clear form and close modal first
     document.getElementById("new-student-name").value="";
     document.getElementById("new-student-phone").value="";
-    // Show credentials to admin
+    closeModal("modal-add-student");
+    // Show credentials immediately — don't wait for list reload
     openCredentialsModal(name, r.parent_username, r.temp_password);
+    // Reload list in background
+    loadStudents();
   } else toast(r.error||"Failed","error");
 });
 
@@ -1465,9 +1470,12 @@ function openCredentialsModal(studentName, username, tempPassword){
 
 async function deleteStudent(id,name){
   if(!confirm(`Delete "${name}"? This also removes all their marks.`))return;
+  // Remove from local list immediately for instant feedback
+  allStudents = allStudents.filter(s=>s.id!==id);
+  renderStudents(allStudents);
   const r = await api(`/students/${id}`,"DELETE");
-  if(r.ok){toast("Student removed","success");loadStudents();}
-  else toast(r.error||"Failed","error");
+  if(r.ok){ toast("Student removed","success"); }
+  else { toast(r.error||"Failed","error"); loadStudents(); } // reload if failed
 }
 
 function quickReport(sid){
