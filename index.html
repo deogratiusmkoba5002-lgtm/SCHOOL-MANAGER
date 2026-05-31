@@ -1968,8 +1968,12 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
 
     marksStudents = studs;
     document.getElementById("marks-entry-section").style.display="block";
+    // Build readable label from class data
+    const cls = getClassById(class_id);
+    const clsLabel = cls ? cls.class_name : "";
+    const streamLabel = stream_id ? (() => { const s = getStreamById(class_id, stream_id); return s ? " " + s.stream_name : ""; })() : "";
     document.getElementById("marks-entry-title").textContent=
-      `${cap(subject)} – ${cap(class_name)} – ${type==="exam"?"Exam":type}`;
+      `${cap(subject)} – ${clsLabel}${streamLabel} – ${type==="exam"?"Exam":type}`;
 
     const list = document.getElementById("marks-students-list");
     list.innerHTML = studs.map(s=>{
