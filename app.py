@@ -1365,6 +1365,7 @@ def api_toggle_results():
 def api_parent_results():
     student_id = request.args.get("student_id")
     term_id    = request.args.get("term_id")
+    assess     = request.args.get("assess")  # CA1/CA2/exam or None (all)
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}), 400
     if not term_id:
         term = get_active_term()
@@ -1372,51 +1373,123 @@ def api_parent_results():
         term_id = term["id"]
     else:
         term_id = int(term_id)
+
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT published FROM results_published WHERE term_id=%s", (term_id,))
     row = cur.fetchone(); cur.close(); con.close()
     if not row or not row[0]:
         return jsonify({"ok":False,"error":"Results not yet published for this term"}), 403
+
     sid  = int(student_id)
     term = get_term_by_id(term_id)
-    con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
-                   FROM students s JOIN classes c ON s.class_id=c.id
-                   LEFT JOIN streams st ON s.stream_id=st.id WHERE s.id=%s""", (sid,))
+    con  = get_db(); cur = con.cursor()
+    cur.execute(
+        "SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name "
+        "FROM students s JOIN classes c ON s.class_id=c.id "
+        "LEFT JOIN streams st ON s.stream_id=st.id WHERE s.id=%s", (sid,))
     row = cur.fetchone(); student = to_dict(row,cur) if row else None
     cur.close(); con.close()
     if not student: return jsonify({"ok":False,"error":"Student not found"}), 404
+
     ca_count  = term["ca_count"]
     class_id  = student["class_id"]
     stream_id = student["stream_id"]
+
     results = []
     for subject in allowed_subjects:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT ca_name,score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
                     (sid, subject, term_id))
-        ca_rows = cur.fetchall()
+        ca_rows  = cur.fetchall()
         cur.execute("SELECT score FROM exam_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
                     (sid, subject, term_id))
         exam_row = cur.fetchone(); cur.close(); con.close()
-        ca_map = {r[0]:r[1] for r in ca_rows}
-        if not ca_map and not exam_row: continue
-        ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1, ca_count+1)}
-        exam_val  = exam_row[0] if exam_row else None
-        final_val = calc_final(sid, subject, term_id)
-        subj_pos  = get_subject_position(sid,subject,class_id,stream_id,term_id) if final_val is not None else "-"
-        results.append({
-            "subject":subject,"ca":ca_scores,"exam":exam_val,
-            "final":round(final_val,1) if final_val is not None else None,
-            "grade":get_grade(final_val) if final_val is not None else "-",
-            "position":subj_pos,
-        })
+        ca_map   = {r[0]:r[1] for r in ca_rows}
+        ca_scores= {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1, ca_count+1)}
+        exam_val = exam_row[0] if exam_row else None
+
+        if assess:
+            # Single assessment mode — only return score for requested assess
+            if assess == "exam":
+                score = exam_val
+            else:
+                score = ca_map.get(assess)
+            if score is None: continue
+            # Position for this specific assessment among class/stream
+            con = get_db(); cur = con.cursor()
+            scope_students = get_students_in_scope(class_id, stream_id)
+            scores_list = []
+            for st in scope_students:
+                if assess == "exam":
+                    cur.execute("SELECT score FROM exam_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
+                                (st["id"], subject, term_id))
+                else:
+                    cur.execute("SELECT score FROM ca_scores WHERE student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",
+                                (st["id"], subject, assess, term_id))
+                r2 = cur.fetchone()
+                if r2: scores_list.append({"id":st["id"],"score":r2[0]})
+            cur.close(); con.close()
+            scores_list.sort(key=lambda x:x["score"],reverse=True)
+            _assign_positions(scores_list,"score")
+            pos = next((x["position"] for x in scores_list if x["id"]==sid), "-")
+
+            # Also get stream position if applicable
+            s_pos = None
+            if stream_id:
+                stream_students = get_students_in_scope(class_id, stream_id)
+                stream_scores = []
+                con = get_db(); cur = con.cursor()
+                for st in stream_students:
+                    if assess == "exam":
+                        cur.execute("SELECT score FROM exam_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
+                                    (st["id"],subject,term_id))
+                    else:
+                        cur.execute("SELECT score FROM ca_scores WHERE student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",
+                                    (st["id"],subject,assess,term_id))
+                    r3 = cur.fetchone()
+                    if r3: stream_scores.append({"id":st["id"],"score":r3[0]})
+                cur.close(); con.close()
+                _assign_positions(stream_scores,"score")
+                s_pos = next((x["position"] for x in stream_scores if x["id"]==sid), "-")
+
+            results.append({
+                "subject": subject,
+                "ca":      ca_scores,
+                "exam":    exam_val,
+                "score":   score,
+                "grade":   get_grade(score),
+                "position":pos,
+                "stream_pos": s_pos,
+            })
+        else:
+            # All marks mode (for report card)
+            if not ca_map and exam_val is None: continue
+            final_val = calc_final(sid, subject, term_id)
+            subj_pos  = get_subject_position(sid,subject,class_id,stream_id,term_id) if final_val is not None else "-"
+            results.append({
+                "subject": subject,
+                "ca":      ca_scores,
+                "exam":    exam_val,
+                "final":   round(final_val,1) if final_val is not None else None,
+                "grade":   get_grade(final_val) if final_val is not None else "-",
+                "position":subj_pos,
+            })
+
     c_pos,c_total,s_pos,s_total = get_positions(sid,class_id,stream_id,term_id)
-    avg = calc_student_average(sid,term_id)
+
+    # For single assess, compute avg from that assess scores only
+    if assess and results:
+        scores_only = [r["score"] for r in results if r.get("score") is not None]
+        avg = round(sum(scores_only)/len(scores_only),2) if scores_only else 0
+    else:
+        avg = round(calc_student_average(sid,term_id),2)
+
     return jsonify({
         "ok":True,"student":student,"term":term,"results":results,
-        "ca_count":ca_count,"average":round(avg,2),"grade":get_grade(avg),
+        "ca_count":ca_count,"average":avg,"grade":get_grade(avg),
         "class_position":c_pos,"class_total":c_total,
         "stream_position":s_pos,"stream_total":s_total,
+        "assess": assess,
     })
 
 @app.route("/api/parent/terms", methods=["GET"])
