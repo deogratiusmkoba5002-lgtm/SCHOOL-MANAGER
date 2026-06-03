@@ -1,26 +1,31 @@
 """
-School Manager – Flask API Backend (v5 – Dynamic Classes + Streams)
+School Manager – Flask API Backend (v6 – Multi-Tenant Registration)
 """
-import hashlib, os, tempfile, secrets
+import hashlib, os, tempfile, secrets, json
 import psycopg2, psycopg2.extras
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+DATABASE_URL  = os.environ.get("DATABASE_URL", "")
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "storage", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-allowed_subjects = [
+ALLOWED_LOGO_EXT = {"png","jpg","jpeg","gif","webp","svg"}
+
+# ── LEGACY FALLBACKS (used only if DB has no subjects yet) ─────
+_FALLBACK_SUBJECTS = [
     "mathematics","physics","chemistry","biology",
     "geography","history","civics","english",
     "literature","kiswahili","bible knowledge",
     "book keeping","commerce","business studies",
     "historia ya tanzania na maadili",
 ]
-
-SUBJECT_ABBR = {
+_FALLBACK_ABBR = {
     "historia ya tanzania na maadili":"HTM",
     "mathematics":"MATH","physics":"PHY","chemistry":"CHEM",
     "biology":"BIO","geography":"GEO","history":"HIST",
@@ -28,7 +33,13 @@ SUBJECT_ABBR = {
     "kiswahili":"KIS","bible knowledge":"BK",
     "book keeping":"BKP","commerce":"COM","business studies":"BS",
 }
-def abbr(s): return SUBJECT_ABBR.get(s.lower(), s[:5].upper())
+_FALLBACK_GRADES = [
+    {"min_score":80,"max_score":100,"grade":"A"},
+    {"min_score":70,"max_score":79, "grade":"B"},
+    {"min_score":60,"max_score":69, "grade":"C"},
+    {"min_score":50,"max_score":59, "grade":"D"},
+    {"min_score":0,  "max_score":49, "grade":"F"},
+]
 
 # ── DB ────────────────────────────────────────────────────────
 def get_db():
@@ -79,9 +90,9 @@ def init_db():
     );
 
     CREATE TABLE IF NOT EXISTS students (
-        id        SERIAL PRIMARY KEY,
-        name      TEXT NOT NULL,
-        class_id  INTEGER NOT NULL REFERENCES classes(id),
+        id           SERIAL PRIMARY KEY,
+        name         TEXT NOT NULL,
+        class_id     INTEGER NOT NULL REFERENCES classes(id),
         stream_id    INTEGER DEFAULT NULL REFERENCES streams(id),
         phone_number TEXT DEFAULT NULL
     );
@@ -141,13 +152,44 @@ def init_db():
     INSERT INTO school_config(key,value) VALUES('school_name','School Name')
     ON CONFLICT(key) DO NOTHING;
 
-    CREATE TABLE IF NOT EXISTS announcements (id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, target_classes TEXT NOT NULL DEFAULT 'all', posted_by TEXT NOT NULL, posted_at TIMESTAMP DEFAULT NOW());
+    CREATE TABLE IF NOT EXISTS school_subjects (
+        id           SERIAL PRIMARY KEY,
+        name         TEXT NOT NULL UNIQUE,
+        abbreviation TEXT NOT NULL,
+        sort_order   INTEGER DEFAULT 0
+    );
 
-    CREATE TABLE IF NOT EXISTS announcement_reads (announcement_id INTEGER NOT NULL, student_id INTEGER NOT NULL, read_at TIMESTAMP DEFAULT NOW(), PRIMARY KEY(announcement_id,student_id));
+    CREATE TABLE IF NOT EXISTS grade_config (
+        id        SERIAL PRIMARY KEY,
+        min_score REAL NOT NULL,
+        max_score REAL NOT NULL,
+        grade     TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0
+    );
 
-    CREATE TABLE IF NOT EXISTS results_published (term_id INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(term_id));
+    CREATE TABLE IF NOT EXISTS announcements (
+        id             SERIAL PRIMARY KEY,
+        title          TEXT NOT NULL,
+        body           TEXT NOT NULL,
+        target_classes TEXT NOT NULL DEFAULT 'all',
+        posted_by      TEXT NOT NULL,
+        posted_at      TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS announcement_reads (
+        announcement_id INTEGER NOT NULL,
+        student_id      INTEGER NOT NULL,
+        read_at         TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(announcement_id, student_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS results_published (
+        term_id   INTEGER NOT NULL,
+        published INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(term_id)
+    );
     """)
-    # ── Migrate existing tables — add columns if missing ──
+    # ── Migrations ──
     migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS class_id INTEGER DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stream_id INTEGER DEFAULT NULL",
@@ -157,12 +199,17 @@ def init_db():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id INTEGER DEFAULT NULL",
         "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check",
         "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin','teacher','parent'))",
+        # New school_config keys for registration
+        "INSERT INTO school_config(key,value) VALUES('phone','') ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO school_config(key,value) VALUES('email','') ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO school_config(key,value) VALUES('admin_phone','') ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO school_config(key,value) VALUES('motto','') ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO school_config(key,value) VALUES('logo_path','') ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO school_config(key,value) VALUES('registration_complete','0') ON CONFLICT(key) DO NOTHING",
     ]
     for m in migrations:
-        try:
-            cur.execute(m)
-        except Exception as e:
-            print(f"Migration note: {e}")
+        try: cur.execute(m)
+        except Exception as e: print(f"Migration note: {e}")
     con.commit(); cur.close(); con.close()
     print("✓ Database ready.")
 
@@ -179,14 +226,71 @@ def verify_password(pw, stored):
         return dk.hex() == dk_hex
     except: return False
 
-# ── SCHOOL CONFIG ─────────────────────────────────────────────
-def get_school_name():
+# ── SCHOOL CONFIG HELPERS ─────────────────────────────────────
+def get_config_val(key, default=""):
     try:
         con = get_db(); cur = con.cursor()
-        cur.execute("SELECT value FROM school_config WHERE key='school_name'")
+        cur.execute("SELECT value FROM school_config WHERE key=%s", (key,))
         row = cur.fetchone(); cur.close(); con.close()
-        return row[0] if row else "School Name"
-    except: return "School Name"
+        return row[0] if row else default
+    except: return default
+
+def set_config_val(key, value):
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO school_config(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+                (key, value))
+    con.commit(); cur.close(); con.close()
+
+def get_school_name():
+    return get_config_val("school_name", "School Name")
+
+def is_registration_complete():
+    return get_config_val("registration_complete","0") == "1"
+
+# ── DYNAMIC SUBJECTS ──────────────────────────────────────────
+def get_subjects():
+    """Return list of subject name strings (in sort order). Falls back to hardcoded if none configured."""
+    try:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT name FROM school_subjects ORDER BY sort_order, name")
+        rows = cur.fetchall(); cur.close(); con.close()
+        if rows: return [r[0] for r in rows]
+    except: pass
+    return list(_FALLBACK_SUBJECTS)
+
+def get_subject_map():
+    """Return {name: abbreviation} dict."""
+    try:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT name, abbreviation FROM school_subjects ORDER BY sort_order, name")
+        rows = cur.fetchall(); cur.close(); con.close()
+        if rows: return {r[0]: r[1] for r in rows}
+    except: pass
+    return dict(_FALLBACK_ABBR)
+
+def abbr(s):
+    m = get_subject_map()
+    return m.get(s.lower(), s[:4].upper())
+
+# ── DYNAMIC GRADES ────────────────────────────────────────────
+def get_grade_rules():
+    """Return list of {min_score, max_score, grade} sorted by min_score DESC."""
+    try:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT min_score, max_score, grade FROM grade_config ORDER BY min_score DESC")
+        rows = cur.fetchall(); cur.close(); con.close()
+        if rows:
+            return [{"min_score": r[0], "max_score": r[1], "grade": r[2]} for r in rows]
+    except: pass
+    return list(_FALLBACK_GRADES)
+
+def get_grade(score):
+    if score is None: return "-"
+    rules = get_grade_rules()
+    for r in rules:
+        if score >= r["min_score"]:
+            return r["grade"]
+    return rules[-1]["grade"] if rules else "F"
 
 # ── TERM HELPERS ──────────────────────────────────────────────
 def get_active_term():
@@ -225,10 +329,6 @@ def class_has_streams(class_id):
     return len(get_streams_for_class(class_id)) > 0
 
 def get_students_in_scope(class_id, stream_id=None):
-    """
-    Get students. stream_id=None means ALL students in class.
-    stream_id=specific means only that stream.
-    """
     con = get_db(); cur = con.cursor()
     if stream_id:
         cur.execute("""
@@ -253,14 +353,7 @@ def get_students_in_scope(class_id, stream_id=None):
     rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
     return rows
 
-# ── GRADE / SCORE ─────────────────────────────────────────────
-def get_grade(score):
-    if score >= 80: return "A"
-    if score >= 70: return "B"
-    if score >= 60: return "C"
-    if score >= 50: return "D"
-    return "F"
-
+# ── SCORE / POSITION HELPERS ─────────────────────────────────
 def calc_ca_avg(student_id, subject, term_id):
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
@@ -283,7 +376,8 @@ def calc_final(student_id, subject, term_id):
     return (ca_avg/100)*ca_w + (row[0]/100)*ex_w
 
 def calc_student_average(student_id, term_id):
-    finals = [calc_final(student_id, s, term_id) for s in allowed_subjects]
+    subjects = get_subjects()
+    finals = [calc_final(student_id, s, term_id) for s in subjects]
     finals = [f for f in finals if f is not None]
     return sum(finals)/len(finals) if finals else 0
 
@@ -295,7 +389,6 @@ def _assign_positions(rows, key):
         else: r["position"] = i+1
 
 def get_ranking(students, term_id):
-    """Build ranking rows for a list of student dicts."""
     rows = []
     for s in students:
         avg = calc_student_average(s["id"], term_id)
@@ -305,26 +398,19 @@ def get_ranking(students, term_id):
     return rows
 
 def get_positions(student_id, class_id, stream_id, term_id):
-    """
-    Returns (class_position, class_total, stream_position, stream_total)
-    stream_position/total are None if no streams or student has no stream.
-    """
-    all_class = get_students_in_scope(class_id)
-    class_ranking = get_ranking(all_class, term_id)
+    all_class      = get_students_in_scope(class_id)
+    class_ranking  = get_ranking(all_class, term_id)
     c_pos   = next((r["position"] for r in class_ranking if r["id"]==student_id), "-")
     c_total = len(class_ranking)
-
     s_pos, s_total = None, None
     if stream_id:
         stream_studs   = get_students_in_scope(class_id, stream_id)
         stream_ranking = get_ranking(stream_studs, term_id)
         s_pos   = next((r["position"] for r in stream_ranking if r["id"]==student_id), "-")
         s_total = len(stream_ranking)
-
     return c_pos, c_total, s_pos, s_total
 
 def get_subject_position(student_id, subject, class_id, stream_id, term_id):
-    """Position in a subject — within stream if given, else whole class."""
     scope = get_students_in_scope(class_id, stream_id)
     scores = []
     for s in scope:
@@ -338,11 +424,6 @@ def get_subject_position(student_id, subject, class_id, stream_id, term_id):
 
 # ── PERMISSION CHECK ──────────────────────────────────────────
 def teacher_can_access(username, subject, class_id, stream_id=None):
-    """
-    Teacher is allowed if they have an assignment matching:
-    - exact subject + class_id + stream_id, OR
-    - subject + class_id + stream_id=NULL (overall / all streams)
-    """
     con = get_db(); cur = con.cursor()
     cur.execute("""
         SELECT id FROM subject_assignments
@@ -351,6 +432,210 @@ def teacher_can_access(username, subject, class_id, stream_id=None):
     """, (username, subject, class_id, stream_id))
     row = cur.fetchone(); cur.close(); con.close()
     return row is not None
+
+# ══════════════════════════════════════════════════════════════
+# ── API ROUTES ────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+
+# ── REGISTRATION STATUS ───────────────────────────────────────
+@app.route("/api/registration/status", methods=["GET"])
+def api_registration_status():
+    return jsonify({
+        "complete": is_registration_complete(),
+        "has_admin": _has_admin()
+    })
+
+def _has_admin():
+    try:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT username FROM users WHERE role='admin' LIMIT 1")
+        row = cur.fetchone(); cur.close(); con.close()
+        return row is not None
+    except: return False
+
+# ── SCHOOL REGISTRATION (one-time setup) ─────────────────────
+@app.route("/api/register/school", methods=["POST"])
+def api_register_school():
+    """Full school registration: info + classes/streams + subjects + grades."""
+    # Must be admin calling this and registration not yet complete
+    data = request.form  # multipart for logo upload
+
+    school_name  = data.get("school_name","").strip()
+    phone        = data.get("phone","").strip()
+    email        = data.get("email","").strip()
+    admin_phone  = data.get("admin_phone","").strip()
+    motto        = data.get("motto","").strip()
+
+    if not school_name:
+        return jsonify({"ok":False,"error":"School name is required"}), 400
+
+    # Handle logo upload
+    logo_path = ""
+    if "logo" in request.files:
+        f = request.files["logo"]
+        if f and f.filename:
+            ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
+            if ext not in ALLOWED_LOGO_EXT:
+                return jsonify({"ok":False,"error":"Logo must be an image (png/jpg/gif/webp/svg)"}), 400
+            fname = secure_filename(f"school_logo.{ext}")
+            logos_dir = os.path.join(UPLOAD_FOLDER, "logos")
+            os.makedirs(logos_dir, exist_ok=True)
+            save_path = os.path.join(logos_dir, fname)
+            f.save(save_path)
+            logo_path = f"uploads/logos/{fname}"
+
+    # Parse JSON fields sent as form strings
+    try:
+        classes_data  = json.loads(data.get("classes","[]"))    # [{name, streams:[str]}]
+        subjects_data = json.loads(data.get("subjects","[]"))   # [{name, abbreviation}]
+        grades_data   = json.loads(data.get("grades","[]"))     # [{min_score, max_score, grade}]
+    except Exception as e:
+        return jsonify({"ok":False,"error":f"Invalid JSON in form data: {e}"}), 400
+
+    if not subjects_data:
+        return jsonify({"ok":False,"error":"At least one subject is required"}), 400
+    if not grades_data:
+        return jsonify({"ok":False,"error":"At least one grade rule is required"}), 400
+
+    # Validate abbreviations
+    for s in subjects_data:
+        ab = s.get("abbreviation","").strip()
+        if not ab or len(ab) > 4:
+            return jsonify({"ok":False,"error":f"Abbreviation for '{s.get('name','')}' must be 1–4 characters"}), 400
+
+    # Validate grades
+    for g in grades_data:
+        gname = str(g.get("grade","")).strip()
+        if not gname or len(gname) > 3:
+            return jsonify({"ok":False,"error":f"Grade name '{gname}' must be 1–3 characters"}), 400
+
+    con = get_db(); cur = con.cursor()
+    try:
+        # Save school info
+        cfg = {
+            "school_name": school_name,
+            "phone":       phone,
+            "email":       email,
+            "admin_phone": admin_phone,
+            "motto":       motto,
+        }
+        if logo_path: cfg["logo_path"] = logo_path
+        for k,v in cfg.items():
+            cur.execute("INSERT INTO school_config(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+                        (k, v))
+
+        # Clear and re-insert subjects
+        cur.execute("DELETE FROM school_subjects")
+        for i, s in enumerate(subjects_data):
+            name = s.get("name","").strip().lower()
+            ab   = s.get("abbreviation","").strip().upper()
+            if name:
+                cur.execute("INSERT INTO school_subjects(name,abbreviation,sort_order) VALUES(%s,%s,%s) ON CONFLICT(name) DO UPDATE SET abbreviation=EXCLUDED.abbreviation,sort_order=EXCLUDED.sort_order",
+                            (name, ab, i))
+
+        # Clear and re-insert grades
+        cur.execute("DELETE FROM grade_config")
+        for i, g in enumerate(grades_data):
+            cur.execute("INSERT INTO grade_config(min_score,max_score,grade,sort_order) VALUES(%s,%s,%s,%s)",
+                        (float(g["min_score"]), float(g["max_score"]), str(g["grade"]).strip(), i))
+
+        # Insert classes and streams (skip if already exist)
+        for cls in classes_data:
+            cname = cls.get("name","").strip()
+            if not cname: continue
+            cur.execute("INSERT INTO classes(class_name) VALUES(%s) ON CONFLICT(class_name) DO NOTHING RETURNING id",
+                        (cname,))
+            row = cur.fetchone()
+            if not row:
+                cur.execute("SELECT id FROM classes WHERE class_name=%s", (cname,))
+                row = cur.fetchone()
+            cid = row[0]
+            for sname in cls.get("streams",[]):
+                sname = sname.strip()
+                if sname:
+                    cur.execute("INSERT INTO streams(class_id,stream_name) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                                (cid, sname))
+
+        # Mark registration complete
+        cur.execute("INSERT INTO school_config(key,value) VALUES('registration_complete','1') ON CONFLICT(key) DO UPDATE SET value='1'")
+        con.commit()
+    except Exception as e:
+        con.rollback(); cur.close(); con.close()
+        return jsonify({"ok":False,"error":str(e)}), 500
+
+    cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── GET FULL SCHOOL INFO ───────────────────────────────────────
+@app.route("/api/school/info", methods=["GET"])
+def api_school_info():
+    keys = ["school_name","phone","email","admin_phone","motto","logo_path","registration_complete"]
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT key,value FROM school_config WHERE key=ANY(%s)", (keys,))
+    rows = cur.fetchall(); cur.close(); con.close()
+    info = {r[0]: r[1] for r in rows}
+    return jsonify(info)
+
+# ── LOGO SERVE ────────────────────────────────────────────────
+@app.route("/uploads/logos/<filename>")
+def serve_logo(filename):
+    logos_dir = os.path.join(UPLOAD_FOLDER, "logos")
+    return send_from_directory(logos_dir, filename)
+
+# ── SUBJECTS API ──────────────────────────────────────────────
+@app.route("/api/subjects", methods=["GET"])
+def api_get_subjects():
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id,name,abbreviation,sort_order FROM school_subjects ORDER BY sort_order,name")
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    if rows: return jsonify(rows)
+    # fallback
+    return jsonify([{"id":i,"name":n,"abbreviation":_FALLBACK_ABBR.get(n,n[:4].upper()),"sort_order":i}
+                    for i,n in enumerate(_FALLBACK_SUBJECTS)])
+
+@app.route("/api/subjects", methods=["POST"])
+def api_save_subjects():
+    """Replace all subjects."""
+    subjects = request.json.get("subjects", [])
+    if not subjects:
+        return jsonify({"ok":False,"error":"subjects list required"}), 400
+    for s in subjects:
+        ab = s.get("abbreviation","").strip()
+        if not ab or len(ab) > 4:
+            return jsonify({"ok":False,"error":f"Abbreviation '{ab}' must be 1–4 characters"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("DELETE FROM school_subjects")
+    for i, s in enumerate(subjects):
+        name = s.get("name","").strip().lower()
+        ab   = s.get("abbreviation","").strip().upper()
+        if name:
+            cur.execute("INSERT INTO school_subjects(name,abbreviation,sort_order) VALUES(%s,%s,%s)",
+                        (name, ab, i))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── GRADES API ────────────────────────────────────────────────
+@app.route("/api/grades", methods=["GET"])
+def api_get_grades():
+    rules = get_grade_rules()
+    return jsonify(rules if rules else _FALLBACK_GRADES)
+
+@app.route("/api/grades", methods=["POST"])
+def api_save_grades():
+    grades = request.json.get("grades", [])
+    if not grades:
+        return jsonify({"ok":False,"error":"grades list required"}), 400
+    for g in grades:
+        gname = str(g.get("grade","")).strip()
+        if not gname or len(gname) > 3:
+            return jsonify({"ok":False,"error":f"Grade '{gname}' must be 1–3 characters"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("DELETE FROM grade_config")
+    for i, g in enumerate(grades):
+        cur.execute("INSERT INTO grade_config(min_score,max_score,grade,sort_order) VALUES(%s,%s,%s,%s)",
+                    (float(g["min_score"]), float(g["max_score"]), str(g["grade"]).strip(), i))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
 
 # ── AUTH ──────────────────────────────────────────────────────
 @app.route("/api/login", methods=["POST"])
@@ -373,11 +658,11 @@ def api_login():
         "stream_id":            user["stream_id"],
         "must_change_password": bool(user["must_change_password"]),
         "student_id":           user["student_id"],
-    }})
+    }, "registration_complete": is_registration_complete()})
 
 @app.route("/api/setup_admin", methods=["POST"])
 def api_setup_admin():
-    d = request.json
+    d        = request.json
     secret   = d.get("secret","")
     username = d.get("username","").strip()
     password = d.get("password","")
@@ -395,7 +680,7 @@ def api_setup_admin():
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
 
-# ── PARENT ACCOUNT HELPERS ───────────────────────────────────
+# ── PARENT ACCOUNT HELPERS ────────────────────────────────────
 def generate_parent_credentials(student_name, phone_number, student_id):
     phone_clean   = phone_number.strip()
     last4         = phone_clean[-4:]
@@ -465,8 +750,7 @@ def api_add_class():
     con = get_db(); cur = con.cursor()
     try:
         cur.execute("INSERT INTO classes(class_name) VALUES(%s) RETURNING id", (name,))
-        new_id = cur.fetchone()[0]
-        con.commit()
+        new_id = cur.fetchone()[0]; con.commit()
     except psycopg2.errors.UniqueViolation:
         con.rollback(); cur.close(); con.close()
         return jsonify({"ok":False,"error":"Class already exists"}), 409
@@ -493,10 +777,8 @@ def api_add_stream(cid):
         return jsonify({"ok":False,"error":"Stream name required"}), 400
     con = get_db(); cur = con.cursor()
     try:
-        cur.execute("INSERT INTO streams(class_id,stream_name) VALUES(%s,%s) RETURNING id",
-                    (cid, name))
-        new_id = cur.fetchone()[0]
-        con.commit()
+        cur.execute("INSERT INTO streams(class_id,stream_name) VALUES(%s,%s) RETURNING id", (cid, name))
+        new_id = cur.fetchone()[0]; con.commit()
     except psycopg2.errors.UniqueViolation:
         con.rollback(); cur.close(); con.close()
         return jsonify({"ok":False,"error":"Stream already exists in this class"}), 409
@@ -552,7 +834,7 @@ def api_add_student():
     if cur.fetchone():
         cur.close(); con.close()
         return jsonify({"ok":False,"error":"Student already exists in this class/stream"}), 409
-    phone_number = request.json.get("phone_number","").strip()
+    phone_number = d.get("phone_number","").strip()
     if not phone_number or len(phone_number) < 4:
         return jsonify({"ok":False,"error":"Parent phone number required (min 4 digits)"}), 400
     cur.execute("INSERT INTO students(name,class_id,stream_id,phone_number) VALUES(%s,%s,%s,%s) RETURNING id",
@@ -569,10 +851,12 @@ def api_add_student():
 @app.route("/api/students/<int:sid>", methods=["DELETE"])
 def api_delete_student(sid):
     con = get_db(); cur = con.cursor()
-    cur.execute("DELETE FROM ca_scores   WHERE student_id=%s", (sid,))
+    cur.execute("DELETE FROM announcement_reads WHERE student_id=%s", (sid,))
+    cur.execute("DELETE FROM remarks WHERE student_id=%s", (sid,))
+    cur.execute("DELETE FROM ca_scores WHERE student_id=%s", (sid,))
     cur.execute("DELETE FROM exam_scores WHERE student_id=%s", (sid,))
-    cur.execute("DELETE FROM remarks     WHERE student_id=%s", (sid,))
-    cur.execute("DELETE FROM students    WHERE id=%s",         (sid,))
+    cur.execute("DELETE FROM users WHERE student_id=%s AND role='parent'", (sid,))
+    cur.execute("DELETE FROM students WHERE id=%s", (sid,))
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
 
@@ -580,50 +864,46 @@ def api_delete_student(sid):
 @app.route("/api/teachers", methods=["GET"])
 def api_get_teachers():
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT username,is_class_teacher,class_id,stream_id,must_change_password FROM users WHERE role='teacher'")
+    cur.execute("""
+        SELECT u.username, u.is_class_teacher, u.class_id, u.stream_id, u.must_change_password,
+               c.class_name, st.stream_name
+        FROM users u
+        LEFT JOIN classes c ON u.class_id=c.id
+        LEFT JOIN streams st ON u.stream_id=st.id
+        WHERE u.role='teacher'
+        ORDER BY u.username
+    """)
     teachers = to_dicts(cur.fetchall(), cur)
     result = []
     for t in teachers:
         cur.execute("""
-            SELECT sa.id, sa.subject, sa.class_id, sa.stream_id,
-                   c.class_name, st.stream_name
+            SELECT sa.subject, sa.class_id, sa.stream_id, c.class_name, st.stream_name
             FROM subject_assignments sa
             JOIN classes c ON sa.class_id=c.id
             LEFT JOIN streams st ON sa.stream_id=st.id
             WHERE sa.username=%s
         """, (t["username"],))
         assignments = to_dicts(cur.fetchall(), cur)
-        ct_class  = get_class_by_id(t["class_id"])  if t["class_id"]  else None
-        ct_stream = get_stream_by_id(t["stream_id"]) if t["stream_id"] else None
-        result.append({
-            "username":             t["username"],
-            "is_class_teacher":     bool(t["is_class_teacher"]),
-            "class_id":             t["class_id"],
-            "stream_id":            t["stream_id"],
-            "class_name":           ct_class["class_name"]   if ct_class  else "",
-            "stream_name":          ct_stream["stream_name"] if ct_stream else "",
-            "must_change_password": bool(t["must_change_password"]),
-            "assignments":          assignments,
-        })
+        result.append({**t, "assignments": assignments})
     cur.close(); con.close()
     return jsonify(result)
 
 @app.route("/api/teachers", methods=["POST"])
 def api_create_teacher():
-    d = request.json
+    d        = request.json
     username = d.get("username","").strip()
-    password = d.get("password","").strip()
+    password = d.get("password","")
     if not username or not password:
         return jsonify({"ok":False,"error":"Username and password required"}), 400
-    if len(password) < 4:
-        return jsonify({"ok":False,"error":"Password must be at least 4 characters"}), 400
     con = get_db(); cur = con.cursor()
-    if qone(cur,"SELECT username FROM users WHERE username=%s",(username,)):
-        cur.close(); con.close()
+    try:
+        cur.execute("INSERT INTO users(username,password,role) VALUES(%s,%s,'teacher')",
+                    (username, hash_password(password)))
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close()
         return jsonify({"ok":False,"error":"Username already exists"}), 409
-    cur.execute("INSERT INTO users(username,password,role,must_change_password) VALUES(%s,%s,'teacher',1)",
-                (username, hash_password(password)))
-    con.commit(); cur.close(); con.close()
+    cur.close(); con.close()
     return jsonify({"ok":True})
 
 @app.route("/api/teachers/<username>", methods=["DELETE"])
@@ -655,9 +935,9 @@ def api_assign_teacher():
     username  = d.get("username","")
     subject   = d.get("subject","").lower().strip()
     class_id  = d.get("class_id")
-    stream_id = d.get("stream_id") or None   # None = overall (all streams)
-
-    if subject not in allowed_subjects:
+    stream_id = d.get("stream_id") or None
+    subjects  = get_subjects()
+    if subject not in subjects:
         return jsonify({"ok":False,"error":"Invalid subject"}), 400
     con = get_db(); cur = con.cursor()
     if not qone(cur,"SELECT id FROM classes WHERE id=%s",(class_id,)):
@@ -716,7 +996,7 @@ def api_create_term():
     if not label: return jsonify({"ok":False,"error":"Term label required"}), 400
     if ca_weight + ex_weight != 100: return jsonify({"ok":False,"error":"Weights must sum to 100"}), 400
     con = get_db(); cur = con.cursor()
-    if qone(cur,"SELECT id FROM terms WHERE status='open'",None if False else ()):
+    if qone(cur,"SELECT id FROM terms WHERE status='open'",()):
         cur.close(); con.close()
         return jsonify({"ok":False,"error":"Close the current term first"}), 409
     cur.execute("INSERT INTO terms(label,ca_count,ca_weight,exam_weight,status) VALUES(%s,%s,%s,%s,'open')",
@@ -746,7 +1026,6 @@ def api_enter_ca():
     student_id = int(d.get("student_id"))
     ca_name    = d.get("ca_name","")
     score      = float(d.get("score"))
-
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT role FROM users WHERE username=%s", (username,))
     u = cur.fetchone(); cur.close(); con.close()
@@ -756,12 +1035,9 @@ def api_enter_ca():
         return jsonify({"ok":False,"error":"Access denied – not your assignment"}), 403
     if not (0 <= score <= 100):
         return jsonify({"ok":False,"error":"Score must be 0–100"}), 400
-
     term = get_active_term()
     if not term: return jsonify({"ok":False,"error":"No active term"}), 400
-    term_id  = term["id"]
-    ca_count = term["ca_count"]
-
+    term_id  = term["id"]; ca_count = term["ca_count"]
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM students WHERE id=%s AND class_id=%s", (student_id, class_id))
     if not cur.fetchone():
@@ -792,7 +1068,6 @@ def api_enter_exam():
     stream_id  = d.get("stream_id") or None
     student_id = int(d.get("student_id"))
     score      = float(d.get("score"))
-
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT role FROM users WHERE username=%s", (username,))
     u = cur.fetchone(); cur.close(); con.close()
@@ -802,11 +1077,9 @@ def api_enter_exam():
         return jsonify({"ok":False,"error":"Access denied – not your assignment"}), 403
     if not (0 <= score <= 100):
         return jsonify({"ok":False,"error":"Score must be 0–100"}), 400
-
     term = get_active_term()
     if not term: return jsonify({"ok":False,"error":"No active term"}), 400
     term_id = term["id"]
-
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM students WHERE id=%s AND class_id=%s", (student_id, class_id))
     if not cur.fetchone():
@@ -824,7 +1097,8 @@ def api_enter_exam():
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:sid>", methods=["GET"])
 def api_report(sid):
-    term_id = request.args.get("term_id")
+    subjects = get_subjects()
+    term_id  = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
     cur.execute("""
         SELECT s.id, s.name, s.class_id, s.stream_id,
@@ -837,20 +1111,14 @@ def api_report(sid):
     row = cur.fetchone(); student = to_dict(row, cur) if row else None
     cur.close(); con.close()
     if not student: return jsonify({"ok":False,"error":"Student not found"}), 404
-
     term = get_term_by_id(int(term_id)) if term_id else get_active_term()
     if not term: return jsonify({"ok":False,"error":"No term available"}), 400
-
-    tid        = term["id"]
-    ca_count   = term["ca_count"]
-    class_id   = student["class_id"]
-    stream_id  = student["stream_id"]
-
-    c_pos, c_total, s_pos, s_total = get_positions(sid, class_id, stream_id, tid)
+    tid=term["id"]; ca_count=term["ca_count"]
+    class_id=student["class_id"]; stream_id=student["stream_id"]
+    c_pos,c_total,s_pos,s_total = get_positions(sid,class_id,stream_id,tid)
     avg = calc_student_average(sid, tid)
-
     rows = []
-    for subject in allowed_subjects:
+    for subject in subjects:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT ca_name,score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
                     (sid, subject, tid))
@@ -862,7 +1130,7 @@ def api_report(sid):
         ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1, ca_count+1)}
         exam_val  = exam_row[0] if exam_row else None
         final_val = calc_final(sid, subject, tid)
-        subj_pos  = get_subject_position(sid, subject, class_id, stream_id, tid) if final_val is not None else "-"
+        subj_pos  = get_subject_position(sid,subject,class_id,stream_id,tid) if final_val is not None else "-"
         rows.append({
             "subject":  subject,
             "ca":       ca_scores,
@@ -871,12 +1139,10 @@ def api_report(sid):
             "grade":    get_grade(final_val) if final_val is not None else "-",
             "position": subj_pos,
         })
-
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT * FROM remarks WHERE student_id=%s AND term_id=%s", (sid, tid))
     remark_row = cur.fetchone(); rmk = to_dict(remark_row, cur) if remark_row else None
     cur.close(); con.close()
-
     return jsonify({
         "ok":True,
         "student":             student,
@@ -963,6 +1229,7 @@ def api_subject_ranking():
 # ── SCORE SHEETS ──────────────────────────────────────────────
 @app.route("/api/scoresheet", methods=["GET"])
 def api_scoresheet():
+    subjects  = get_subjects()
     mode      = request.args.get("mode","ca")
     class_id  = request.args.get("class_id")
     stream_id = request.args.get("stream_id") or None
@@ -979,7 +1246,7 @@ def api_scoresheet():
     results = []
     for s in studs:
         row = {"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),"scores":{},"total":0,"count":0}
-        for subject in allowed_subjects:
+        for subject in subjects:
             score = None
             con = get_db(); cur = con.cursor()
             if mode == "ca":
@@ -1000,36 +1267,99 @@ def api_scoresheet():
         row["grade"]   = get_grade(row["average"])
         results.append(row)
     _assign_positions(results, "average")
-    return jsonify({"subjects": allowed_subjects, "results": results})
+    return jsonify({"subjects": subjects, "results": results})
 
 # ── CONFIG ─────────────────────────────────────────────────────
 @app.route("/api/config", methods=["GET"])
 def api_config():
-    term = get_active_term()
+    term     = get_active_term()
+    subjects = get_subjects()
+    subj_map = get_subject_map()
+    info     = {}
+    for key in ["school_name","phone","email","admin_phone","motto","logo_path"]:
+        info[key] = get_config_val(key,"")
     return jsonify({
-        "allowed_subjects": allowed_subjects,
+        "allowed_subjects": subjects,
+        "subject_abbr":     subj_map,
         "active_term":      term,
         "ca_count":         term["ca_count"] if term else 2,
-        "school_name":      get_school_name(),
+        "school_name":      info.get("school_name","School Name"),
+        "school_info":      info,
+        "grade_rules":      get_grade_rules(),
     })
 
 @app.route("/api/config/school_name", methods=["POST"])
 def api_set_school_name():
     name = request.json.get("school_name","").strip()
     if not name: return jsonify({"ok":False,"error":"Name cannot be empty"}), 400
-    con = get_db(); cur = con.cursor()
-    cur.execute("INSERT INTO school_config(key,value) VALUES('school_name',%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value", (name,))
-    con.commit(); cur.close(); con.close()
+    set_config_val("school_name", name)
+    return jsonify({"ok":True})
+
+@app.route("/api/config/school_info", methods=["POST"])
+def api_set_school_info():
+    d = request.json
+    for key in ["school_name","phone","email","admin_phone","motto"]:
+        val = d.get(key)
+        if val is not None:
+            set_config_val(key, val.strip())
     return jsonify({"ok":True})
 
 # ── PDF ────────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 
+def _get_logo_element(max_h=2*cm):
+    """Return an Image flowable for the school logo, or None."""
+    path = get_config_val("logo_path","")
+    if not path: return None
+    full = os.path.join(BASE_DIR, "storage", path)
+    if os.path.exists(full):
+        try:
+            img = Image(full)
+            img.drawHeight = max_h
+            img.drawWidth  = max_h  # square crop
+            return img
+        except: pass
+    return None
+
+def _school_header_story(styles, title_text, subtitle_text=""):
+    """Return a list of flowables: logo + school name + subtitle."""
+    story = []
+    H_BG = colors.HexColor("#1A6FA8")
+    t_s = ParagraphStyle("T",parent=styles["Title"],fontSize=16,textColor=H_BG,spaceAfter=2,alignment=1)
+    s_s = ParagraphStyle("S",parent=styles["Normal"],fontSize=9,alignment=1,spaceAfter=4)
+    motto = get_config_val("motto","")
+    school_name = get_school_name()
+    logo = _get_logo_element(1.8*cm)
+
+    if logo:
+        # Side-by-side: logo | name+motto
+        name_para = Paragraph(f"<b>{school_name}</b>", t_s)
+        sub_para  = Paragraph(motto, s_s) if motto else None
+        inner = [[logo, [name_para] + ([sub_para] if sub_para else [])]]
+        tbl = Table(inner, colWidths=[2.2*cm, None])
+        tbl.setStyle(TableStyle([
+            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("LEFTPADDING",(0,0),(-1,-1),0),
+            ("RIGHTPADDING",(0,0),(-1,-1),6),
+        ]))
+        story.append(tbl)
+    else:
+        story.append(Paragraph(school_name, t_s))
+        if motto: story.append(Paragraph(f'<i>"{motto}"</i>', s_s))
+
+    if title_text:
+        story.append(Paragraph(title_text, s_s))
+    if subtitle_text:
+        story.append(Paragraph(subtitle_text, s_s))
+    story.append(Spacer(1, 0.3*cm))
+    return story
+
 def _blue_sheet_pdf(filename, subtitle, students, subjects, get_score_fn, term=None):
+    subj_map = get_subject_map()
     H_BG=colors.HexColor("#1A6FA8"); S_BG=colors.HexColor("#5BA4CF")
     ODD=colors.HexColor("#E8F4FC"); EVEN=colors.white
     RED=colors.HexColor("#C0392B"); WHITE=colors.white
@@ -1037,10 +1367,8 @@ def _blue_sheet_pdf(filename, subtitle, students, subjects, get_score_fn, term=N
                             rightMargin=1.2*cm, leftMargin=1.2*cm,
                             topMargin=1.2*cm, bottomMargin=1.2*cm)
     styles = getSampleStyleSheet(); story = []
-    t_s = ParagraphStyle("T",parent=styles["Title"],fontSize=14,textColor=H_BG,spaceAfter=2)
-    s_s = ParagraphStyle("S",parent=styles["Normal"],fontSize=8,alignment=1,spaceAfter=6)
-    tl  = term["label"] if term else ""
-    story += [Paragraph(get_school_name(),t_s), Paragraph(f"{subtitle} | {tl}",s_s), Spacer(1,0.3*cm)]
+    tl = term["label"] if term else ""
+    story += _school_header_story(styles, subtitle, tl)
     results = []
     for s in students:
         row={"name":s["name"],"stream":s.get("stream_name") or "","scores":{},"total":0,"count":0}
@@ -1052,11 +1380,10 @@ def _blue_sheet_pdf(filename, subtitle, students, subjects, get_score_fn, term=N
         row["grade"]=get_grade(row["average"])
         results.append(row)
     _assign_positions(results,"average")
-    # detect if stream column needed
     has_streams = any(r["stream"] for r in results)
     hdr = ["#","Student"]
     if has_streams: hdr.append("Stream")
-    hdr += [abbr(s) for s in subjects] + ["Total","Avg","Pos","Grd"]
+    hdr += [subj_map.get(s,s[:4].upper()) for s in subjects] + ["Total","Avg","Pos","Grd"]
     tdata=[hdr]; fail_cells=[]
     for ri,r in enumerate(results,1):
         row=[str(r["position"]),r["name"]]
@@ -1092,7 +1419,9 @@ def _blue_sheet_pdf(filename, subtitle, students, subjects, get_score_fn, term=N
 
 @app.route("/api/pdf/report/<int:sid>", methods=["GET"])
 def pdf_report(sid):
-    term_id = request.args.get("term_id")
+    subjects = get_subjects()
+    subj_map = get_subject_map()
+    term_id  = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
                    FROM students s JOIN classes c ON s.class_id=c.id
@@ -1112,9 +1441,7 @@ def pdf_report(sid):
     styles=getSampleStyleSheet(); story=[]
     H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC")
     WHITE=colors.white; RED=colors.HexColor("#C0392B")
-    t_s=ParagraphStyle("T",parent=styles["Title"],fontSize=16,textColor=H_BG,spaceAfter=2)
-    s_s=ParagraphStyle("S",parent=styles["Normal"],fontSize=9,alignment=1,spaceAfter=4)
-    story+=[Paragraph(get_school_name(),t_s),Paragraph("STUDENT REPORT CARD",s_s),Spacer(1,0.3*cm)]
+    story += _school_header_story(styles,"STUDENT REPORT CARD")
     stream_label = f"{student['class_name']} {student['stream_name']}" if student.get("stream_name") else student["class_name"]
     info=[["Name:",student["name"],"Class:",stream_label],
           ["Term:",term["label"],"Weights:",f"CA {ca_w}% | Exam {ex_w}%"],
@@ -1128,7 +1455,7 @@ def pdf_report(sid):
     story+=[it,Spacer(1,0.4*cm)]
     hdr=["Subject"]+[f"CA{i}" for i in range(1,ca_count+1)]+["Exam","Final","Pos","Grd","Remark","Sign"]
     tdata=[hdr]; tot,cnt=0,0; fail_rows=[]
-    for subject in allowed_subjects:
+    for subject in subjects:
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT ca_name,score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",(sid,subject,tid))
         ca_rows=cur.fetchall()
@@ -1159,7 +1486,6 @@ def pdf_report(sid):
     for ri in fail_rows: mts.append(("TEXTCOLOR",(0,ri),(-1,ri),RED))
     mt.setStyle(TableStyle(mts)); story+=[mt,Spacer(1,0.4*cm)]
     comp_avg=tot/cnt if cnt else 0
-    # Summary band
     summary_data=[["AVERAGE",f"{comp_avg:.2f}","GRADE",get_grade(comp_avg),"CLASS POS",f"{c_pos}/{c_total}"]]
     summary_cols=[3*cm,3*cm,2*cm,2*cm,3*cm,4*cm]
     if s_pos is not None:
@@ -1189,6 +1515,7 @@ def pdf_report(sid):
 
 @app.route("/api/pdf/ca_sheet", methods=["GET"])
 def pdf_ca_sheet():
+    subjects  = get_subjects()
     class_id  = request.args.get("class_id")
     stream_id = request.args.get("stream_id") or None
     ca_name   = request.args.get("ca_name","CA1")
@@ -1204,11 +1531,12 @@ def pdf_ca_sheet():
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT score FROM ca_scores WHERE student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",(sid,subj,ca_name,tid))
         r=cur.fetchone(); cur.close(); con.close(); return r[0] if r else None
-    _blue_sheet_pdf(fname,f"{ca_name.upper()} SCORE SHEET",studs,allowed_subjects,get_score,term)
+    _blue_sheet_pdf(fname,f"{ca_name.upper()} SCORE SHEET",studs,subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
 def pdf_terminal_sheet():
+    subjects  = get_subjects()
     class_id  = request.args.get("class_id")
     stream_id = request.args.get("stream_id") or None
     term_id   = request.args.get("term_id")
@@ -1222,50 +1550,8 @@ def pdf_terminal_sheet():
     def get_score(sid,subj):
         f=calc_final(sid,subj,tid); return round(f,1) if f is not None else None
     _blue_sheet_pdf(fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",
-                    studs,allowed_subjects,get_score,term)
+                    studs,subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
-
-# ── ONE-TIME RESET ENDPOINT (remove after use) ──────────────
-@app.route("/api/reset_db", methods=["POST"])
-def api_reset_db():
-    secret = request.json.get("secret","")
-    if secret != os.environ.get("ADMIN_SETUP_SECRET",""):
-        return jsonify({"ok":False,"error":"Invalid secret"}), 403
-    con = get_db(); cur = con.cursor()
-    drops = [
-        "DROP TABLE IF EXISTS remarks CASCADE",
-        "DROP TABLE IF EXISTS exam_scores CASCADE",
-        "DROP TABLE IF EXISTS ca_scores CASCADE",
-        "DROP TABLE IF EXISTS subject_assignments CASCADE",
-        "DROP TABLE IF EXISTS students CASCADE",
-        "DROP TABLE IF EXISTS streams CASCADE",
-        "DROP TABLE IF EXISTS classes CASCADE",
-        "DROP TABLE IF EXISTS terms CASCADE",
-        "DROP TABLE IF EXISTS school_config CASCADE",
-        "DROP TABLE IF EXISTS users CASCADE",
-    ]
-    for d in drops:
-        cur.execute(d)
-    con.commit(); cur.close(); con.close()
-    init_db()
-    return jsonify({"ok":True,"message":"Database reset. Go to /setup to create admin."})
-
-# ── SERVE FRONTEND ────────────────────────────────────────────
-@app.route("/")
-def index(): return send_from_directory(BASE_DIR,"index.html")
-
-@app.route("/setup")
-def setup_page(): return send_from_directory(BASE_DIR,"setup.html")
-
-# ── STARTUP ────────────────────────────────────────────────────
-with app.app_context():
-    try: init_db()
-    except Exception as e: print(f"DB init warning: {e}")
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT",5000))
-    app.run(host="0.0.0.0",port=port,debug=False)
-
 
 # ── ANNOUNCEMENTS ─────────────────────────────────────────────
 @app.route("/api/announcements", methods=["GET"])
@@ -1284,8 +1570,7 @@ def api_get_announcements():
                    a.posted_by, a.posted_at::text,
                    CASE WHEN ar.student_id IS NOT NULL THEN 1 ELSE 0 END as is_read
             FROM announcements a
-            LEFT JOIN announcement_reads ar
-                ON ar.announcement_id=a.id AND ar.student_id=%s
+            LEFT JOIN announcement_reads ar ON ar.announcement_id=a.id AND ar.student_id=%s
             WHERE a.target_classes='all' OR a.target_classes LIKE %s
             ORDER BY a.posted_at DESC
         """, (sid, f"%{class_name}%"))
@@ -1335,8 +1620,7 @@ def api_results_status():
         term = get_active_term()
         if not term: return jsonify({"published":False,"term":None,"term_id":None})
         term_id = term["id"]
-    else:
-        term_id = int(term_id)
+    else: term_id = int(term_id)
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT published FROM results_published WHERE term_id=%s", (term_id,))
     row = cur.fetchone(); cur.close(); con.close()
@@ -1363,23 +1647,21 @@ def api_toggle_results():
 # ── PARENT RESULTS ────────────────────────────────────────────
 @app.route("/api/parent/results", methods=["GET"])
 def api_parent_results():
+    subjects   = get_subjects()
     student_id = request.args.get("student_id")
     term_id    = request.args.get("term_id")
-    assess     = request.args.get("assess")  # CA1/CA2/exam or None (all)
+    assess     = request.args.get("assess")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}), 400
     if not term_id:
         term = get_active_term()
         if not term: return jsonify({"ok":False,"error":"No active term"}), 400
         term_id = term["id"]
-    else:
-        term_id = int(term_id)
-
+    else: term_id = int(term_id)
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT published FROM results_published WHERE term_id=%s", (term_id,))
     row = cur.fetchone(); cur.close(); con.close()
     if not row or not row[0]:
         return jsonify({"ok":False,"error":"Results not yet published for this term"}), 403
-
     sid  = int(student_id)
     term = get_term_by_id(term_id)
     con  = get_db(); cur = con.cursor()
@@ -1390,13 +1672,11 @@ def api_parent_results():
     row = cur.fetchone(); student = to_dict(row,cur) if row else None
     cur.close(); con.close()
     if not student: return jsonify({"ok":False,"error":"Student not found"}), 404
-
     ca_count  = term["ca_count"]
     class_id  = student["class_id"]
     stream_id = student["stream_id"]
-
     results = []
-    for subject in allowed_subjects:
+    for subject in subjects:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT ca_name,score FROM ca_scores WHERE student_id=%s AND subject=%s AND term_id=%s",
                     (sid, subject, term_id))
@@ -1407,15 +1687,10 @@ def api_parent_results():
         ca_map   = {r[0]:r[1] for r in ca_rows}
         ca_scores= {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1, ca_count+1)}
         exam_val = exam_row[0] if exam_row else None
-
         if assess:
-            # Single assessment mode — only return score for requested assess
-            if assess == "exam":
-                score = exam_val
-            else:
-                score = ca_map.get(assess)
+            if assess == "exam": score = exam_val
+            else: score = ca_map.get(assess)
             if score is None: continue
-            # Position for this specific assessment among class/stream
             con = get_db(); cur = con.cursor()
             scope_students = get_students_in_scope(class_id, stream_id)
             scores_list = []
@@ -1429,11 +1704,8 @@ def api_parent_results():
                 r2 = cur.fetchone()
                 if r2: scores_list.append({"id":st["id"],"score":r2[0]})
             cur.close(); con.close()
-            scores_list.sort(key=lambda x:x["score"],reverse=True)
             _assign_positions(scores_list,"score")
             pos = next((x["position"] for x in scores_list if x["id"]==sid), "-")
-
-            # Also get stream position if applicable
             s_pos = None
             if stream_id:
                 stream_students = get_students_in_scope(class_id, stream_id)
@@ -1451,39 +1723,27 @@ def api_parent_results():
                 cur.close(); con.close()
                 _assign_positions(stream_scores,"score")
                 s_pos = next((x["position"] for x in stream_scores if x["id"]==sid), "-")
-
             results.append({
-                "subject": subject,
-                "ca":      ca_scores,
-                "exam":    exam_val,
-                "score":   score,
-                "grade":   get_grade(score),
-                "position":pos,
-                "stream_pos": s_pos,
+                "subject": subject, "ca": ca_scores, "exam": exam_val,
+                "score": score, "grade": get_grade(score),
+                "position": pos, "stream_pos": s_pos,
             })
         else:
-            # All marks mode (for report card)
             if not ca_map and exam_val is None: continue
             final_val = calc_final(sid, subject, term_id)
             subj_pos  = get_subject_position(sid,subject,class_id,stream_id,term_id) if final_val is not None else "-"
             results.append({
-                "subject": subject,
-                "ca":      ca_scores,
-                "exam":    exam_val,
+                "subject": subject, "ca": ca_scores, "exam": exam_val,
                 "final":   round(final_val,1) if final_val is not None else None,
                 "grade":   get_grade(final_val) if final_val is not None else "-",
                 "position":subj_pos,
             })
-
     c_pos,c_total,s_pos,s_total = get_positions(sid,class_id,stream_id,term_id)
-
-    # For single assess, compute avg from that assess scores only
     if assess and results:
         scores_only = [r["score"] for r in results if r.get("score") is not None]
         avg = round(sum(scores_only)/len(scores_only),2) if scores_only else 0
     else:
         avg = round(calc_student_average(sid,term_id),2)
-
     return jsonify({
         "ok":True,"student":student,"term":term,"results":results,
         "ca_count":ca_count,"average":avg,"grade":get_grade(avg),
@@ -1497,6 +1757,54 @@ def api_parent_terms():
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT t.id,t.label,t.ca_count,t.ca_weight,t.exam_weight,t.status
                    FROM terms t JOIN results_published rp ON rp.term_id=t.id
-                   WHERE rp.published=1 ORDER BY t.id DESC""")
+                   WHERE rp.published=1 ORDER BY t.id ASC""")
     rows = to_dicts(cur.fetchall(),cur); cur.close(); con.close()
     return jsonify(rows)
+
+# ── ONE-TIME RESET ────────────────────────────────────────────
+@app.route("/api/reset_db", methods=["POST"])
+def api_reset_db():
+    secret = request.json.get("secret","")
+    if secret != os.environ.get("ADMIN_SETUP_SECRET",""):
+        return jsonify({"ok":False,"error":"Invalid secret"}), 403
+    con = get_db(); cur = con.cursor()
+    drops = [
+        "DROP TABLE IF EXISTS remarks CASCADE",
+        "DROP TABLE IF EXISTS exam_scores CASCADE",
+        "DROP TABLE IF EXISTS ca_scores CASCADE",
+        "DROP TABLE IF EXISTS subject_assignments CASCADE",
+        "DROP TABLE IF EXISTS students CASCADE",
+        "DROP TABLE IF EXISTS streams CASCADE",
+        "DROP TABLE IF EXISTS classes CASCADE",
+        "DROP TABLE IF EXISTS terms CASCADE",
+        "DROP TABLE IF EXISTS grade_config CASCADE",
+        "DROP TABLE IF EXISTS school_subjects CASCADE",
+        "DROP TABLE IF EXISTS school_config CASCADE",
+        "DROP TABLE IF EXISTS announcements CASCADE",
+        "DROP TABLE IF EXISTS announcement_reads CASCADE",
+        "DROP TABLE IF EXISTS results_published CASCADE",
+        "DROP TABLE IF EXISTS users CASCADE",
+    ]
+    for d in drops: cur.execute(d)
+    con.commit(); cur.close(); con.close()
+    init_db()
+    return jsonify({"ok":True,"message":"Database reset."})
+
+# ── SERVE FRONTEND ────────────────────────────────────────────
+@app.route("/")
+def index(): return send_from_directory(BASE_DIR,"index.html")
+
+@app.route("/setup")
+def setup_page(): return send_from_directory(BASE_DIR,"setup.html")
+
+@app.route("/register")
+def register_page(): return send_from_directory(BASE_DIR,"register.html")
+
+# ── STARTUP ────────────────────────────────────────────────────
+with app.app_context():
+    try: init_db()
+    except Exception as e: print(f"DB init warning: {e}")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT",5000))
+    app.run(host="0.0.0.0",port=port,debug=False)

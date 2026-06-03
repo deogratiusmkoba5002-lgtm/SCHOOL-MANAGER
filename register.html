@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>School Registration – School Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0A1628; --blue:#1565C0; --mid:#1976D2; --light:#42A5F5;
+  --pale:#E3F2FD; --accent:#00B0FF; --green:#00C853; --red:#F44336;
+  --orange:#FF6D00; --text:#0D1B2A; --muted:#546E7A; --border:#B0BEC5;
+  --card:#FFFFFF; --bg:#F0F4F8; --r:12px;
+  --shadow:0 4px 24px rgba(21,101,192,.13);
+  --shadow2:0 8px 40px rgba(21,101,192,.18);
+}
+html{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+body{min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none;outline:none}
+input,select,textarea{font-family:inherit;outline:none}
+::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:var(--pale)} ::-webkit-scrollbar-thumb{background:var(--light);border-radius:3px}
+
+/* ── TOAST ── */
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.18);animation:slideIn .3s ease;min-width:260px;max-width:380px;border-left:4px solid}
+.toast.success{background:#E8F5E9;color:#2E7D32;border-color:var(--green)}
+.toast.error{background:#FFEBEE;color:#C62828;border-color:var(--red)}
+.toast.info{background:#E3F2FD;color:#1565C0;border-color:var(--accent)}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── LAYOUT ── */
+.reg-bg{
+  min-height:100vh; padding:40px 16px 80px;
+  background:linear-gradient(160deg,var(--navy) 0%,#1A3A6B 40%,#1565C0 100%);
+  position:relative; overflow-x:hidden;
+}
+.reg-bg::before{
+  content:''; position:absolute; inset:0; opacity:.04;
+  background:url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='white'%3E%3Ccircle cx='40' cy='40' r='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.reg-wrapper{max-width:860px;margin:0 auto;position:relative;z-index:1}
+
+/* ── HERO HEADER ── */
+.reg-hero{text-align:center;margin-bottom:40px;color:white}
+.reg-hero-icon{
+  width:72px;height:72px;background:rgba(255,255,255,.15);
+  border-radius:20px;display:flex;align-items:center;justify-content:center;
+  margin:0 auto 18px;backdrop-filter:blur(8px);
+  border:1.5px solid rgba(255,255,255,.25);
+}
+.reg-hero-icon svg{width:38px;height:38px;fill:white}
+.reg-hero h1{font-family:'Syne',sans-serif;font-size:clamp(1.6rem,5vw,2.4rem);font-weight:800;margin-bottom:8px;letter-spacing:-.02em}
+.reg-hero p{font-size:.95rem;opacity:.75;max-width:480px;margin:0 auto;line-height:1.6}
+
+/* ── PROGRESS STEPS ── */
+.progress-bar{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:44px;flex-wrap:nowrap}
+.step-item{display:flex;align-items:center;gap:0}
+.step-dot{
+  width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.8rem;font-weight:700;transition:all .3s;
+  border:2px solid rgba(255,255,255,.3);
+  color:rgba(255,255,255,.5);background:rgba(255,255,255,.08);
+  flex-shrink:0; position:relative; z-index:1;
+}
+.step-dot.active{background:white;color:var(--blue);border-color:white;box-shadow:0 0 0 4px rgba(255,255,255,.25)}
+.step-dot.done{background:var(--green);color:white;border-color:var(--green)}
+.step-label{font-size:.7rem;font-weight:600;color:rgba(255,255,255,.55);margin-top:4px;text-align:center;white-space:nowrap}
+.step-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.step-label.active{color:white}
+.step-connector{width:clamp(20px,5vw,60px);height:2px;background:rgba(255,255,255,.2);flex-shrink:0;margin:0 2px;margin-bottom:20px}
+.step-connector.done{background:var(--green)}
+
+/* ── SECTION CARD ── */
+.reg-card{
+  background:white;border-radius:20px;padding:36px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+  margin-bottom:20px;
+  animation:cardIn .35s ease;
+}
+@keyframes cardIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+.reg-card-header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid var(--pale)}
+.reg-card-icon{
+  width:44px;height:44px;border-radius:12px;
+  background:var(--pale);display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.reg-card-icon svg{width:22px;height:22px;fill:var(--blue)}
+.reg-card-title{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;color:var(--navy)}
+.reg-card-sub{font-size:.8rem;color:var(--muted);margin-top:2px}
+
+/* ── FORM ── */
+.field{margin-bottom:18px}
+.field label{display:block;font-size:.77rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+.field label .opt{font-weight:400;opacity:.65;text-transform:none;letter-spacing:0;font-size:.75rem}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 15px;
+  border:1.5px solid var(--border);border-radius:10px;
+  font-size:.93rem;transition:border .2s,box-shadow .2s;background:var(--bg);
+}
+.field textarea{resize:vertical;min-height:72px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.12);background:white}
+.field-hint{font-size:.75rem;color:var(--muted);margin-top:5px;line-height:1.4}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:540px){.field-row{grid-template-columns:1fr}}
+
+/* ── LOGO UPLOAD ── */
+.logo-upload-area{
+  border:2px dashed var(--border);border-radius:12px;
+  padding:28px;text-align:center;cursor:pointer;
+  transition:border .2s,background .2s;background:var(--bg);
+  position:relative;
+}
+.logo-upload-area:hover,.logo-upload-area.drag-over{border-color:var(--mid);background:var(--pale)}
+.logo-upload-area input[type="file"]{display:none}
+.logo-preview{
+  width:90px;height:90px;border-radius:14px;
+  object-fit:contain;border:1.5px solid var(--border);
+  background:white;display:none;margin:0 auto 10px;
+}
+.logo-upload-icon{width:40px;height:40px;fill:var(--border);margin:0 auto 10px;display:block}
+.logo-upload-text{font-size:.85rem;color:var(--muted);line-height:1.5}
+.logo-upload-btn{
+  margin-top:10px;display:inline-flex;align-items:center;gap:6px;
+  padding:8px 18px;border-radius:8px;background:var(--pale);color:var(--blue);
+  font-size:.83rem;font-weight:600;border:1.5px solid var(--blue);cursor:pointer;
+}
+
+/* ── CLASSES BUILDER ── */
+.classes-list{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.class-row{
+  display:flex;align-items:flex-start;gap:10px;
+  background:var(--bg);border-radius:12px;padding:14px 16px;
+  border:1.5px solid var(--border);
+}
+.class-main{flex:1;min-width:0}
+.class-name-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.class-name-row input{flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.9rem;background:white}
+.class-name-row input:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.1)}
+.streams-wrap{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.stream-tag{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--pale);color:var(--blue);
+  border:1px solid #90CAF9;border-radius:20px;
+  padding:4px 10px;font-size:.78rem;font-weight:600;
+}
+.stream-tag button{background:none;border:none;cursor:pointer;color:var(--muted);padding:0;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:.9rem;line-height:1}
+.stream-tag button:hover{color:var(--red)}
+.add-stream-row{display:flex;gap:7px}
+.add-stream-row input{flex:1;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.83rem;background:white;max-width:150px}
+.add-stream-row input:focus{border-color:var(--mid)}
+.btn-add-stream{padding:6px 12px;background:var(--pale);color:var(--blue);border:1.5px solid var(--blue);border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn-add-stream:hover{background:#dceeff}
+.btn-del-class{background:none;border:none;cursor:pointer;color:var(--border);padding:4px;border-radius:6px;flex-shrink:0;transition:color .15s}
+.btn-del-class:hover{color:var(--red)}
+.btn-del-class svg{width:18px;height:18px;fill:currentColor;display:block}
+.btn-add-class{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:12px 16px;border-radius:10px;
+  border:2px dashed var(--border);background:none;
+  color:var(--muted);font-size:.88rem;font-weight:600;
+  transition:border .15s,color .15s;cursor:pointer;
+}
+.btn-add-class:hover{border-color:var(--blue);color:var(--blue)}
+.btn-add-class svg{width:18px;height:18px;fill:currentColor}
+
+/* ── SUBJECTS BUILDER ── */
+.subjects-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.subject-row{
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg);border-radius:10px;padding:10px 14px;
+  border:1.5px solid var(--border);
+}
+.subject-row input.subj-name{flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;background:white;min-width:0}
+.subject-row input.subj-abbr{width:68px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;text-align:center;background:white;font-weight:700;text-transform:uppercase;flex-shrink:0}
+.subject-row input:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.1)}
+.subject-row .abbr-label{font-size:.7rem;color:var(--muted);flex-shrink:0;white-space:nowrap}
+.btn-del-subj{background:none;border:none;cursor:pointer;color:var(--border);padding:3px;border-radius:5px;flex-shrink:0}
+.btn-del-subj:hover{color:var(--red)}
+.btn-del-subj svg{width:16px;height:16px;fill:currentColor;display:block}
+.btn-add-subj{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:10px 14px;border-radius:10px;
+  border:2px dashed var(--border);background:none;
+  color:var(--muted);font-size:.86rem;font-weight:600;
+  transition:border .15s,color .15s;cursor:pointer;
+}
+.btn-add-subj:hover{border-color:var(--blue);color:var(--blue)}
+.btn-add-subj svg{width:16px;height:16px;fill:currentColor}
+.abbr-hint{font-size:.73rem;color:var(--muted);margin-bottom:12px}
+
+/* ── GRADES BUILDER ── */
+.grades-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.grade-row{
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg);border-radius:10px;padding:10px 14px;
+  border:1.5px solid var(--border);
+}
+.grade-row .gr-range{display:flex;align-items:center;gap:6px;flex:1}
+.grade-row input.gr-min,.grade-row input.gr-max{
+  width:62px;padding:8px 10px;border:1.5px solid var(--border);
+  border-radius:8px;font-size:.88rem;text-align:center;background:white;
+}
+.grade-row input.gr-name{
+  width:58px;padding:8px 10px;border:1.5px solid var(--border);
+  border-radius:8px;font-size:.9rem;text-align:center;background:white;font-weight:700;flex-shrink:0;
+}
+.grade-row input:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.1)}
+.grade-row .gr-lbl{font-size:.75rem;color:var(--muted);flex-shrink:0}
+.btn-del-grade{background:none;border:none;cursor:pointer;color:var(--border);padding:3px;border-radius:5px;flex-shrink:0}
+.btn-del-grade:hover{color:var(--red)}
+.btn-del-grade svg{width:16px;height:16px;fill:currentColor;display:block}
+.btn-add-grade{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:10px 14px;border-radius:10px;
+  border:2px dashed var(--border);background:none;
+  color:var(--muted);font-size:.86rem;font-weight:600;
+  transition:border .15s,color .15s;cursor:pointer;
+}
+.btn-add-grade:hover{border-color:var(--blue);color:var(--blue)}
+.btn-add-grade svg{width:16px;height:16px;fill:currentColor}
+.grade-preview{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--pale);
+}
+.grade-badge{
+  padding:4px 12px;border-radius:20px;font-size:.78rem;font-weight:700;
+  background:var(--pale);color:var(--blue);border:1px solid #90CAF9;
+}
+
+/* ── NAV BUTTONS ── */
+.reg-nav{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:12px}
+.btn-prev{
+  display:flex;align-items:center;gap:7px;
+  padding:12px 24px;border-radius:10px;
+  background:rgba(255,255,255,.15);color:white;
+  border:1.5px solid rgba(255,255,255,.3);
+  font-size:.92rem;font-weight:600;cursor:pointer;
+  backdrop-filter:blur(4px);transition:background .15s;
+}
+.btn-prev:hover{background:rgba(255,255,255,.22)}
+.btn-next,.btn-submit{
+  display:flex;align-items:center;gap:7px;
+  padding:12px 28px;border-radius:10px;
+  background:white;color:var(--blue);
+  border:none;font-size:.92rem;font-weight:700;cursor:pointer;
+  box-shadow:0 4px 18px rgba(0,0,0,.18);
+  transition:transform .15s,box-shadow .15s;
+  flex:1;justify-content:center;max-width:220px;margin-left:auto;
+}
+.btn-next:hover,.btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,0,0,.22)}
+.btn-submit{background:linear-gradient(135deg,var(--green),#00E676);color:white}
+.btn-prev svg,.btn-next svg,.btn-submit svg{width:18px;height:18px;fill:currentColor;flex-shrink:0}
+
+/* ── ALREADY COMPLETE ── */
+#already-done{
+  text-align:center;padding:60px 20px;color:white;
+}
+#already-done h2{font-family:'Syne',sans-serif;font-size:1.6rem;margin-bottom:12px}
+#already-done p{opacity:.75;margin-bottom:28px;max-width:400px;margin-left:auto;margin-right:auto}
+.btn-goto-login{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:13px 32px;border-radius:10px;background:white;color:var(--blue);
+  font-size:.95rem;font-weight:700;cursor:pointer;border:none;
+  box-shadow:0 4px 18px rgba(0,0,0,.2);text-decoration:none;
+}
+
+/* ── SECTION HIDE ── */
+.reg-section{display:none}
+.reg-section.active{display:block;animation:cardIn .3s ease}
+
+/* ── SPINNER ── */
+.spinner{
+  width:20px;height:20px;border:2.5px solid rgba(255,255,255,.3);
+  border-top-color:white;border-radius:50%;
+  animation:spin .7s linear infinite;display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<div class="reg-bg">
+  <div class="reg-wrapper">
+
+    <!-- ── ALREADY DONE ── -->
+    <div id="already-done" style="display:none">
+      <div style="font-size:4rem;margin-bottom:16px">🏫</div>
+      <h2>School Already Registered</h2>
+      <p>This school account has already been set up. Please log in to access the system.</p>
+      <a href="/" class="btn-goto-login">
+        <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
+        Go to Login
+      </a>
+    </div>
+
+    <!-- ── MAIN FLOW ── -->
+    <div id="reg-flow">
+
+      <!-- Hero -->
+      <div class="reg-hero">
+        <div class="reg-hero-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+        </div>
+        <h1>School Registration</h1>
+        <p>Let's set up your school. This only takes a few minutes — fill in each section carefully as this becomes the foundation of your system.</p>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-bar">
+        <div class="step-wrap"><div class="step-dot active" id="dot-1">1</div><div class="step-label active" id="lbl-1">School Info</div></div>
+        <div class="step-connector" id="con-1"></div>
+        <div class="step-wrap"><div class="step-dot" id="dot-2">2</div><div class="step-label" id="lbl-2">Structure</div></div>
+        <div class="step-connector" id="con-2"></div>
+        <div class="step-wrap"><div class="step-dot" id="dot-3">3</div><div class="step-label" id="lbl-3">Subjects</div></div>
+        <div class="step-connector" id="con-3"></div>
+        <div class="step-wrap"><div class="step-dot" id="dot-4">4</div><div class="step-label" id="lbl-4">Grading</div></div>
+      </div>
+
+      <!-- ══ SECTION 1: School Information ══ -->
+      <div class="reg-section active" id="sec-1">
+        <div class="reg-card">
+          <div class="reg-card-header">
+            <div class="reg-card-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+            <div><div class="reg-card-title">School Information</div><div class="reg-card-sub">Your school's identity — this appears on all reports, dashboards and documents</div></div>
+          </div>
+
+          <!-- Logo Upload -->
+          <div class="field">
+            <label>School Logo <span class="opt">(optional – PNG, JPG, SVG recommended)</span></label>
+            <div class="logo-upload-area" id="logo-drop" onclick="document.getElementById('logo-input').click()">
+              <input type="file" id="logo-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onchange="handleLogoSelect(event)">
+              <img id="logo-preview" class="logo-preview" alt="Logo preview"/>
+              <svg class="logo-upload-icon" id="logo-upload-icon" viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+              <div class="logo-upload-text" id="logo-upload-text">Drag & drop or click to upload your school logo</div>
+              <div class="logo-upload-btn" id="logo-btn-label">Choose File</div>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label>School Name <span style="color:var(--red)">*</span></label>
+              <input type="text" id="school-name" placeholder="e.g. St. Mary's Secondary School" required>
+            </div>
+            <div class="field">
+              <label>School Motto <span class="opt">(optional)</span></label>
+              <input type="text" id="school-motto" placeholder="e.g. Knowledge is Power">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label>School Phone Number <span class="opt">(optional)</span></label>
+              <input type="tel" id="school-phone" placeholder="+255 712 345 678">
+            </div>
+            <div class="field">
+              <label>School Email <span class="opt">(optional)</span></label>
+              <input type="email" id="school-email" placeholder="info@yourschool.ac.tz">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Admin / Support Contact Phone <span class="opt">(optional — shown to users who need help)</span></label>
+            <input type="tel" id="admin-phone" placeholder="+255 755 000 111">
+            <div class="field-hint">This number is shown to parents and teachers who need to reach the system administrator.</div>
+          </div>
+        </div>
+
+        <div class="reg-nav">
+          <div></div>
+          <button class="btn-next" onclick="goToSection(2)">
+            Next: Academic Structure
+            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ SECTION 2: Academic Structure ══ -->
+      <div class="reg-section" id="sec-2">
+        <div class="reg-card">
+          <div class="reg-card-header">
+            <div class="reg-card-icon"><svg viewBox="0 0 24 24"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg></div>
+            <div><div class="reg-card-title">Academic Structure</div><div class="reg-card-sub">Add your school's classes and their optional streams (e.g. Science, Arts)</div></div>
+          </div>
+
+          <p style="font-size:.83rem;color:var(--muted);margin-bottom:18px;line-height:1.5">
+            Add each class (e.g. Form 1, Grade 8). For each class, you can add streams if your school divides students — for example Form 2 Science and Form 2 Arts. If a class has no streams, leave it empty.
+          </p>
+
+          <div class="classes-list" id="classes-list"></div>
+          <button class="btn-add-class" onclick="addClass()">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+            Add Class
+          </button>
+        </div>
+
+        <div class="reg-nav">
+          <button class="btn-prev" onclick="goToSection(1)">
+            <svg viewBox="0 0 24 24"><path d="M14 7l-5 5 5 5V7z"/></svg>
+            Back
+          </button>
+          <button class="btn-next" onclick="goToSection(3)">
+            Next: Subjects
+            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ SECTION 3: Subjects ══ -->
+      <div class="reg-section" id="sec-3">
+        <div class="reg-card">
+          <div class="reg-card-header">
+            <div class="reg-card-icon"><svg viewBox="0 0 24 24"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg></div>
+            <div><div class="reg-card-title">Subjects & Abbreviations</div><div class="reg-card-sub">Add every subject taught in your school. Each needs a short abbreviation for score sheets.</div></div>
+          </div>
+
+          <div class="abbr-hint">Abbreviations must be <strong>1–4 characters</strong> (letters, numbers, symbols like +, &amp; allowed). They appear in score sheet column headers.</div>
+
+          <div class="subjects-list" id="subjects-list"></div>
+          <button class="btn-add-subj" onclick="addSubject()">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+            Add Subject
+          </button>
+        </div>
+
+        <div class="reg-nav">
+          <button class="btn-prev" onclick="goToSection(2)">
+            <svg viewBox="0 0 24 24"><path d="M14 7l-5 5 5 5V7z"/></svg>
+            Back
+          </button>
+          <button class="btn-next" onclick="goToSection(4)">
+            Next: Grading
+            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ SECTION 4: Grading ══ -->
+      <div class="reg-section" id="sec-4">
+        <div class="reg-card">
+          <div class="reg-card-header">
+            <div class="reg-card-icon"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L12 15.45 7.77 18l1.12-4.81-3.73-3.23 4.92-.42L12 5l1.92 4.53 4.92.42-3.73 3.23L16.23 18z"/></svg></div>
+            <div><div class="reg-card-title">Grading System</div><div class="reg-card-sub">Define your school's grade boundaries. Each grade needs a name (1–3 characters) and a score range.</div></div>
+          </div>
+
+          <p style="font-size:.83rem;color:var(--muted);margin-bottom:18px;line-height:1.5">
+            Set up the grade scale your school uses. For example: 80–100 = A, 70–79 = B, and so on. Grade names can be letters, numbers, or any label up to 3 characters.
+          </p>
+
+          <div class="grades-list" id="grades-list"></div>
+          <button class="btn-add-grade" onclick="addGrade()">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+            Add Grade Rule
+          </button>
+
+          <!-- Live preview -->
+          <div class="grade-preview" id="grade-preview"></div>
+        </div>
+
+        <div class="reg-card" style="background:linear-gradient(135deg,#E3F2FD,#F0F4F8);border:1.5px solid #90CAF9">
+          <div style="font-size:.82rem;color:var(--blue);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+            Ready to finalize?
+          </div>
+          <div style="font-size:.83rem;color:var(--muted);line-height:1.6">
+            Once you submit, your school will be registered and you'll be redirected to the login page. All settings can be adjusted later from the admin panel. Make sure everything looks correct before submitting.
+          </div>
+        </div>
+
+        <div class="reg-nav">
+          <button class="btn-prev" onclick="goToSection(3)">
+            <svg viewBox="0 0 24 24"><path d="M14 7l-5 5 5 5V7z"/></svg>
+            Back
+          </button>
+          <button class="btn-submit" id="submit-btn" onclick="submitRegistration()">
+            <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            Complete Registration
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /reg-flow -->
+  </div>
+</div>
+
+<script>
+const API = "/api";
+
+// ── State ──────────────────────────────────────────────────────
+let logoFile = null;
+let classes  = []; // [{name, streams:[]}]
+let subjects = []; // [{name, abbreviation}]
+let grades   = []; // [{min_score, max_score, grade}]
+
+// ── Toast ──────────────────────────────────────────────────────
+function toast(msg, type="info"){
+  const c = document.getElementById("toast-container");
+  const t = document.createElement("div");
+  t.className=`toast ${type}`;
+  const icons={success:"✅",error:"❌",info:"ℹ️"};
+  t.innerHTML=`<span style="font-size:1rem">${icons[type]||"ℹ️"}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(()=>t.style.opacity="0",3200);
+  setTimeout(()=>t.remove(),3600);
+}
+
+// ── Init check ────────────────────────────────────────────────
+async function init(){
+  try{
+    const res = await fetch(`${API}/registration/status`);
+    const d   = await res.json();
+    if(d.complete){
+      document.getElementById("reg-flow").style.display="none";
+      document.getElementById("already-done").style.display="block";
+      return;
+    }
+    if(!d.has_admin){
+      // No admin yet — redirect to setup
+      window.location.href="/setup";
+      return;
+    }
+  } catch(e){
+    toast("Cannot connect to server","error");
+  }
+  // Pre-populate subjects with defaults
+  subjects = [
+    {name:"Mathematics",    abbreviation:"MATH"},
+    {name:"English",        abbreviation:"ENG"},
+    {name:"Kiswahili",      abbreviation:"KIS"},
+    {name:"Biology",        abbreviation:"BIO"},
+    {name:"Chemistry",      abbreviation:"CHEM"},
+    {name:"Physics",        abbreviation:"PHY"},
+    {name:"History",        abbreviation:"HIST"},
+    {name:"Geography",      abbreviation:"GEO"},
+    {name:"Civics",         abbreviation:"CIV"},
+  ];
+  // Pre-populate grades
+  grades = [
+    {min_score:80, max_score:100, grade:"A"},
+    {min_score:70, max_score:79,  grade:"B"},
+    {min_score:60, max_score:69,  grade:"C"},
+    {min_score:50, max_score:59,  grade:"D"},
+    {min_score:0,  max_score:49,  grade:"F"},
+  ];
+  renderSubjects();
+  renderGrades();
+  // Add a default empty class to start
+  classes = [];
+  renderClasses();
+  addClass(); // start with one empty class
+}
+init();
+
+// ── Step navigation ───────────────────────────────────────────
+let currentStep = 1;
+function goToSection(n){
+  if(n > currentStep && !validateStep(currentStep)) return;
+  document.querySelectorAll(".reg-section").forEach(s=>s.classList.remove("active"));
+  document.getElementById(`sec-${n}`).classList.add("active");
+  // Update dots
+  for(let i=1;i<=4;i++){
+    const dot = document.getElementById(`dot-${i}`);
+    const lbl = document.getElementById(`lbl-${i}`);
+    if(i < n){ dot.classList.add("done"); dot.classList.remove("active"); dot.innerHTML="✓"; lbl.classList.remove("active"); }
+    else if(i===n){ dot.classList.add("active"); dot.classList.remove("done"); dot.innerHTML=i; lbl.classList.add("active"); }
+    else { dot.classList.remove("active","done"); dot.innerHTML=i; lbl.classList.remove("active"); }
+    // connectors
+    const con = document.getElementById(`con-${i}`);
+    if(con){ con.classList.toggle("done", i < n); }
+  }
+  currentStep = n;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function validateStep(n){
+  if(n===1){
+    const name = document.getElementById("school-name").value.trim();
+    if(!name){ toast("School name is required","error"); document.getElementById("school-name").focus(); return false; }
+  }
+  if(n===2){
+    const valid = classes.every(c=>c.name.trim());
+    if(!valid){ toast("All classes must have a name","error"); return false; }
+    // Allow empty classes list — it's optional at this step
+  }
+  if(n===3){
+    if(!subjects.length){ toast("Add at least one subject","error"); return false; }
+    for(const s of subjects){
+      if(!s.name.trim()){ toast("All subjects need a name","error"); return false; }
+      const ab = s.abbreviation.trim();
+      if(!ab || ab.length>4){ toast(`Abbreviation for "${s.name}" must be 1–4 characters`,"error"); return false; }
+    }
+  }
+  return true;
+}
+
+// ── Logo upload ────────────────────────────────────────────────
+function handleLogoSelect(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  logoFile = file;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const preview = document.getElementById("logo-preview");
+    preview.src = ev.target.result;
+    preview.style.display="block";
+    document.getElementById("logo-upload-icon").style.display="none";
+    document.getElementById("logo-upload-text").textContent=file.name;
+    document.getElementById("logo-btn-label").textContent="Change Logo";
+  };
+  reader.readAsDataURL(file);
+}
+// Drag-and-drop
+const dropArea = document.getElementById("logo-drop");
+dropArea.addEventListener("dragover",e=>{e.preventDefault();dropArea.classList.add("drag-over")});
+dropArea.addEventListener("dragleave",()=>dropArea.classList.remove("drag-over"));
+dropArea.addEventListener("drop",e=>{
+  e.preventDefault(); dropArea.classList.remove("drag-over");
+  const f = e.dataTransfer.files[0];
+  if(f){ document.getElementById("logo-input").files=e.dataTransfer.files; handleLogoSelect({target:{files:[f]}}); }
+});
+
+// ── Classes builder ────────────────────────────────────────────
+function renderClasses(){
+  const list = document.getElementById("classes-list");
+  list.innerHTML = "";
+  classes.forEach((cls,i)=>{
+    const div = document.createElement("div");
+    div.className="class-row";
+    div.innerHTML=`
+      <div class="class-main">
+        <div class="class-name-row">
+          <input type="text" placeholder="Class name (e.g. Form 1)" value="${escHtml(cls.name)}"
+            oninput="classes[${i}].name=this.value">
+          <span style="font-size:.75rem;color:var(--muted);flex-shrink:0;white-space:nowrap">Streams:</span>
+        </div>
+        <div class="streams-wrap" id="streams-wrap-${i}">
+          ${cls.streams.map((s,si)=>`
+            <span class="stream-tag">
+              ${escHtml(s)}
+              <button onclick="removeStream(${i},${si})" title="Remove stream">×</button>
+            </span>`).join("")}
+          <div class="add-stream-row">
+            <input type="text" placeholder="Stream name" id="new-stream-${i}" onkeydown="if(event.key==='Enter'){addStream(${i});event.preventDefault()}">
+            <button class="btn-add-stream" onclick="addStream(${i})">+ Add</button>
+          </div>
+        </div>
+      </div>
+      <button class="btn-del-class" onclick="removeClass(${i})" title="Remove class">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </button>`;
+    list.appendChild(div);
+  });
+}
+function addClass(){
+  classes.push({name:"",streams:[]});
+  renderClasses();
+  // Focus the new input
+  setTimeout(()=>{
+    const inputs=document.querySelectorAll(".class-name-row input");
+    if(inputs.length) inputs[inputs.length-1].focus();
+  },50);
+}
+function removeClass(i){
+  classes.splice(i,1); renderClasses();
+}
+function addStream(i){
+  const inp = document.getElementById(`new-stream-${i}`);
+  const val = inp.value.trim();
+  if(!val){ toast("Enter a stream name","error"); inp.focus(); return; }
+  if(classes[i].streams.includes(val)){ toast("Stream already added","error"); return; }
+  classes[i].streams.push(val);
+  inp.value="";
+  renderClasses();
+}
+function removeStream(ci,si){
+  classes[ci].streams.splice(si,1); renderClasses();
+}
+
+// ── Subjects builder ───────────────────────────────────────────
+function renderSubjects(){
+  const list = document.getElementById("subjects-list");
+  list.innerHTML="";
+  subjects.forEach((s,i)=>{
+    const div=document.createElement("div");
+    div.className="subject-row";
+    div.innerHTML=`
+      <input class="subj-name" type="text" placeholder="Subject name" value="${escHtml(s.name)}"
+        oninput="subjects[${i}].name=this.value">
+      <span class="abbr-label">Abbr:</span>
+      <input class="subj-abbr" type="text" placeholder="e.g. MATH" maxlength="4" value="${escHtml(s.abbreviation)}"
+        oninput="subjects[${i}].abbreviation=this.value.toUpperCase().slice(0,4);this.value=this.value.toUpperCase().slice(0,4)">
+      <button class="btn-del-subj" onclick="removeSubject(${i})" title="Remove subject">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </button>`;
+    list.appendChild(div);
+  });
+}
+function addSubject(){
+  subjects.push({name:"",abbreviation:""});
+  renderSubjects();
+  setTimeout(()=>{
+    const inputs=document.querySelectorAll(".subj-name");
+    if(inputs.length) inputs[inputs.length-1].focus();
+  },50);
+}
+function removeSubject(i){
+  subjects.splice(i,1); renderSubjects();
+}
+
+// ── Grades builder ─────────────────────────────────────────────
+function renderGrades(){
+  const list = document.getElementById("grades-list");
+  list.innerHTML="";
+  grades.forEach((g,i)=>{
+    const div=document.createElement("div");
+    div.className="grade-row";
+    div.innerHTML=`
+      <div class="gr-range">
+        <span class="gr-lbl">From</span>
+        <input class="gr-min" type="number" min="0" max="100" value="${g.min_score}"
+          oninput="grades[${i}].min_score=parseFloat(this.value)||0;updateGradePreview()">
+        <span class="gr-lbl">–</span>
+        <input class="gr-max" type="number" min="0" max="100" value="${g.max_score}"
+          oninput="grades[${i}].max_score=parseFloat(this.value)||0;updateGradePreview()">
+        <span class="gr-lbl">= Grade:</span>
+        <input class="gr-name" type="text" maxlength="3" placeholder="A" value="${escHtml(g.grade)}"
+          oninput="grades[${i}].grade=this.value.slice(0,3);updateGradePreview()">
+      </div>
+      <button class="btn-del-grade" onclick="removeGrade(${i})" title="Remove grade">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </button>`;
+    list.appendChild(div);
+  });
+  updateGradePreview();
+}
+function addGrade(){
+  grades.push({min_score:0,max_score:0,grade:""});
+  renderGrades();
+  setTimeout(()=>{
+    const inputs=document.querySelectorAll(".gr-min");
+    if(inputs.length) inputs[inputs.length-1].focus();
+  },50);
+}
+function removeGrade(i){
+  grades.splice(i,1); renderGrades();
+}
+function updateGradePreview(){
+  const prev = document.getElementById("grade-preview");
+  const sorted = [...grades].sort((a,b)=>b.min_score-a.min_score);
+  prev.innerHTML = sorted.filter(g=>g.grade).map(g=>
+    `<div class="grade-badge">${g.grade}: ${g.min_score}–${g.max_score}</div>`
+  ).join("");
+}
+
+// ── Submit ─────────────────────────────────────────────────────
+async function submitRegistration(){
+  // Validate all steps
+  for(let i=1;i<=4;i++){
+    if(!validateStep(i)) { goToSection(i); return; }
+  }
+  if(!grades.length){ toast("Add at least one grade rule","error"); return; }
+  for(const g of grades){
+    if(!g.grade.trim() || g.grade.trim().length>3){ toast("Grade names must be 1–3 characters","error"); return; }
+  }
+
+  const btn = document.getElementById("submit-btn");
+  btn.innerHTML=`<span class="spinner"></span> Registering...`;
+  btn.disabled=true;
+
+  try{
+    const fd = new FormData();
+    fd.append("school_name", document.getElementById("school-name").value.trim());
+    fd.append("phone",       document.getElementById("school-phone").value.trim());
+    fd.append("email",       document.getElementById("school-email").value.trim());
+    fd.append("admin_phone", document.getElementById("admin-phone").value.trim());
+    fd.append("motto",       document.getElementById("school-motto").value.trim());
+    fd.append("classes",     JSON.stringify(classes.filter(c=>c.name.trim())));
+    fd.append("subjects",    JSON.stringify(subjects.filter(s=>s.name.trim())));
+    fd.append("grades",      JSON.stringify(grades));
+    if(logoFile) fd.append("logo", logoFile);
+
+    const res = await fetch(`${API}/register/school`,{method:"POST",body:fd});
+    const d   = await res.json();
+    if(d.ok){
+      toast("🎉 School registered successfully! Redirecting to login...","success");
+      setTimeout(()=>window.location.href="/",2200);
+    } else {
+      toast(d.error||"Registration failed","error");
+      btn.innerHTML=`<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Complete Registration`;
+      btn.disabled=false;
+    }
+  } catch(e){
+    toast("Server error — check connection","error");
+    btn.innerHTML=`<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Complete Registration`;
+    btn.disabled=false;
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+</script>
+</body>
+</html>

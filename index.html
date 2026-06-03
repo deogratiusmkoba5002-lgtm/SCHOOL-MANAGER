@@ -423,12 +423,13 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 <div id="login-page">
   <div class="login-card">
     <div class="login-logo">
-      <div class="login-logo-icon">
-        <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+      <div class="login-logo-icon" id="login-logo-icon-wrap">
+        <img id="login-school-logo" src="" alt="" style="display:none;width:32px;height:32px;border-radius:6px;object-fit:contain"/>
+        <svg id="login-default-icon" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
       </div>
       <div>
-        <h1>SchoolManager</h1>
-        <span>Academic Management System</span>
+        <h1 id="login-school-name">SchoolManager</h1>
+        <span id="login-school-sub">Academic Management System</span>
       </div>
     </div>
     <p class="login-subtitle">Sign in to your account to continue</p>
@@ -457,11 +458,12 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   <nav id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <div class="sidebar-brand-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+        <div class="sidebar-brand-icon" id="sidebar-brand-icon-wrap">
+          <img id="sidebar-school-logo" src="" alt="" style="display:none;width:26px;height:26px;border-radius:6px;object-fit:contain"/>
+          <svg id="sidebar-default-icon" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
         </div>
         <div>
-          <h2>SchoolManager</h2>
+          <h2 id="sidebar-school-name">SchoolManager</h2>
           <span>Academic System</span>
         </div>
       </div>
@@ -1440,6 +1442,40 @@ function populateSelect(sel, items, valFn, labelFn){
 document.getElementById("login-btn").addEventListener("click", doLogin);
 document.getElementById("login-pass").addEventListener("keydown", e=>e.key==="Enter"&&doLogin());
 
+// ── Pre-load school branding on login page ──────────────────
+(async function preloadSchoolBranding(){
+  try{
+    const res = await fetch("/api/school/info");
+    if(!res.ok) return;
+    const info = await res.json();
+    if(info.school_name){
+      const el = document.getElementById("login-school-name");
+      if(el) el.textContent = info.school_name;
+      const sn = document.getElementById("sidebar-school-name");
+      if(sn) sn.textContent = info.school_name;
+    }
+    if(info.motto){
+      const el = document.getElementById("login-school-sub");
+      if(el) el.textContent = info.motto;
+    }
+    if(info.logo_path){
+      const img1 = document.getElementById("login-school-logo");
+      const ico1 = document.getElementById("login-default-icon");
+      if(img1){ img1.src="/"+info.logo_path; img1.style.display="block"; }
+      if(ico1) ico1.style.display="none";
+      const img2 = document.getElementById("sidebar-school-logo");
+      const ico2 = document.getElementById("sidebar-default-icon");
+      if(img2){ img2.src="/"+info.logo_path; img2.style.display="block"; }
+      if(ico2) ico2.style.display="none";
+    }
+    // If registration not complete and page is index, show a hint
+    if(info.registration_complete !== "1"){
+      const errEl = document.getElementById("login-error");
+      if(errEl){ errEl.textContent="⚠ School setup incomplete. Log in as admin to complete registration."; errEl.style.display="block"; }
+    }
+  } catch(e){ /* silent fail */ }
+})();
+
 async function doLogin(){
   const u = document.getElementById("login-user").value.trim();
   const p = document.getElementById("login-pass").value;
@@ -1449,6 +1485,11 @@ async function doLogin(){
   try{
     const res = await api("/login","POST",{username:u,password:p});
     if(res.ok){
+      // If admin and registration not complete, redirect to registration page
+      if(res.user.role==="admin" && !res.registration_complete){
+        window.location.href="/register";
+        return;
+      }
       currentUser = res.user;
       await loadConfig();
       bootApp();
@@ -2782,7 +2823,46 @@ document.getElementById("past-view-btn").addEventListener("click", async()=>{
 async function loadConfig(){
   const c = await api("/config");
   config = {...config, ...c};
-  // populate school name field
+
+  // ── Sync dynamic subjects globally ──
+  if(c.allowed_subjects && c.allowed_subjects.length){
+    ALLOWED_SUBJECTS = c.allowed_subjects;
+    config.allowed_subjects = c.allowed_subjects;
+  }
+
+  // ── Sync dynamic grade rules globally ──
+  if(c.grade_rules && c.grade_rules.length){
+    GRADE_RULES = c.grade_rules;
+  }
+
+  // ── Show school logo if available ──
+  const logoPath = c.school_info && c.school_info.logo_path;
+  if(logoPath){
+    // Login page logo
+    const loginLogoImg = document.getElementById("login-school-logo");
+    const loginDefaultIcon = document.getElementById("login-default-icon");
+    if(loginLogoImg){ loginLogoImg.src="/"+logoPath; loginLogoImg.style.display="block"; }
+    if(loginDefaultIcon) loginDefaultIcon.style.display="none";
+    // Sidebar logo
+    const sidebarLogoImg = document.getElementById("sidebar-school-logo");
+    const sidebarDefaultIcon = document.getElementById("sidebar-default-icon");
+    if(sidebarLogoImg){ sidebarLogoImg.src="/"+logoPath; sidebarLogoImg.style.display="block"; }
+    if(sidebarDefaultIcon) sidebarDefaultIcon.style.display="none";
+  }
+
+  // ── Show school name everywhere ──
+  if(c.school_name){
+    const loginName = document.getElementById("login-school-name");
+    if(loginName) loginName.textContent = c.school_name;
+    const sidebarName = document.getElementById("sidebar-school-name");
+    if(sidebarName) sidebarName.textContent = c.school_name;
+    // subtitle with motto if available
+    const motto = c.school_info && c.school_info.motto;
+    const loginSub = document.getElementById("login-school-sub");
+    if(loginSub && motto) loginSub.textContent = motto;
+  }
+
+  // ── Populate Config page fields ──
   const nameInput = document.getElementById("config-school-name");
   if(nameInput && c.school_name) nameInput.value = c.school_name;
   const infoEl = document.getElementById("config-term-info");
@@ -3106,12 +3186,17 @@ function renderParentSingleResults(out, d, assess){
   </div>`;
 }
 
+// ── DYNAMIC GRADES & SUBJECTS (populated from /api/config) ───
+let GRADE_RULES = [
+  {min_score:80,grade:"A"},{min_score:70,grade:"B"},
+  {min_score:60,grade:"C"},{min_score:50,grade:"D"},{min_score:0,grade:"F"}
+];
 function get_grade_js(score){
-  if(score>=80) return "A";
-  if(score>=70) return "B";
-  if(score>=60) return "C";
-  if(score>=50) return "D";
-  return "F";
+  if(score===null||score===undefined||score==="") return "-";
+  const n = parseFloat(score);
+  const sorted = [...GRADE_RULES].sort((a,b)=>b.min_score-a.min_score);
+  for(const r of sorted){ if(n >= r.min_score) return r.grade; }
+  return sorted[sorted.length-1]?.grade || "F";
 }
 
 async function loadParentAnnouncements(){
@@ -3170,7 +3255,8 @@ let analyticsData    = null; // all exam data points across published terms
 let analyticsTab     = "avg"; // "avg" or "subject"
 let analyticsSubject = null;
 
-const ALLOWED_SUBJECTS = [
+// ── ALLOWED_SUBJECTS is now dynamic — populated from /api/config ──
+let ALLOWED_SUBJECTS = [
     "mathematics","physics","chemistry","biology","geography","history",
     "civics","english","literature","kiswahili","bible knowledge",
     "book keeping","commerce","business studies","historia ya tanzania na maadili"
