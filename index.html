@@ -341,6 +341,17 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 .progress-bar{height:6px;background:var(--pale);border-radius:3px;overflow:hidden;margin-top:4px}
 .progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),var(--accent));transition:width .4s ease}
 
+/* ── BACK BUTTON ── */
+.page-back-btn{
+  display:none;align-items:center;gap:6px;
+  padding:7px 14px;border-radius:8px;
+  background:var(--pale);color:var(--blue);
+  border:1.5px solid var(--blue);font-size:.82rem;font-weight:600;
+  cursor:pointer;transition:background .15s;margin-bottom:14px;
+}
+.page-back-btn:hover{background:#dceeff}
+.page-back-btn svg{width:15px;height:15px}
+
 /* ── SPINNER ── */
 .spinner{
   width:32px;height:32px;border:3px solid var(--pale);
@@ -592,6 +603,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── PARENT REPORTS ── -->
     <div class="page" id="page-parent-reports">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">View Results &amp; Reports</h2>
         <p class="page-sub">Choose what you would like to view</p>
       </div>
@@ -662,6 +674,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── PARENT ANALYTICS ── -->
     <div class="page" id="page-parent-analytics">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Academic Analytics</h2>
         <p class="page-sub">Performance trends, insights and recommendations</p>
       </div>
@@ -708,6 +721,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── PARENT ANNOUNCEMENTS ── -->
     <div class="page" id="page-parent-announcements">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Announcements</h2>
         <p class="page-sub">School news and important notices</p>
       </div>
@@ -844,6 +858,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── MARKS ENTRY ── -->
     <div class="page" id="page-marks">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Enter Marks</h2>
         <p class="page-sub">Enter CA and exam marks for your students</p>
       </div>
@@ -888,6 +903,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── REPORT CARD VIEW ── -->
     <div class="page" id="page-reports">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Report Cards</h2>
         <p class="page-sub">View and download student report cards</p>
       </div>
@@ -964,6 +980,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── SCORE SHEETS ── -->
     <div class="page" id="page-sheets">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Score Sheets</h2>
         <p class="page-sub">Class-wide score sheets and PDF exports</p>
       </div>
@@ -1047,6 +1064,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── PAST TERMS ── -->
     <div class="page" id="page-past">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Past Terms</h2>
         <p class="page-sub">View marks from closed terms (read-only)</p>
       </div>
@@ -1103,6 +1121,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
     <!-- ── RANKINGS ── -->
     <div class="page" id="page-rankings">
       <div class="page-header">
+        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Rankings</h2>
         <p class="page-sub">Rank students by subject and assessment</p>
       </div>
@@ -1530,7 +1549,27 @@ function buildNav(){
   });
 }
 
+// ── PAGE HISTORY (Back button support) ────────────────────────
+let pageHistory = [];
+let currentPageId = null;
+
+function goBack(){
+  if(pageHistory.length > 0){
+    const prev = pageHistory.pop();
+    _showPage(prev);
+  }
+}
+
 function showPage(id){
+  if(currentPageId && currentPageId !== id){
+    pageHistory.push(currentPageId);
+    if(pageHistory.length > 20) pageHistory.shift();
+  }
+  _showPage(id);
+}
+
+function _showPage(id){
+  currentPageId = id;
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
   const pg = document.getElementById("page-"+id);
@@ -1538,11 +1577,25 @@ function showPage(id){
   const ni = document.querySelector(`.nav-item[data-page="${id}"]`);
   if(ni) ni.classList.add("active");
 
+  // Update back button visibility
+  const canGoBack = pageHistory.length > 0;
+  document.querySelectorAll(".page-back-btn").forEach(btn=>{
+    btn.style.display = canGoBack ? "inline-flex" : "none";
+  });
+
   // lazy load
   if(id==="parents")             loadParentsPage();
   if(id==="parent-dashboard")    loadParentDashboard();
   if(id==="parent-reports")       loadParentReports();
-  if(id==="parent-analytics")    { if(analyticsData) renderAnalytics(); else loadAnalyticsData(); }
+  if(id==="parent-analytics")    {
+    // Always try to reload fresh data; if already loaded, re-render immediately first then refresh
+    if(analyticsData && analyticsData.length) {
+      renderAnalytics();
+      renderAnalyticsSummary();
+      renderAnalyticsInsights();
+    }
+    loadAnalyticsData();
+  }
   if(id==="parent-announcements") loadParentAnnouncements();
   if(id==="students")  loadStudents();
   if(id==="classes")   loadClasses();
@@ -1557,9 +1610,26 @@ function showPage(id){
 
 // ── LOGOUT ──────────────────────────────────────────────
 document.getElementById("logout-btn").addEventListener("click",()=>{
-  currentUser=null;
+  // Clear ALL cached user data to prevent cross-account data leakage (Bug 3)
+  currentUser = null;
+  analyticsData = null;
+  parentPublishedTerms = [];
+  analyticsTab = "avg";
+  analyticsSubject = null;
+  allStudents = [];
+  allClasses  = [];
+  allTerms    = [];
+  teacherAssignments = [];
+  // Clear any rendered output panels
+  ["parent-rc-output","parent-res-output","parent-announcements-list"].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML="";
+  });
+  pageHistory = [];
+  currentPageId = null;
   document.getElementById("app").style.display="none";
   document.getElementById("login-page").style.display="flex";
+  document.getElementById("login-user").value="";
   document.getElementById("login-pass").value="";
   document.getElementById("login-error").style.display="none";
 });
@@ -2373,13 +2443,15 @@ document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
 });
 
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
-  const cls = document.getElementById("exam-sheet-class").value;
-  const d   = await api(`/scoresheet?mode=exam&class_id=${class_id}${sp}`);
+  const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
+  const sp=stream_id?`&stream_id=${stream_id}`:"";
+  const d=await api(`/scoresheet?mode=exam&class_id=${class_id}${sp}`);
   renderScoreSheet(document.getElementById("exam-sheet-output"),d,"Exam");
 });
 
 document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
-  const cls = document.getElementById("exam-sheet-class").value;
+  const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
+  const sp=stream_id?`&stream_id=${stream_id}`:"";
   window.open(`${API}/pdf/ca_sheet?class_id=${class_id}${sp}&ca_name=exam`,"_blank");
 });
 
@@ -2474,7 +2546,8 @@ document.getElementById("rank-show-btn").addEventListener("click", async()=>{
     out.innerHTML=`<div class="empty-state">${emptySVG()}<p>No marks entered yet for ${cap(subj)} – ${assess}</p></div>`;
     return;
   }
-  renderRanking(out, d, "score", `${cap(subj)} – ${assess} – ${cap(cls)}`);
+  const clsLabel = classLabel(class_id, stream_id);
+  renderRanking(out, d, "score", `${cap(subj)} – ${assess} – ${clsLabel}`);
 });
 
 function renderRanking(container, rows, scoreKey, title=""){
@@ -2989,16 +3062,27 @@ function renderParentSingleResults(out, d, assess){
   const streamPos = d.stream_position!=null
     ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>`
     : "";
-  const rows = d.results.map(r=>{
+
+  // Sort results by position (ascending) so position 1 is at top
+  const sorted = [...d.results].filter(r=>{
+    const score = assess==="exam" ? r.exam : r.ca[assess];
+    return score!==null && score!==undefined;
+  }).sort((a,b)=>{
+    const pa = typeof a.position==="number" ? a.position : 9999;
+    const pb = typeof b.position==="number" ? b.position : 9999;
+    return pa - pb;
+  });
+
+  const rows = sorted.map(r=>{
     const score = assess==="exam" ? r.exam : r.ca[assess];
     const pos   = r.position;
     const isFail= score!==null && score!==undefined && score<50;
-    return score!==null && score!==undefined ? `<tr>
+    return `<tr>
       <td style="font-weight:500;text-transform:capitalize">${r.subject}</td>
       <td style="font-weight:700;color:${isFail?"var(--red)":"var(--text)"}">${score}</td>
       <td class="${r.grade!=="-"?gradeClass(r.grade):""}">${get_grade_js(score)}</td>
       <td style="font-weight:600;color:var(--blue)">${pos}</td>
-    </tr>` : "";
+    </tr>`;
   }).join("");
 
   out.innerHTML=`
@@ -3113,10 +3197,13 @@ async function loadAnalyticsData(){
         showAnalyticsNoData(); return;
     }
 
+    // Sort terms by id ascending — oldest term first (Bug 8: x-axis starts from oldest)
+    const sortedTerms = [...parentPublishedTerms].sort((a,b)=>a.id - b.id);
+
     // Fetch results for every published term — all CAs + exam
     const dataPoints = []; // [{label, assess, term, subjectScores:{subj:score}, avg, class_pos, stream_pos}]
 
-    for(const term of parentPublishedTerms){
+    for(const term of sortedTerms){
         // Get all assessments in this term: CA1..CAN + exam
         const assessments = [];
         for(let i=1;i<=term.ca_count;i++) assessments.push(`CA${i}`);
@@ -3148,12 +3235,18 @@ async function loadAnalyticsData(){
         }
     }
 
-    // Keep only last 5
+    // Keep only last 5 (most recent) — since data is sorted oldest-first, slice(-5) gives the 5 most recent
     analyticsData = dataPoints.length > 5
         ? dataPoints.slice(-5)
         : dataPoints;
 
     if(!analyticsData.length){ showAnalyticsNoData(); return; }
+
+    // Always show graph and analytics sections
+    document.getElementById("analytics-chart").style.display="block";
+    document.getElementById("analytics-no-data").style.display="none";
+    document.getElementById("analytics-summary-grid").style.display="grid";
+    document.getElementById("analytics-insights-card").style.display="block";
 
     // Populate subject selector
     const allSubjects = [...new Set(analyticsData.flatMap(d=>Object.keys(d.subjectScores)))];
@@ -3169,8 +3262,12 @@ async function loadAnalyticsData(){
 function showAnalyticsNoData(){
     document.getElementById("analytics-chart").style.display="none";
     document.getElementById("analytics-no-data").style.display="block";
-    document.getElementById("analytics-summary-grid").style.display="none";
-    document.getElementById("analytics-insights-card").style.display="none";
+    // Keep summary and insights visible but show 'not enough data' messages inside them
+    document.getElementById("analytics-summary-grid").style.display="grid";
+    document.getElementById("analytics-insights-card").style.display="block";
+    document.getElementById("analytics-best").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
+    document.getElementById("analytics-weak").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
+    document.getElementById("analytics-insights").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet. Results will appear here once published by the school.</p>`;
 }
 
 // ── Pure canvas line chart (no library needed) ────────────────
@@ -3202,7 +3299,7 @@ function renderAnalytics(){
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr,dpr);
 
-    const PAD = {top:20, right:20, bottom:60, left:48};
+    const PAD = {top:20, right:20, bottom:80, left:48};
     const cW  = W - PAD.left - PAD.right;
     const cH  = H - PAD.top  - PAD.bottom;
 
@@ -3219,18 +3316,18 @@ function renderAnalytics(){
         ctx.fillText(v, PAD.left-6, y+4);
     });
 
-    // X labels
+    // X labels — rotated 45° to avoid clutter (Bug 6)
     const step = points.length>1 ? cW/(points.length-1) : cW;
-    ctx.fillStyle="#546E7A"; ctx.font="10px Arial"; ctx.textAlign="center";
+    ctx.fillStyle="#546E7A"; ctx.font="9px Arial";
     labels.forEach((lbl,i)=>{
         const x = PAD.left + (points.length>1 ? i*step : cW/2);
-        const y = PAD.top+cH+16;
-        // Wrap long labels
-        const parts = lbl.split(" ");
-        const line1 = parts.slice(0,-1).join(" ");
-        const line2 = parts.slice(-1)[0];
-        ctx.fillText(line1||lbl, x, y);
-        if(line2&&line1) ctx.fillText(line2, x, y+13);
+        const y = PAD.top+cH+14;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-Math.PI/4); // -45 degrees
+        ctx.textAlign="right";
+        ctx.fillText(lbl, 0, 0);
+        ctx.restore();
     });
 
     // Filter out nulls for plotting
