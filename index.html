@@ -737,6 +737,15 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
         <p class="page-sub">Welcome back — here's a quick overview</p>
       </div>
       <div class="stats-grid" id="dash-stats"></div>
+      <!-- Platform Notices from Superadmin -->
+      <div class="section-card" id="platform-notices-card" style="display:none;border-left:4px solid #7B1FA2">
+        <div class="section-card-title" style="color:#7B1FA2">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+          Platform Notices
+          <span id="platform-notices-badge" style="margin-left:8px;background:#7B1FA2;color:#fff;border-radius:999px;padding:2px 9px;font-size:.75rem;display:none"></span>
+        </div>
+        <div id="platform-notices-list"></div>
+      </div>
       <div class="section-card">
         <div class="section-card-title">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
@@ -1690,7 +1699,43 @@ async function loadParentDashboard(){
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────
+async function loadPlatformNotices(){
+  if(!currentUser || currentUser.role !== "admin") return;
+  try {
+    const notices = await api("/platform_announcements");
+    const card  = document.getElementById("platform-notices-card");
+    const list  = document.getElementById("platform-notices-list");
+    const badge = document.getElementById("platform-notices-badge");
+    if(!notices || notices.length === 0){ card.style.display="none"; return; }
+    card.style.display = "";
+    const unread = notices.filter(n => !n.is_read).length;
+    if(unread > 0){
+      badge.textContent = unread + " new";
+      badge.style.display = "";
+    } else {
+      badge.style.display = "none";
+    }
+    list.innerHTML = notices.map(n => `
+      <div style="padding:12px 0;border-bottom:1px solid #EDE7F6;${n.is_read?'opacity:.7':''}" id="pn-${n.id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:600;font-size:.93rem;color:#4A148C">${n.title}
+            ${!n.is_read ? '<span style="background:#7B1FA2;color:#fff;border-radius:4px;padding:1px 7px;font-size:.7rem;margin-left:6px">NEW</span>' : ''}
+          </div>
+          <div style="font-size:.76rem;color:#9E9E9E">${n.posted_at ? n.posted_at.slice(0,16) : ''}</div>
+        </div>
+        <div style="margin-top:6px;font-size:.87rem;color:#37474F;white-space:pre-wrap">${n.body}</div>
+        ${!n.is_read ? `<button onclick="markPlatformNoticeRead(${n.id})" style="margin-top:8px;background:none;border:1px solid #7B1FA2;color:#7B1FA2;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer">Mark as read</button>` : ''}
+      </div>`).join("");
+  } catch(e){ /* silently fail */ }
+}
+
+async function markPlatformNoticeRead(aid){
+  await api("/platform_announcements/"+aid+"/read","POST",{});
+  await loadPlatformNotices();
+}
+
 async function loadDashboard(){
+  loadPlatformNotices();
   const studs = await api("/students");
   const stats = document.getElementById("dash-stats");
   const byClass = {};

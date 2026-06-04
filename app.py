@@ -188,6 +188,33 @@ def init_db():
         published INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(term_id)
     );
+
+    CREATE TABLE IF NOT EXISTS superadmins (
+        username  TEXT PRIMARY KEY,
+        password  TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_announcements (
+        id          SERIAL PRIMARY KEY,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        target      TEXT NOT NULL DEFAULT 'all',
+        posted_at   TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_announcement_reads (
+        announcement_id INTEGER NOT NULL REFERENCES platform_announcements(id) ON DELETE CASCADE,
+        school_id       INTEGER NOT NULL,
+        read_at         TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(announcement_id, school_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS schools (
+        id           SERIAL PRIMARY KEY,
+        school_name  TEXT NOT NULL,
+        registered_at TIMESTAMP DEFAULT NOW(),
+        school_id    INTEGER UNIQUE
+    );
     """)
     # ── Migrations ──
     migrations = [
@@ -210,6 +237,17 @@ def init_db():
     for m in migrations:
         try: cur.execute(m)
         except Exception as e: print(f"Migration note: {e}")
+    # Superadmin setup from env
+    sa_user = os.environ.get("SUPERADMIN_USERNAME","")
+    sa_pass = os.environ.get("SUPERADMIN_PASSWORD","")
+    if sa_user and sa_pass:
+        try:
+            cur.execute("SELECT username FROM superadmins WHERE username=%s", (sa_user,))
+            if not cur.fetchone():
+                cur.execute("INSERT INTO superadmins(username,password) VALUES(%s,%s)",
+                            (sa_user, hash_password(sa_pass)))
+                print(f"✓ Superadmin '{sa_user}' created from env.")
+        except Exception as e: print(f"Superadmin env setup note: {e}")
     con.commit(); cur.close(); con.close()
     print("✓ Database ready.")
 
@@ -1789,6 +1827,171 @@ def api_reset_db():
     con.commit(); cur.close(); con.close()
     init_db()
     return jsonify({"ok":True,"message":"Database reset."})
+
+# ══════════════════════════════════════════════════════════════
+# ── SUPERADMIN ROUTES ─────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+
+# ── SUPERADMIN SESSION HELPERS ────────────────────────────────
+_SA_SESSIONS = {}   # token -> username (in-memory, per-process)
+
+def _sa_session_token():
+    """Extract superadmin bearer token from Authorization header."""
+    auth = request.headers.get("Authorization","")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return None
+
+def _require_superadmin():
+    """Returns (username, None) or (None, error_response)."""
+    token = _sa_session_token()
+    if not token or token not in _SA_SESSIONS:
+        return None, (jsonify({"ok":False,"error":"Superadmin authentication required"}), 401)
+    return _SA_SESSIONS[token], None
+
+# ── SUPERADMIN LOGIN ──────────────────────────────────────────
+@app.route("/api/superadmin/login", methods=["POST"])
+def api_superadmin_login():
+    d = request.json
+    u = d.get("username","").strip()
+    p = d.get("password","")
+    if not u or not p:
+        return jsonify({"ok":False,"error":"Username and password required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT password FROM superadmins WHERE username=%s", (u,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row or not verify_password(p, row[0]):
+        return jsonify({"ok":False,"error":"Invalid superadmin credentials"}), 401
+    token = secrets.token_hex(32)
+    _SA_SESSIONS[token] = u
+    return jsonify({"ok":True,"token":token,"username":u})
+
+@app.route("/api/superadmin/logout", methods=["POST"])
+def api_superadmin_logout():
+    token = _sa_session_token()
+    if token and token in _SA_SESSIONS:
+        del _SA_SESSIONS[token]
+    return jsonify({"ok":True})
+
+# ── SUPERADMIN SCHOOLS OVERVIEW ───────────────────────────────
+@app.route("/api/superadmin/schools", methods=["GET"])
+def api_superadmin_schools():
+    sa, err = _require_superadmin()
+    if err: return err
+    con = get_db(); cur = con.cursor()
+    # school_name from school_config, student count, teacher count, active term
+    cur.execute("""
+        SELECT
+            (SELECT value FROM school_config WHERE key='school_name') AS school_name,
+            (SELECT COUNT(*) FROM students)  AS student_count,
+            (SELECT COUNT(*) FROM users WHERE role='teacher') AS teacher_count,
+            (SELECT label FROM terms WHERE status='open' ORDER BY id DESC LIMIT 1) AS active_term,
+            (SELECT registered_at FROM schools WHERE school_id=1) AS registered_at
+    """)
+    row = cur.fetchone()
+    cur.close(); con.close()
+    school = {
+        "id": 1,
+        "school_name":   row[0] or "School Name",
+        "student_count": row[1] or 0,
+        "teacher_count": row[2] or 0,
+        "active_term":   row[3] or "—",
+        "registered_at": str(row[4]) if row[4] else "—",
+        "payment_status":"pending",  # placeholder until payment integration
+    }
+    return jsonify({"ok":True,"schools":[school]})
+
+# ── SUPERADMIN PLATFORM ANNOUNCEMENTS ────────────────────────
+@app.route("/api/superadmin/announce", methods=["POST"])
+def api_superadmin_announce():
+    sa, err = _require_superadmin()
+    if err: return err
+    d      = request.json
+    title  = d.get("title","").strip()
+    body   = d.get("body","").strip()
+    target = d.get("target","all").strip()   # "all" or comma-sep school ids
+    if not title or not body:
+        return jsonify({"ok":False,"error":"Title and body required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO platform_announcements(title,body,target) VALUES(%s,%s,%s) RETURNING id",
+                (title, body, target))
+    new_id = cur.fetchone()[0]
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"id":new_id})
+
+@app.route("/api/superadmin/announce", methods=["GET"])
+def api_superadmin_announce_list():
+    sa, err = _require_superadmin()
+    if err: return err
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id,title,body,target,posted_at::text FROM platform_announcements ORDER BY posted_at DESC")
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return jsonify({"ok":True,"announcements":rows})
+
+@app.route("/api/superadmin/announce/<int:aid>", methods=["DELETE"])
+def api_superadmin_announce_delete(aid):
+    sa, err = _require_superadmin()
+    if err: return err
+    con = get_db(); cur = con.cursor()
+    cur.execute("DELETE FROM platform_announcements WHERE id=%s", (aid,))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── SCHOOL-SIDE: get platform announcements ───────────────────
+# School admins see these on their dashboard with "Platform Notice" badge
+@app.route("/api/platform_announcements", methods=["GET"])
+def api_platform_announcements():
+    """Called by school admin dashboard to show superadmin notices. Read-only."""
+    school_id = 1  # single-school for now; multi-tenant: extract from session
+    con = get_db(); cur = con.cursor()
+    cur.execute("""
+        SELECT pa.id, pa.title, pa.body, pa.posted_at::text,
+               CASE WHEN par.school_id IS NOT NULL THEN 1 ELSE 0 END AS is_read
+        FROM platform_announcements pa
+        LEFT JOIN platform_announcement_reads par
+               ON par.announcement_id=pa.id AND par.school_id=%s
+        WHERE pa.target='all' OR pa.target LIKE %s
+        ORDER BY pa.posted_at DESC
+    """, (school_id, f"%{school_id}%"))
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return jsonify(rows)
+
+@app.route("/api/platform_announcements/<int:aid>/read", methods=["POST"])
+def api_platform_announcement_read(aid):
+    school_id = 1
+    con = get_db(); cur = con.cursor()
+    cur.execute("""INSERT INTO platform_announcement_reads(announcement_id,school_id)
+                   VALUES(%s,%s) ON CONFLICT DO NOTHING""", (aid, school_id))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── SUPERADMIN SETUP (via secret) ────────────────────────────
+@app.route("/api/superadmin/setup", methods=["POST"])
+def api_superadmin_setup():
+    """One-time creation of superadmin account via SUPERADMIN_SETUP_SECRET."""
+    d        = request.json
+    secret   = d.get("secret","")
+    username = d.get("username","").strip()
+    password = d.get("password","")
+    env_secret = os.environ.get("SUPERADMIN_SETUP_SECRET","")
+    if not env_secret or secret != env_secret:
+        return jsonify({"ok":False,"error":"Invalid setup secret"}), 403
+    if not username or not password:
+        return jsonify({"ok":False,"error":"Username and password required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT username FROM superadmins LIMIT 1")
+    if cur.fetchone():
+        cur.close(); con.close()
+        return jsonify({"ok":False,"error":"Superadmin already exists"}), 409
+    cur.execute("INSERT INTO superadmins(username,password) VALUES(%s,%s)",
+                (username, hash_password(password)))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+# ── SUPERADMIN PAGE ───────────────────────────────────────────
+@app.route("/superadmin")
+def superadmin_page():
+    return send_from_directory(BASE_DIR, "superadmin.html")
 
 # ── SERVE FRONTEND ────────────────────────────────────────────
 @app.route("/")
