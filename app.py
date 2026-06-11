@@ -1993,6 +1993,19 @@ def api_superadmin_setup():
 def superadmin_page():
     return send_from_directory(BASE_DIR, "superadmin.html")
 
+# ── STATIC JS/CSS FILES ───────────────────────────────────────
+_STATIC_JS_CSS = [
+    "shared.css", "shared.js",
+    "page-dashboard.js", "page-students.js",
+    "page-teachers.js",  "page-reports.js",
+    "page-parent.js",    "page-config.js",
+]
+@app.route("/<path:filename>")
+def serve_static(filename):
+    if filename in _STATIC_JS_CSS:
+        return send_from_directory(BASE_DIR, filename)
+    return ("Not found", 404)
+
 # ── SERVE FRONTEND ────────────────────────────────────────────
 @app.route("/")
 def index(): return send_from_directory(BASE_DIR,"index.html")
