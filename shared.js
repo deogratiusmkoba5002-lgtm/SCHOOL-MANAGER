@@ -63,8 +63,12 @@ function toast(msg, type="info"){
 }
 function closeModal(id){document.getElementById(id).style.display="none"}
 function openModal(id){document.getElementById(id).style.display="flex"}
+let _schoolId = null;
+
 async function api(path, method="GET", body=null){
-  const opts = {method, headers:{"Content-Type":"application/json"}};
+  const headers = {"Content-Type":"application/json"};
+  if(_schoolId) headers["X-School-ID"] = String(_schoolId);
+  const opts = {method, headers};
   if(body) opts.body = JSON.stringify(body);
   const r = await fetch(API+path, opts);
   return r.json();
@@ -114,7 +118,8 @@ document.getElementById("login-pass").addEventListener("keydown", e=>e.key==="En
 
 (async function preloadSchoolBranding(){
   try{
-    const res = await fetch("/api/school/info");
+    const urlSid = new URLSearchParams(window.location.search).get("school_id") || "";
+    const res = await fetch("/api/school/info" + (urlSid ? "?school_id="+urlSid : "?school_id=1"));
     if(!res.ok) return;
     const info = await res.json();
     if(info.school_name){
@@ -157,6 +162,7 @@ async function doLogin(){
         window.location.href="/register"; return;
       }
       currentUser = res.user;
+      _schoolId = res.user.school_id;
       await loadConfig();
       bootApp();
     } else {
@@ -334,6 +340,7 @@ function _showPage(id){
 // ── LOGOUT ───────────────────────────────────────────────────
 document.getElementById("logout-btn").addEventListener("click",()=>{
   currentUser = null;
+  _schoolId   = null;
   analyticsData = null;
   parentPublishedTerms = [];
   analyticsTab = "avg";
@@ -400,7 +407,7 @@ document.getElementById("cp-save-btn").addEventListener("click", async()=>{
   if(newPw === oldPw){ errEl.textContent="New password must be different from current."; errEl.style.display="block"; return; }
   const btn = document.getElementById("cp-save-btn");
   btn.textContent="Saving..."; btn.disabled=true;
-  const r = await api("/change_password","POST",{username:currentUser.username,old_password:oldPw,new_password:newPw});
+  const r = await api("/change_password","POST",{username:currentUser.username,school_id:currentUser.school_id,old_password:oldPw,new_password:newPw});
   btn.textContent="Set Password & Continue"; btn.disabled=false;
   if(r.ok){ currentUser.must_change_password = false; closeModal("modal-change-password"); toast("Password updated successfully!","success"); }
   else { errEl.textContent = r.error || "Failed. Try again."; errEl.style.display="block"; }
