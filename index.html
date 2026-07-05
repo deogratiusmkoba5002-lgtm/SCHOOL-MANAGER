@@ -354,6 +354,10 @@
             <h2 class="page-title">Students</h2>
             <p class="page-sub">Manage all enrolled students</p>
           </div>
+          <button class="btn btn-outline" onclick="openImportModal()" style="border-color:var(--green);color:var(--green)">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Import Excel
+          </button>
           <button class="btn btn-blue" id="btn-add-student">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
             Add Student
@@ -957,5 +961,68 @@
 <script src="/page-reports.js"></script>
 <script src="/page-parent.js"></script>
 <script src="/page-config.js"></script>
+
+<!-- ══ IMPORT STUDENTS MODAL ══ -->
+<div class="modal-backdrop" id="modal-import-students" style="display:none" onclick="if(event.target===this)closeModal('modal-import-students')">
+  <div class="modal" style="width:min(640px,95vw)">
+    <div class="modal-title">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style="color:var(--green)"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      Import Students from Excel / CSV
+    </div>
+
+    <!-- Step 1: Upload -->
+    <div id="import-step-upload">
+      <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 1 — Download the template</div>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Fill it with your students' data. Don't change the column headers.</p>
+        <button class="btn btn-outline" id="import-template-btn" onclick="downloadTemplate()">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          📥 Download Template
+        </button>
+      </div>
+      <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 2 — Upload your filled file</div>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Accepts <strong>.xlsx</strong> or <strong>.csv</strong> files.</p>
+        <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv"
+               style="width:100%;padding:10px;border:2px dashed var(--border);border-radius:8px;font-size:.88rem;background:white"/>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
+        <button class="btn btn-outline" onclick="closeModal('modal-import-students')">Cancel</button>
+        <button class="btn btn-blue" id="import-preview-btn" onclick="previewImport()">
+          Preview File →
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Preview -->
+    <div id="import-step-preview" style="display:none">
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px" id="import-total-label"></div>
+      <div style="overflow-x:auto;margin-bottom:14px">
+        <table style="width:100%;font-size:.8rem;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--pale)">
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">#</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Name</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Class</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Stream</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Phone</th>
+              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Status</th>
+            </tr>
+          </thead>
+          <tbody id="import-preview-body"></tbody>
+        </table>
+      </div>
+      <div id="import-status" style="display:none;margin-bottom:14px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button class="btn btn-outline" onclick="document.getElementById('import-step-upload').style.display='block';document.getElementById('import-step-preview').style.display='none'">← Back</button>
+        <button class="btn btn-blue" id="import-confirm-btn" onclick="confirmImport()">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          Confirm Import
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
