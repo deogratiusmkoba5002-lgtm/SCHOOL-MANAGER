@@ -149,3 +149,99 @@ async function deleteStream(id, name){
   if(r.ok){toast("Stream deleted","success"); loadClasses();}
   else toast(r.error||"Failed","error");
 }
+
+// ── STUDENT IMPORT ────────────────────────────────────────────
+function openImportModal(){
+  document.getElementById("import-step-upload").style.display="block";
+  document.getElementById("import-step-preview").style.display="none";
+  document.getElementById("import-file-input").value="";
+  document.getElementById("import-preview-body").innerHTML="";
+  document.getElementById("import-status").innerHTML="";
+  document.getElementById("import-status").style.display="none";
+  openModal("modal-import-students");
+}
+
+async function downloadTemplate(){
+  const btn = document.getElementById("import-template-btn");
+  btn.textContent="Downloading..."; btn.disabled=true;
+  try {
+    const res = await fetch("/api/students/import/template", {
+      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+    });
+    const blob = await res.blob();
+    const cd = res.headers.get("content-disposition")||"";
+    const ext = cd.includes(".csv") ? "csv" : "xlsx";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url;
+    a.download=`student_import_template.${ext}`; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e){ toast("Download failed","error"); }
+  btn.textContent="📥 Download Template"; btn.disabled=false;
+}
+
+async function previewImport(){
+  const fileInput = document.getElementById("import-file-input");
+  if(!fileInput.files.length){ toast("Select a file first","error"); return; }
+  const btn = document.getElementById("import-preview-btn");
+  btn.textContent="Reading..."; btn.disabled=true;
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  try {
+    const res = await fetch("/api/students/import/preview", {
+      method:"POST", body:formData,
+      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+    });
+    const data = await res.json();
+    if(!data.ok){ toast(data.error,"error"); return; }
+    document.getElementById("import-step-upload").style.display="none";
+    document.getElementById("import-step-preview").style.display="block";
+    const tbody = document.getElementById("import-preview-body");
+    tbody.innerHTML = data.preview.map(r => `
+      <tr style="${r.errors.length?"background:#FFF3F3":""}">
+        <td style="color:var(--muted);font-size:.78rem">${r.row}</td>
+        <td style="font-weight:600">${r.name||"<span style=color:var(--red)>—</span>"}</td>
+        <td>${r.class_name||"—"}</td>
+        <td>${r.stream_name||"—"}</td>
+        <td style="font-size:.82rem">${r.parent_phone||"—"}</td>
+        <td>${r.errors.length
+          ? "<span style=color:var(--red);font-size:.78rem>⚠ "+r.errors.join(", ")+"</span>"
+          : "<span style=color:var(--green)>✓</span>"}</td>
+      </tr>`).join("");
+    const warn = data.preview.filter(r=>r.errors.length).length;
+    document.getElementById("import-total-label").textContent =
+      data.total_rows+" total rows — showing first 10. "+(warn ? warn+" have issues." : "All looking good!");
+  } catch(e){ toast("Preview failed: "+e,"error"); }
+  btn.textContent="Preview File"; btn.disabled=false;
+}
+
+async function confirmImport(){
+  const fileInput = document.getElementById("import-file-input");
+  if(!fileInput.files.length){ toast("No file selected","error"); return; }
+  const btn = document.getElementById("import-confirm-btn");
+  btn.textContent="Importing..."; btn.disabled=true;
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  try {
+    const res = await fetch("/api/students/import", {
+      method:"POST", body:formData,
+      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+    });
+    const data = await res.json();
+    if(!data.ok){ toast(data.error,"error"); btn.textContent="Confirm Import"; btn.disabled=false; return; }
+    const statusEl = document.getElementById("import-status");
+    statusEl.style.display="block";
+    statusEl.innerHTML = "<div style=background:#E8F5E9;border-radius:10px;padding:16px;margin-bottom:12px>"
+      +"<div style=font-weight:700;font-size:1rem;color:#2E7D32;margin-bottom:8px>Import Complete</div>"
+      +"<div style=display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center>"
+      +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--green)>"+data.inserted+"</div><div style=font-size:.75rem;color:var(--muted)>Inserted</div></div>"
+      +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--orange)>"+data.skipped+"</div><div style=font-size:.75rem;color:var(--muted)>Skipped</div></div>"
+      +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--red)>"+data.errors+"</div><div style=font-size:.75rem;color:var(--muted)>Errors</div></div>"
+      +"</div></div>"
+      +(data.skipped_details.length ? "<div style=font-size:.82rem;color:var(--orange);font-weight:600;margin-bottom:6px>Skipped rows:</div>"
+        +data.skipped_details.map(s=>"<div style=font-size:.78rem;color:#666;padding:3px 0;border-bottom:1px solid var(--pale)>Row "+s.row+": "+s.reason+" — "+s.data+"</div>").join("")
+      : "");
+    toast(data.inserted+" students imported!","success");
+    loadStudents();
+  } catch(e){ toast("Import failed","error"); }
+  btn.textContent="Confirm Import"; btn.disabled=false;
+}
