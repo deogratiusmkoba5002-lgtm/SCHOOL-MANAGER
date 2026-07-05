@@ -1790,6 +1790,12 @@ def api_import_preview():
     f = request.files["file"]
     try:
         rows = _parse_import_file(f.stream, f.filename)
+
+        rows = [
+    r for r in rows
+    if any(str(v).strip() for v in r.values() if v is not None)
+]
+        
     except ValueError as e:
         return jsonify({"ok":False,"error":str(e)}), 400
     if not rows:
