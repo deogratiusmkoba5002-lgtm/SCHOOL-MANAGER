@@ -1639,6 +1639,14 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
 
+def hash_password_fast(pw):
+    """Fast hash for temporary/bulk import passwords.
+    These are throwaway — users must change on first login anyway.
+    260,000 iterations x 4000 students = death. 100 iterations = fine."""
+    salt = secrets.token_hex(16)
+    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 100)
+    return f"{salt}:{dk.hex()}"
+
 def _parse_import_file(file_obj, filename):
     """Parse uploaded Excel or CSV. Returns list of raw row dicts."""
     ext = filename.rsplit(".",1)[-1].lower() if "." in filename else ""
@@ -1900,9 +1908,12 @@ def api_import_students():
             final_user=username_base; counter=2
             while final_user in existing: final_user=f"{username_base}_{counter}"; counter+=1
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
-                        (final_user,hash_password(temp_pw),school_id,student_id))
+                        (final_user,hash_password_fast(temp_pw),school_id,student_id))
             cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
+            # Commit every 200 students to avoid giant transactions
+            if inserted % 200 == 0:
+                con.commit()
         except Exception as e:
             cur.execute("ROLLBACK TO SAVEPOINT sp_student")
             errors.append({"row":row_num,"error":str(e),"data":name})
