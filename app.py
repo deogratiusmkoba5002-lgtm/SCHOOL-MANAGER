@@ -14,6 +14,8 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 DATABASE_URL  = os.environ.get("DATABASE_URL", "")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "storage", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+IMPORT_EXPORT_FOLDER = os.path.join(BASE_DIR, "storage", "import_exports")
+os.makedirs(IMPORT_EXPORT_FOLDER, exist_ok=True)
 ALLOWED_LOGO_EXT = {"png","jpg","jpeg","gif","webp","svg"}
 
 _FALLBACK_SUBJECTS = [
@@ -1872,6 +1874,52 @@ def api_import_preview():
     return jsonify({"ok":True,"total_rows":len(rows),"preview":preview,
                     "columns_detected":list(rows[0].keys()) if rows else []})
 
+def _write_credentials_xlsx(rows, path):
+    """Write a workbook of parent username/one-time-password pairs for a completed import."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Parent Login Credentials"
+
+    headers = ["Row", "Student Name", "Class", "Stream", "Parent Phone", "Username", "Temporary Password"]
+    ws.append(headers)
+    header_fill = PatternFill(start_color="1A6FA8", end_color="1A6FA8", fill_type="solid")
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = header_fill
+
+    for r in rows:
+        ws.append([
+            r["row"], r["name"], r["class_name"], r["stream_name"] or "-",
+            r["parent_phone"], r["username"], r["password"],
+        ])
+
+    widths = [6, 26, 14, 12, 16, 22, 20]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    note_row = ws.max_row + 2
+    ws.cell(row=note_row, column=1,
+            value="Note: this is a one-time password. Parents must change it after first login.").font = \
+        Font(italic=True, color="888888")
+
+    wb.save(path)
+
+
+@app.route("/api/students/import/credentials/<path:filename>")
+def download_import_credentials(filename):
+    """Serve a previously generated parent-credentials workbook for download."""
+    filename = secure_filename(filename)
+    path = os.path.join(IMPORT_EXPORT_FOLDER, filename)
+    if not os.path.isfile(path):
+        return jsonify({"ok": False, "error": "File not found or expired"}), 404
+    return send_file(path, as_attachment=True,
+                      download_name="parent_login_credentials.xlsx",
+                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @app.route("/api/students/import", methods=["POST"])
 def api_import_students():
     """Full import: parse, validate, bulk insert."""
@@ -1890,7 +1938,7 @@ def api_import_students():
     if not rows:
         return jsonify({"ok":False,"error":"File is empty"}), 400
     cmap     = _build_class_map(school_id)
-    inserted = 0; skipped = []; errors = []
+    inserted = 0; skipped = []; errors = []; credentials = []
     con = get_db(); cur = con.cursor()
     for i, row in enumerate(rows):
         row_num      = i + 2
@@ -1938,6 +1986,8 @@ def api_import_students():
                         (final_user,hash_password_fast(temp_pw),school_id,student_id))
             cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
+            credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
+                                "parent_phone":parent_phone.strip(),"username":final_user,"password":temp_pw})
             # Commit every 200 students to avoid giant transactions
             if inserted % 200 == 0:
                 con.commit()
@@ -1945,8 +1995,16 @@ def api_import_students():
             cur.execute("ROLLBACK TO SAVEPOINT sp_student")
             errors.append({"row":row_num,"error":str(e),"data":name})
     con.commit(); cur.close(); con.close()
+
+    credentials_file = None
+    if credentials:
+        fname = f"import_creds_{school_id}_{secrets.token_hex(8)}.xlsx"
+        _write_credentials_xlsx(credentials, os.path.join(IMPORT_EXPORT_FOLDER, fname))
+        credentials_file = f"/api/students/import/credentials/{fname}"
+
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),
-                    "skipped_details":skipped[:20],"error_details":errors[:20]})
+                    "skipped_details":skipped[:20],"error_details":errors[:20],
+                    "credentials_file":credentials_file,"credentials_count":len(credentials)})
 
 
 with app.app_context():
