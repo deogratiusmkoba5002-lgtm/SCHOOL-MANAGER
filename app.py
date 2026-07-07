@@ -1856,10 +1856,21 @@ def api_import_students():
     if "file" not in request.files:
         return jsonify({"ok":False,"error":"No file uploaded"}), 400
     f = request.files["file"]
-    try:
-        rows = _parse_import_file(f.stream, f.filename)
-    except ValueError as e:
-        return jsonify({"ok":False,"error":str(e)}), 400
+    #try:
+        #rows = _parse_import_file(f.stream, f.filename)
+    #except ValueError as e:
+     #   return jsonify({"ok":False,"error":str(e)}), 400
+    
+    import tracebacks
+        try:
+            rows = _parse_import_file(f.steam, f.filename)
+        exceptValueError as e:
+            return jsonify({"ok":False, "error":str (e)}) , 400
+        except Expectetion as e:
+            return jsonify({"ok": False, "error": "parse failed: "+str(e)+" | "traceback.format_exc()"}),500
+
+    
+
     if not rows:
         return jsonify({"ok":False,"error":"File is empty"}), 400
     cmap     = _build_class_map(school_id)

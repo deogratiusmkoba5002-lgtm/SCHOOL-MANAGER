@@ -59,7 +59,7 @@ input,select,textarea{font-family:inherit;outline:none}
 .field input,.field select{width:100%;padding:12px 16px;border:1.5px solid var(--border);border-radius:10px;font-size:.95rem;transition:border .2s,box-shadow .2s;background:var(--bg);}
 .field input:focus,.field select:focus{border-color:var(--mid);box-shadow:0 0 0 3px rgba(25,118,210,.12)}
 .btn-primary{width:100%;padding:13px;background:linear-gradient(135deg,var(--blue),var(--mid));color:white;border-radius:10px;font-size:.95rem;font-weight:600;letter-spacing:.02em;transition:transform .15s,box-shadow .15s;box-shadow:0 4px 18px rgba(21,101,192,.35);}
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(21,101,192,.45)}
+.btn-primary:hover{transform:translateY(-1px);background: linear-gradient(to right, var(--blue), rgb(77, 193, 225) );box-shadow:0 6px 24px rgba(21,101,192,.45)}
 .login-error{background:#FFEBEE;color:#C62828;border-radius:8px;padding:10px 14px;font-size:.85rem;margin-bottom:16px;border-left:3px solid var(--red);display:none;}
 
 #app{display:none;flex-direction:row;min-height:100vh}
