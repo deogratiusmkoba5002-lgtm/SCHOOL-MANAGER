@@ -1856,20 +1856,13 @@ def api_import_students():
     if "file" not in request.files:
         return jsonify({"ok":False,"error":"No file uploaded"}), 400
     f = request.files["file"]
-    #try:
-        #rows = _parse_import_file(f.stream, f.filename)
-    #except ValueError as e:
-     #   return jsonify({"ok":False,"error":str(e)}), 400
-    
-    import tracebacks
-        try:
-            rows = _parse_import_file(f.steam, f.filename)
-        exceptValueError as e:
-            return jsonify({"ok":False, "error":str (e)}) , 400
-        except Expectetion as e:
-            return jsonify({"ok": False, "error": "parse failed: "+str(e)+" | "traceback.format_exc()"}),500
-
-    
+    import traceback
+    try:
+        rows = _parse_import_file(f.stream, f.filename)
+    except ValueError as e:
+        return jsonify({"ok":False,"error":str(e)}),400
+    except Exception as e:
+        return jsonify({"ok":False,"error":"Parse failed: "+str(e)+" | "+traceback.format_exc()}), 500
 
     if not rows:
         return jsonify({"ok":False,"error":"File is empty"}), 400
@@ -1931,7 +1924,6 @@ def api_import_students():
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),
                     "skipped_details":skipped[:20],"error_details":errors[:20]})
-
 
 
 with app.app_context():
