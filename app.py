@@ -452,6 +452,29 @@ def init_db():
                 print(f"Superadmin '{sa_user}' created.")
         except Exception as e: print(f"Superadmin note: {e}")
 
+    # Migration safety net: older deployments may have a `users` table created
+    # before PRIMARY KEY(username, school_id) was added. Several routes rely on
+    # ON CONFLICT(username, school_id), which requires a real unique constraint
+    # on exactly that pair — without it, every such insert fails with
+    # "no unique or exclusion constraint matching the ON CONFLICT specification".
+    try:
+        cur.execute("""
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'users'::regclass
+              AND contype IN ('p','u')
+              AND conkey = (
+                  SELECT array_agg(attnum ORDER BY attnum)
+                  FROM pg_attribute
+                  WHERE attrelid = 'users'::regclass
+                    AND attname IN ('username','school_id')
+              )
+        """)
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE users ADD CONSTRAINT users_username_school_id_key UNIQUE (username, school_id)")
+            print("Migration: added missing UNIQUE(username, school_id) constraint on users.")
+    except Exception as e:
+        print(f"Users unique-constraint check note: {e}")
+
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 
