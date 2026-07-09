@@ -1631,6 +1631,7 @@ def serve_static(filename):
 
 
 # ── STUDENT IMPORT (Excel/CSV) ─────────────────────────────────
+
 import csv, io
 try:
     import openpyxl
@@ -1654,7 +1655,10 @@ def _parse_import_file(file_obj, filename):
             if headers is None:
                 headers = [str(h).strip().lower() if h else "" for h in row]
                 continue
-            row_dict = dict(zip(headers, [str(v).strip() if v is not None else "" for v in row]))
+            values = [str(v).strip() if v is not None else "" for v in row]
+            row_dict = dict(zip(headers, values))
+            # Skip completely empty rows
+            if all(v == "" for v in values): continue
             rows.append(row_dict)
         wb.close()
     elif ext == "csv":
@@ -1667,10 +1671,38 @@ def _parse_import_file(file_obj, filename):
     return rows
 
 def _normalize_col(row, *candidates):
-    """Try multiple possible column name spellings."""
+    """Try multiple possible column name spellings — strip, lowercase, ignore spaces/underscores."""
+    def clean(s): return s.strip().lower().replace(" ","").replace("_","").replace("-","")
+    cleaned_row = {clean(k): v for k,v in row.items()}
     for c in candidates:
-        if c in row and row[c]: return row[c].strip()
+        key = clean(c)
+        if key in cleaned_row and cleaned_row[key]:
+            return str(cleaned_row[key]).strip()
     return ""
+
+def _col_by_position(row, index):
+    """Fallback: grab column by position index regardless of header name."""
+    vals = list(row.values())
+    if index < len(vals) and vals[index]:
+        return str(vals[index]).strip()
+    return ""
+
+def _extract_fields(row):
+    """
+    Try named columns first. If name or class is still missing,
+    fall back to positional: col0=name, col1=class, col2=stream, col3=phone.
+    No conditions on format, length, or capitalization.
+    """
+    name         = _normalize_col(row,"name","student name","full name","jina","student","students","jina la mwanafunzi","mwanafunzi")
+    class_name   = _normalize_col(row,"class_name","class","darasa","form","grade","class name","level","form name")
+    stream_name  = _normalize_col(row,"stream_name","stream","mkondo","section","division","stream name","class stream")
+    parent_phone = _normalize_col(row,"parent_phone","phone","parent phone","phone number","simu","contact","guardian phone","nambari","tel","telephone","mobile","simu ya mzazi","mzazi")
+    # If name or class still missing — go positional, user probably has no headers or weird headers
+    if not name:        name         = _col_by_position(row, 0)
+    if not class_name:  class_name   = _col_by_position(row, 1)
+    if not stream_name: stream_name  = _col_by_position(row, 2)
+    if not parent_phone:parent_phone = _col_by_position(row, 3)
+    return name, class_name, stream_name, parent_phone
 
 def _build_class_map(school_id):
     """Return {class_name_lower: {stream_name_lower: (class_id, stream_id)}}"""
@@ -1790,13 +1822,6 @@ def api_import_preview():
     f = request.files["file"]
     try:
         rows = _parse_import_file(f.stream, f.filename)
-<<<<<<< HEAD
-        rows = [
-    r for r in rows
-    if any(str(v).strip() for v in r.values() if v is not None)
-]
-=======
->>>>>>> f39270a980c4438c85bb7502751d4e8f714d5df2
     except ValueError as e:
         return jsonify({"ok":False,"error":str(e)}), 400
     if not rows:
@@ -1804,10 +1829,7 @@ def api_import_preview():
     cmap = _build_class_map(school_id)
     preview = []; warnings = []
     for i, row in enumerate(rows[:10]):
-        name         = _normalize_col(row,"name","student name","full name","jina","student")
-        class_name   = _normalize_col(row,"class_name","class","darasa","form","grade")
-        stream_name  = _normalize_col(row,"stream_name","stream","mkondo","section","division")
-        parent_phone = _normalize_col(row,"parent_phone","phone","parent phone","phone number","simu","contact","guardian phone")
+        name, class_name, stream_name, parent_phone = _extract_fields(row)
         errs = []
         if not name:        errs.append("Missing name")
         if not class_name:  errs.append("Missing class")
@@ -1837,10 +1859,7 @@ def api_import_students():
     con = get_db(); cur = con.cursor()
     for i, row in enumerate(rows):
         row_num      = i + 2
-        name         = _normalize_col(row,"name","student name","full name","jina","student")
-        class_name   = _normalize_col(row,"class_name","class","darasa","form","grade")
-        stream_name  = _normalize_col(row,"stream_name","stream","mkondo","section","division")
-        parent_phone = _normalize_col(row,"parent_phone","phone","parent phone","phone number","simu","contact","guardian phone")
+        name, class_name, stream_name, parent_phone = _extract_fields(row)
         if not name or not class_name or not parent_phone:
             skipped.append({"row":row_num,"reason":"Missing required field","data":str(row)})
             continue
@@ -1887,6 +1906,7 @@ def api_import_students():
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),
                     "skipped_details":skipped[:20],"error_details":errors[:20]})
+
 
 
 with app.app_context():
