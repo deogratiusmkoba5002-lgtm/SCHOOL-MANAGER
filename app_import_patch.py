@@ -21,6 +21,14 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
 
+def hash_password_fast(pw):
+    """Fast hash for temporary/bulk import passwords.
+    These are throwaway — users must change on first login anyway.
+    260,000 iterations x 4000 students = death. 100 iterations = fine."""
+    salt = secrets.token_hex(16)
+    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 100)
+    return f"{salt}:{dk.hex()}"
+
 def _parse_import_file(file_obj, filename):
     """Parse uploaded Excel or CSV. Returns list of raw row dicts."""
     ext = filename.rsplit(".",1)[-1].lower() if "." in filename else ""
@@ -243,11 +251,11 @@ def api_import_students():
         row_num      = i + 2
         name, class_name, stream_name, parent_phone = _extract_fields(row)
         if not name or not class_name or not parent_phone:
-            skipped.append({"row":row_num,"reason":"Missing required field","data":str(row)})
+            skipped.append({"row":row_num,"reason":f"Missing: {'name' if not name else ''} {'class' if not class_name else ''} {'phone' if not parent_phone else ''}".strip(),"data":str(list(row.values())[:4])})
             continue
         ckey = class_name.strip().lower()
         if ckey not in cmap:
-            skipped.append({"row":row_num,"reason":f"Class '{class_name}' not found. Check spelling.","data":name})
+            skipped.append({"row":row_num,"reason":f"Class '{class_name}' not found — check spelling matches exactly","data":name})
             continue
         class_id  = cmap[ckey]["_id"]
         stream_id = None
@@ -256,20 +264,21 @@ def api_import_students():
             if skey in cmap[ckey]["_streams"]:
                 class_id, stream_id = cmap[ckey]["_streams"][skey]
             else:
-                skipped.append({"row":row_num,"reason":f"Stream '{stream_name}' not found in class '{class_name}'","data":name})
+                skipped.append({"row":row_num,"reason":f"Stream '{stream_name}' not found in '{class_name}'","data":name})
                 continue
         try:
+            # Use savepoint so one failure doesn't abort the whole transaction
+            cur.execute("SAVEPOINT sp_student")
             cur.execute("INSERT INTO students(school_id,name,class_id,stream_id,phone_number) VALUES(%s,%s,%s,%s,%s) RETURNING id",
-                        (school_id, name, class_id, stream_id, parent_phone))
+                        (school_id, name, class_id, stream_id, parent_phone.strip()))
             student_id   = cur.fetchone()[0]
             username_base= name.strip().lower().replace(" ","_")
             last4        = parent_phone.strip()[-4:]
-            # Check for same phone (siblings)
             cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s AND id!=%s ORDER BY id",
-                        (school_id, parent_phone, student_id))
+                        (school_id, parent_phone.strip(), student_id))
             siblings = cur.fetchall()
             if siblings:
-                cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s ORDER BY id",(school_id,parent_phone))
+                cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s ORDER BY id",(school_id,parent_phone.strip()))
                 all_s=[r[0] for r in cur.fetchall()]
                 try: idx=all_s.index(student_id)+1
                 except ValueError: idx=len(all_s)+1
@@ -281,9 +290,14 @@ def api_import_students():
             final_user=username_base; counter=2
             while final_user in existing: final_user=f"{username_base}_{counter}"; counter+=1
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
-                        (final_user,hash_password(temp_pw),school_id,student_id))
+                        (final_user,hash_password_fast(temp_pw),school_id,student_id))
+            cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
+            # Commit every 200 students to avoid giant transactions
+            if inserted % 200 == 0:
+                con.commit()
         except Exception as e:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_student")
             errors.append({"row":row_num,"error":str(e),"data":name})
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),

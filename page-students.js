@@ -230,16 +230,24 @@ async function confirmImport(){
     if(!data.ok){ toast(data.error,"error"); btn.textContent="Confirm Import"; btn.disabled=false; return; }
     const statusEl = document.getElementById("import-status");
     statusEl.style.display="block";
-    statusEl.innerHTML = "<div style=background:#E8F5E9;border-radius:10px;padding:16px;margin-bottom:12px>"
-      +"<div style=font-weight:700;font-size:1rem;color:#2E7D32;margin-bottom:8px>Import Complete</div>"
+    const bgColor = data.inserted > 0 ? "#E8F5E9" : "#FFF3E0";
+    const titleColor = data.inserted > 0 ? "#2E7D32" : "#E65100";
+    const titleText = data.inserted > 0 ? "Import Complete" : "Import Finished — Check Issues Below";
+    statusEl.innerHTML = "<div style=background:"+bgColor+";border-radius:10px;padding:16px;margin-bottom:12px>"
+      +"<div style=font-weight:700;font-size:1rem;color:"+titleColor+";margin-bottom:8px>"+titleText+"</div>"
       +"<div style=display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--green)>"+data.inserted+"</div><div style=font-size:.75rem;color:var(--muted)>Inserted</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--orange)>"+data.skipped+"</div><div style=font-size:.75rem;color:var(--muted)>Skipped</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--red)>"+data.errors+"</div><div style=font-size:.75rem;color:var(--muted)>Errors</div></div>"
       +"</div></div>"
-      +(data.skipped_details.length ? "<div style=font-size:.82rem;color:var(--orange);font-weight:600;margin-bottom:6px>Skipped rows:</div>"
-        +data.skipped_details.map(s=>"<div style=font-size:.78rem;color:#666;padding:3px 0;border-bottom:1px solid var(--pale)>Row "+s.row+": "+s.reason+" — "+s.data+"</div>").join("")
-      : "");
+      +(data.skipped_details && data.skipped_details.length
+        ? "<div style=font-weight:600;font-size:.82rem;color:var(--orange);margin-bottom:4px>Skipped ("+data.skipped+"):</div>"
+          +data.skipped_details.map(s=>"<div style=font-size:.78rem;color:#555;padding:3px 0;border-bottom:1px solid var(--pale)>Row "+s.row+": "+s.reason+" — "+s.data+"</div>").join("")
+        : "")
+      +(data.error_details && data.error_details.length
+        ? "<div style=font-weight:600;font-size:.82rem;color:var(--red);margin:8px 0 4px>Errors (showing first 20 of "+data.errors+"):</div>"
+          +data.error_details.map(e=>"<div style=font-size:.78rem;color:#c00;padding:3px 0;border-bottom:1px solid #FEE>Row "+e.row+": "+e.error+" — "+e.data+"</div>").join("")
+        : "");
     toast(data.inserted+" students imported!","success");
     loadStudents();
   } catch(e){ toast("Import failed","error"); }
