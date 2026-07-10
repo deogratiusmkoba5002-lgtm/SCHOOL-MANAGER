@@ -131,13 +131,13 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;font-size:.85rem;font-weight:600;transition:all .15s;cursor:pointer;border:none;white-space:nowrap;}
 .btn svg{width:15px;height:15px;flex-shrink:0}
 .btn-blue{background:var(--blue);color:white;box-shadow:0 2px 10px rgba(21,101,192,.3)}
-.btn-blue:hover{background:var(--mid);transform:translateY(-1px)}
+.btn-blue:hover{background:var(--mid);transform:translateY(-1px);background: linear-gradient(to right, var(--blue), rgb(108, 215, 245) );box-shadow:0 6px 24px rgba(21,101,192,.45)}
 .btn-outline{background:transparent;color:var(--blue);border:1.5px solid var(--blue)}
 .btn-outline:hover{background:var(--pale)}
 .btn-red{background:var(--red);color:white}
-.btn-red:hover{background:#D32F2F}
+.btn-red:hover{background:#D32F2F;background: linear-gradient(to right, #D32F2F, rgb(199, 81, 81) );box-shadow:0 6px 24px rgba(21,101,192,.45)}
 .btn-green{background:var(--green);color:white}
-.btn-green:hover{background:#00A040}
+.btn-green:hover{background:#00A040;background: linear-gradient(to right, #00A040, rgb(110, 239, 188) );box-shadow:0 6px 24px rgba(21,101,192,.45)}
 .btn-sm{padding:6px 13px;font-size:.78rem}
 .btn-icon{padding:7px;border-radius:7px}
 

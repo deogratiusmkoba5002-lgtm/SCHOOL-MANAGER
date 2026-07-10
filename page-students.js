@@ -214,6 +214,18 @@ async function previewImport(){
   btn.textContent="Preview File"; btn.disabled=false;
 }
 
+async function downloadImportCredentials(url){
+  try {
+    const res = await fetch(url, { headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {} });
+    if(!res.ok){ toast("Download failed","error"); return; }
+    const blob = await res.blob();
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=dlUrl;
+    a.download="parent_login_credentials.xlsx"; a.click();
+    URL.revokeObjectURL(dlUrl);
+  } catch(e){ toast("Download failed","error"); }
+}
+
 async function confirmImport(){
   const fileInput = document.getElementById("import-file-input");
   if(!fileInput.files.length){ toast("No file selected","error"); return; }
@@ -239,7 +251,11 @@ async function confirmImport(){
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--green)>"+data.inserted+"</div><div style=font-size:.75rem;color:var(--muted)>Inserted</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--orange)>"+data.skipped+"</div><div style=font-size:.75rem;color:var(--muted)>Skipped</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--red)>"+data.errors+"</div><div style=font-size:.75rem;color:var(--muted)>Errors</div></div>"
-      +"</div></div>"
+      +"</div>"
+      +(data.credentials_file
+        ? "<button class=\"btn btn-sm btn-outline\" style=margin-top:12px;width:100% onclick=\"downloadImportCredentials('"+data.credentials_file+"')\">⬇ Download Login Credentials ("+data.credentials_count+")</button>"
+        : "")
+      +"</div>"
       +(data.skipped_details && data.skipped_details.length
         ? "<div style=font-weight:600;font-size:.82rem;color:var(--orange);margin-bottom:4px>Skipped ("+data.skipped+"):</div>"
           +data.skipped_details.map(s=>"<div style=font-size:.78rem;color:#555;padding:3px 0;border-bottom:1px solid var(--pale)>Row "+s.row+": "+s.reason+" — "+s.data+"</div>").join("")
