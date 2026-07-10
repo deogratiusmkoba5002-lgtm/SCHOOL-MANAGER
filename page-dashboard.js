@@ -30,7 +30,19 @@ async function markPlatformNoticeRead(aid){
   await loadPlatformNotices();
 }
 
+function renderDashSchoolHeader(){
+  const nameEl = document.getElementById("dash-school-name");
+  if(nameEl) nameEl.textContent = config.school_name || "";
+  const badgeEl = document.getElementById("dash-school-badge");
+  const motto = config.school_info && config.school_info.motto;
+  if(badgeEl){
+    if(motto){ badgeEl.textContent = motto; badgeEl.style.display="inline-flex"; }
+    else { badgeEl.style.display="none"; }
+  }
+}
+
 async function loadDashboard(){
+  renderDashSchoolHeader();
   loadPlatformNotices();
   const studs = await api("/students");
   const stats = document.getElementById("dash-stats");

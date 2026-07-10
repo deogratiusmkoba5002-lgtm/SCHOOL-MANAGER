@@ -384,7 +384,7 @@ document.addEventListener("DOMContentLoaded",()=>{
       const name = document.getElementById("config-school-name").value.trim();
       if(!name){toast("Enter a school name","error");return;}
       const r = await api("/config/school_name","POST",{school_name:name});
-      if(r.ok){ config.school_name = name; toast("School name saved!","success"); }
+      if(r.ok){ config.school_name = name; toast("School name saved!","success"); if(typeof renderDashSchoolHeader==="function") renderDashSchoolHeader(); }
       else toast(r.error||"Failed","error");
     });
   }
