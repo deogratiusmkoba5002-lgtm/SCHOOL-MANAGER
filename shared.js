@@ -74,6 +74,7 @@ async function api(path, method="GET", body=null){
   return r.json();
 }
 function gradeClass(g){return `grade-${g}`}
+function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s}
 function populateSelect(sel, items, valFn, labelFn){
   sel.innerHTML="";
@@ -334,7 +335,7 @@ function _showPage(id){
   if(id==="rankings")  setupRankings();
   if(id==="terms")     loadTerms();
   if(id==="past")      setupPastTerms();
-  if(id==="config")    loadConfig();
+  if(id==="config")    loadConfigPage();
 }
 
 // ── LOGOUT ───────────────────────────────────────────────────
@@ -383,8 +384,28 @@ document.addEventListener("DOMContentLoaded",()=>{
     btn.addEventListener("click", async()=>{
       const name = document.getElementById("config-school-name").value.trim();
       if(!name){toast("Enter a school name","error");return;}
-      const r = await api("/config/school_name","POST",{school_name:name});
-      if(r.ok){ config.school_name = name; toast("School name saved!","success"); if(typeof renderDashSchoolHeader==="function") renderDashSchoolHeader(); }
+      const payload = {
+        school_name: name,
+        motto:       (document.getElementById("config-school-motto")||{}).value || "",
+        phone:       (document.getElementById("config-school-phone")||{}).value || "",
+        email:       (document.getElementById("config-school-email")||{}).value || "",
+        admin_phone: (document.getElementById("config-admin-phone")||{}).value || "",
+      };
+      btn.disabled = true;
+      const r = await api("/config/school_info","POST",payload);
+      btn.disabled = false;
+      if(r.ok){
+        config.school_name = name;
+        config.school_info = {...(config.school_info||{}), ...payload};
+        toast("School identity saved!","success");
+        if(typeof renderDashSchoolHeader==="function") renderDashSchoolHeader();
+        const loginName = document.getElementById("login-school-name");
+        if(loginName) loginName.textContent = name;
+        const sidebarName = document.getElementById("sidebar-school-name");
+        if(sidebarName) sidebarName.textContent = name;
+        const loginSub = document.getElementById("login-school-sub");
+        if(loginSub && payload.motto) loginSub.textContent = payload.motto;
+      }
       else toast(r.error||"Failed","error");
     });
   }

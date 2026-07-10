@@ -763,27 +763,101 @@
     <div class="page" id="page-config">
       <div class="page-header">
         <h2 class="page-title">Configuration</h2>
-        <p class="page-sub">School settings and active term information</p>
+        <p class="page-sub">Everything set during registration — editable any time</p>
       </div>
-      <!-- School Name -->
+
+      <!-- School Identity -->
       <div class="section-card" style="margin-bottom:20px">
         <div class="section-card-title">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-          School Name
+          School Identity
         </div>
-        <div class="form-grid" style="max-width:500px">
-          <div class="form-group">
-            <label class="form-label">Name (appears on all PDFs and score sheets)</label>
-            <input type="text" class="form-input" id="config-school-name" placeholder="e.g. St. Mary's Secondary School"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="config-school-save-btn" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-              Save Name
-            </button>
+
+        <div class="field" style="max-width:320px">
+          <label>School Logo <span class="opt">(optional)</span></label>
+          <div class="logo-upload-area" id="config-logo-drop" onclick="document.getElementById('config-logo-input').click()">
+            <input type="file" id="config-logo-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onchange="handleConfigLogoSelect(event)">
+            <img id="config-logo-preview" class="logo-preview" alt="Logo preview"/>
+            <svg class="logo-upload-icon" id="config-logo-upload-icon" viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+            <div class="logo-upload-text" id="config-logo-upload-text">Drag & drop or click to upload a new logo</div>
+            <div class="logo-upload-btn" id="config-logo-btn-label">Choose File</div>
           </div>
         </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>School Name</label>
+            <input type="text" id="config-school-name" placeholder="e.g. St. Mary's Secondary School"/>
+          </div>
+          <div class="field">
+            <label>Motto <span class="opt">(optional)</span></label>
+            <input type="text" id="config-school-motto" placeholder="e.g. Knowledge is Power"/>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>School Phone <span class="opt">(optional)</span></label>
+            <input type="tel" id="config-school-phone" placeholder="+255 712 345 678"/>
+          </div>
+          <div class="field">
+            <label>School Email <span class="opt">(optional)</span></label>
+            <input type="email" id="config-school-email" placeholder="info@yourschool.ac.tz"/>
+          </div>
+        </div>
+        <div class="field" style="max-width:340px">
+          <label>Admin / Support Contact Phone <span class="opt">(optional)</span></label>
+          <input type="tel" id="config-admin-phone" placeholder="+255 755 000 111"/>
+        </div>
+        <button class="btn btn-blue" id="config-school-save-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+          Save School Identity
+        </button>
       </div>
+
+      <!-- Classes & Streams -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
+          Classes &amp; Streams
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Changes here save immediately. Classes or streams with students already in them can't be removed.</p>
+        <div class="classes-list" id="config-classes-list"></div>
+        <button class="btn-add-class" onclick="configAddClass()">
+          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          Add Class
+        </button>
+      </div>
+
+      <!-- Subjects -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+          Subjects
+        </div>
+        <p class="abbr-hint">The abbreviation appears on score sheets and report cards (max 4 letters).</p>
+        <div class="subjects-list" id="config-subjects-list"></div>
+        <button class="btn-add-subj" onclick="configAddSubject()">
+          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          Add Subject
+        </button>
+        <button class="btn btn-blue" id="config-subjects-save-btn" style="margin-top:14px" onclick="configSaveSubjects()">Save Subjects</button>
+      </div>
+
+      <!-- Grading System -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          Grading System
+        </div>
+        <div class="grades-list" id="config-grades-list"></div>
+        <button class="btn-add-grade" onclick="configAddGrade()">
+          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          Add Grade
+        </button>
+        <div class="grade-preview" id="config-grade-preview"></div>
+        <button class="btn btn-blue" id="config-grades-save-btn" style="margin-top:14px" onclick="configSaveGrades()">Save Grading System</button>
+      </div>
+
       <!-- Active Term Info -->
       <div class="section-card">
         <div class="section-card-title">

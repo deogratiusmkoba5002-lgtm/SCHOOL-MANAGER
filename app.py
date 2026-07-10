@@ -709,6 +709,18 @@ def api_add_class():
         con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
 
+@app.route("/api/classes/<int:cid>", methods=["PATCH"])
+def api_rename_class(cid):
+    sid = school_id_from_header(); name = request.json.get("class_name","").strip()
+    if not name: return jsonify({"ok":False,"error":"Class name required"}),400
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("UPDATE classes SET class_name=%s WHERE id=%s AND school_id=%s",(name,cid,sid))
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
+    cur.close(); con.close(); return jsonify({"ok":True})
+
 @app.route("/api/classes/<int:cid>", methods=["DELETE"])
 def api_delete_class(cid):
     sid = school_id_from_header()
@@ -731,6 +743,18 @@ def api_add_stream(cid):
     except psycopg2.errors.UniqueViolation:
         con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Stream already exists"}),409
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
+
+@app.route("/api/streams/<int:stream_id>", methods=["PATCH"])
+def api_rename_stream(stream_id):
+    sid = school_id_from_header(); name = request.json.get("stream_name","").strip()
+    if not name: return jsonify({"ok":False,"error":"Stream name required"}),400
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("UPDATE streams SET stream_name=%s WHERE id=%s AND school_id=%s",(name,stream_id,sid))
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Stream already exists"}),409
+    cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/streams/<int:stream_id>", methods=["DELETE"])
 def api_delete_stream(stream_id):
@@ -998,6 +1022,25 @@ def api_set_school_info():
         val = d.get(key)
         if val is not None: set_config_val(sid, key, val.strip())
     return jsonify({"ok":True})
+
+@app.route("/api/config/logo", methods=["POST"])
+def api_set_school_logo():
+    sid = school_id_from_header()
+    if "logo" not in request.files:
+        return jsonify({"ok":False,"error":"No file provided"}), 400
+    f = request.files["logo"]
+    if not f or not f.filename:
+        return jsonify({"ok":False,"error":"No file provided"}), 400
+    ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
+    if ext not in ALLOWED_LOGO_EXT:
+        return jsonify({"ok":False,"error":"Logo must be an image (png, jpg, gif, webp, svg)"}), 400
+    logos_dir = os.path.join(UPLOAD_FOLDER, "logos")
+    os.makedirs(logos_dir, exist_ok=True)
+    fname = secure_filename(f"school_logo_{secrets.token_hex(6)}.{ext}")
+    f.save(os.path.join(logos_dir, fname))
+    logo_path = f"storage/uploads/logos/{fname}"
+    set_config_val(sid, "logo_path", logo_path)
+    return jsonify({"ok":True,"logo_path":logo_path})
 
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:student_id>", methods=["GET"])
