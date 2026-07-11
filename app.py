@@ -7,6 +7,13 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("WARNING: python-dotenv not installed — .env file will NOT be loaded. "
+          "Run: pip install python-dotenv")
+
 app = Flask(__name__)
 CORS(app)
 
@@ -477,6 +484,22 @@ def init_db():
     except Exception as e:
         print(f"Users unique-constraint check note: {e}")
 
+    # Performance: these columns are filtered/joined on every students/marks/import
+    # request. Without indexes, schools with thousands of students (e.g. bulk Excel
+    # imports) see full table scans on every lookup — this gets slower as the school grows.
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_students_school ON students(school_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_students_school_phone ON students(school_id, phone_number)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_students_stream ON students(stream_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_classes_school ON classes(school_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_streams_class ON streams(class_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_school_role ON users(school_id, role)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_scores_student ON exam_scores(school_id, student_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ca_scores_student ON ca_scores(school_id, student_id)")
+    except Exception as e:
+        print(f"Index creation note: {e}")
+
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 
@@ -709,18 +732,6 @@ def api_add_class():
         con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
 
-@app.route("/api/classes/<int:cid>", methods=["PATCH"])
-def api_rename_class(cid):
-    sid = school_id_from_header(); name = request.json.get("class_name","").strip()
-    if not name: return jsonify({"ok":False,"error":"Class name required"}),400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("UPDATE classes SET class_name=%s WHERE id=%s AND school_id=%s",(name,cid,sid))
-        con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
-    cur.close(); con.close(); return jsonify({"ok":True})
-
 @app.route("/api/classes/<int:cid>", methods=["DELETE"])
 def api_delete_class(cid):
     sid = school_id_from_header()
@@ -743,18 +754,6 @@ def api_add_stream(cid):
     except psycopg2.errors.UniqueViolation:
         con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Stream already exists"}),409
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
-
-@app.route("/api/streams/<int:stream_id>", methods=["PATCH"])
-def api_rename_stream(stream_id):
-    sid = school_id_from_header(); name = request.json.get("stream_name","").strip()
-    if not name: return jsonify({"ok":False,"error":"Stream name required"}),400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("UPDATE streams SET stream_name=%s WHERE id=%s AND school_id=%s",(name,stream_id,sid))
-        con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Stream already exists"}),409
-    cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/streams/<int:stream_id>", methods=["DELETE"])
 def api_delete_stream(stream_id):
@@ -787,6 +786,12 @@ def api_add_student():
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM classes WHERE id=%s AND school_id=%s",(class_id,sid))
     if not cur.fetchone(): cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid class"}),400
+    cur.execute("SELECT id FROM students WHERE school_id=%s AND LOWER(TRIM(name))=%s AND class_id=%s "
+                "AND COALESCE(stream_id,0)=%s AND phone_number=%s",
+                (sid, name.lower(), class_id, stream_id or 0, phone))
+    if cur.fetchone():
+        cur.close(); con.close()
+        return jsonify({"ok":False,"error":"A student with this name, class, stream and phone already exists"}),409
     cur.execute("INSERT INTO students(school_id,name,class_id,stream_id,phone_number) VALUES(%s,%s,%s,%s,%s) RETURNING id",
                 (sid,name,class_id,stream_id,phone))
     student_id = cur.fetchone()[0]; con.commit(); cur.close(); con.close()
@@ -818,6 +823,25 @@ def _gen_parent_creds(school_id, student_name, phone_number, student_id):
     final_user=username_base; counter=2
     while final_user in existing: final_user=f"{username_base}_{counter}"; counter+=1
     return final_user, temp_pw
+
+@app.route("/api/students/bulk_delete", methods=["POST"])
+def api_bulk_delete_students():
+    sid = school_id_from_header(); ids = request.json.get("ids", [])
+    try: ids = [int(i) for i in ids]
+    except (TypeError, ValueError): return jsonify({"ok":False,"error":"Invalid student IDs"}),400
+    if not ids: return jsonify({"ok":False,"error":"No students selected"}),400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id FROM students WHERE school_id=%s AND id=ANY(%s)",(sid,ids))
+    valid_ids = [r[0] for r in cur.fetchall()]
+    if not valid_ids: cur.close(); con.close(); return jsonify({"ok":False,"error":"No matching students found"}),404
+    cur.execute("DELETE FROM announcement_reads WHERE student_id=ANY(%s)",(valid_ids,))
+    cur.execute("DELETE FROM remarks WHERE school_id=%s AND student_id=ANY(%s)",(sid,valid_ids))
+    cur.execute("DELETE FROM ca_scores WHERE school_id=%s AND student_id=ANY(%s)",(sid,valid_ids))
+    cur.execute("DELETE FROM exam_scores WHERE school_id=%s AND student_id=ANY(%s)",(sid,valid_ids))
+    cur.execute("DELETE FROM users WHERE school_id=%s AND student_id=ANY(%s) AND role='parent'",(sid,valid_ids))
+    cur.execute("DELETE FROM students WHERE school_id=%s AND id=ANY(%s)",(sid,valid_ids))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"deleted":len(valid_ids)})
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
 def api_delete_student(student_id):
@@ -1022,25 +1046,6 @@ def api_set_school_info():
         val = d.get(key)
         if val is not None: set_config_val(sid, key, val.strip())
     return jsonify({"ok":True})
-
-@app.route("/api/config/logo", methods=["POST"])
-def api_set_school_logo():
-    sid = school_id_from_header()
-    if "logo" not in request.files:
-        return jsonify({"ok":False,"error":"No file provided"}), 400
-    f = request.files["logo"]
-    if not f or not f.filename:
-        return jsonify({"ok":False,"error":"No file provided"}), 400
-    ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
-    if ext not in ALLOWED_LOGO_EXT:
-        return jsonify({"ok":False,"error":"Logo must be an image (png, jpg, gif, webp, svg)"}), 400
-    logos_dir = os.path.join(UPLOAD_FOLDER, "logos")
-    os.makedirs(logos_dir, exist_ok=True)
-    fname = secure_filename(f"school_logo_{secrets.token_hex(6)}.{ext}")
-    f.save(os.path.join(logos_dir, fname))
-    logo_path = f"storage/uploads/logos/{fname}"
-    set_config_val(sid, "logo_path", logo_path)
-    return jsonify({"ok":True,"logo_path":logo_path})
 
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:student_id>", methods=["GET"])
@@ -1981,8 +1986,16 @@ def api_import_students():
     if not rows:
         return jsonify({"ok":False,"error":"File is empty"}), 400
     cmap     = _build_class_map(school_id)
-    inserted = 0; skipped = []; errors = []; credentials = []
+    inserted = 0; skipped = []; errors = []; credentials = []; duplicates = 0
     con = get_db(); cur = con.cursor()
+
+    # Snapshot of existing students for duplicate detection (name+class+stream+phone).
+    # Also grows as we insert, so repeated rows within the same file are caught too —
+    # and re-running an import on the same file becomes a safe no-op instead of creating dupes.
+    cur.execute("SELECT LOWER(TRIM(name)), class_id, COALESCE(stream_id,0), phone_number "
+                "FROM students WHERE school_id=%s", (school_id,))
+    existing_students = set(cur.fetchall())
+
     for i, row in enumerate(rows):
         row_num      = i + 2
         name, class_name, stream_name, parent_phone = _extract_fields(row)
@@ -2002,6 +2015,11 @@ def api_import_students():
             else:
                 skipped.append({"row":row_num,"reason":f"Stream '{stream_name}' not found in '{class_name}'","data":name})
                 continue
+        dup_key = (name.strip().lower(), class_id, stream_id or 0, parent_phone.strip())
+        if dup_key in existing_students:
+            skipped.append({"row":row_num,"reason":"Duplicate — same name, class, stream & phone already exist","data":name})
+            duplicates += 1
+            continue
         try:
             # Use savepoint so one failure doesn't abort the whole transaction
             cur.execute("SAVEPOINT sp_student")
@@ -2029,6 +2047,7 @@ def api_import_students():
                         (final_user,hash_password_fast(temp_pw),school_id,student_id))
             cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
+            existing_students.add(dup_key)
             credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
                                 "parent_phone":parent_phone.strip(),"username":final_user,"password":temp_pw})
             # Commit every 200 students to avoid giant transactions
@@ -2045,7 +2064,7 @@ def api_import_students():
         _write_credentials_xlsx(credentials, os.path.join(IMPORT_EXPORT_FOLDER, fname))
         credentials_file = f"/api/students/import/credentials/{fname}"
 
-    return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),
+    return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),"duplicates":duplicates,
                     "skipped_details":skipped[:20],"error_details":errors[:20],
                     "credentials_file":credentials_file,"credentials_count":len(credentials)})
 

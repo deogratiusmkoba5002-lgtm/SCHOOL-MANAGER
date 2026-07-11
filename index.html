@@ -371,14 +371,48 @@
       <div class="table-card">
         <div class="table-toolbar">
           <span class="table-toolbar-title">All Students</span>
-          <div class="search-box">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-            <input type="text" id="student-search" placeholder="Search students…"/>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="position:relative">
+              <button class="btn btn-outline btn-sm" id="student-filter-btn" onclick="toggleStudentFilter()">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+                Filter
+                <span id="student-filter-badge" class="badge badge-blue" style="display:none;margin-left:4px;padding:1px 7px"></span>
+              </button>
+              <div id="student-filter-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:white;border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:16px;width:220px;z-index:20">
+                <div class="field" style="margin-bottom:12px">
+                  <label>Class</label>
+                  <select id="filter-class" onchange="onFilterClassChange()"><option value="">All Classes</option></select>
+                </div>
+                <div class="field" style="margin-bottom:14px">
+                  <label>Stream</label>
+                  <select id="filter-stream"><option value="">All Streams</option></select>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-sm btn-outline" style="flex:1" onclick="clearStudentFilter()">Clear</button>
+                  <button class="btn btn-sm btn-blue" style="flex:1" onclick="applyStudentFilter()">Apply</button>
+                </div>
+              </div>
+            </div>
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input type="text" id="student-search" placeholder="Search students…"/>
+            </div>
           </div>
+        </div>
+        <div id="student-bulk-bar" style="display:none;align-items:center;gap:12px;padding:10px 20px;background:var(--pale);border-bottom:1px solid var(--border)">
+          <span id="student-bulk-count" style="font-size:.85rem;font-weight:600;color:var(--blue)">0 selected</span>
+          <button class="btn btn-sm btn-red" onclick="bulkDeleteStudents(this)">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            Delete Selected
+          </button>
+          <button class="btn btn-sm btn-outline" onclick="clearStudentSelection()">Cancel</button>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>Name</th><th>Class</th><th>Stream</th><th>Actions</th></tr></thead>
+            <thead><tr>
+              <th style="width:36px"><input type="checkbox" id="select-all-students" onchange="toggleSelectAllStudents(this)"></th>
+              <th>#</th><th>Name</th><th>Class</th><th>Stream</th><th>Actions</th>
+            </tr></thead>
             <tbody id="students-tbody"></tbody>
           </table>
         </div>
@@ -1092,10 +1126,13 @@
       </div>
       <div id="import-status" style="display:none;margin-bottom:14px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px">
-        <button class="btn btn-outline" onclick="document.getElementById('import-step-upload').style.display='block';document.getElementById('import-step-preview').style.display='none'">← Back</button>
+        <button class="btn btn-outline" id="import-back-btn" onclick="document.getElementById('import-step-upload').style.display='block';document.getElementById('import-step-preview').style.display='none'">← Back</button>
         <button class="btn btn-blue" id="import-confirm-btn" onclick="confirmImport()">
           <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
           Confirm Import
+        </button>
+        <button class="btn btn-blue" id="import-done-btn" style="display:none" onclick="closeModal('modal-import-students')">
+          Done
         </button>
       </div>
     </div>

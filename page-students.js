@@ -1,19 +1,41 @@
 // ── STUDENTS ─────────────────────────────────────────────────
 let allStudents=[];
+let selectedStudentIds = new Set();
+let studentFilter = { class_id:"", stream_id:"" };
+
 async function loadStudents(){
-  if(allStudents.length) renderStudents(allStudents);
+  const tb = document.getElementById("students-tbody");
+  if(allStudents.length){
+    renderStudents(getFilteredStudents());
+  } else if(tb) {
+    tb.innerHTML = `<tr><td colspan="6"><div class="spinner"></div><p style="text-align:center;color:var(--muted);font-size:.85rem;margin-top:-8px">Loading students…</p></td></tr>`;
+  }
   const fresh = await api("/students");
   allStudents = fresh;
-  renderStudents(allStudents);
+  selectedStudentIds.clear();
+  updateBulkBar();
+  renderStudents(getFilteredStudents());
 }
+
+function getFilteredStudents(){
+  const q = (document.getElementById("student-search")||{}).value?.toLowerCase() || "";
+  return allStudents.filter(s=>{
+    if(studentFilter.class_id && String(s.class_id) !== String(studentFilter.class_id)) return false;
+    if(studentFilter.stream_id && String(s.stream_id) !== String(studentFilter.stream_id)) return false;
+    if(q && !(s.name.toLowerCase().includes(q) || s.class_name.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
 function renderStudents(list){
   const tb = document.getElementById("students-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="5"><div class="empty-state">${emptySVG()}<p>No students found</p></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="6"><div class="empty-state">${emptySVG()}<p>No students found</p></div></td></tr>`;
     return;
   }
   tb.innerHTML=list.map(s=>`
     <tr>
+      <td><input type="checkbox" class="student-row-check" data-id="${s.id}" ${selectedStudentIds.has(s.id)?"checked":""} onchange="toggleStudentSelect(${s.id},this)"></td>
       <td style="color:var(--muted);font-size:.8rem">${s.id}</td>
       <td style="font-weight:600">${s.name}</td>
       <td><span class="badge badge-blue">${s.class_name}</span></td>
@@ -27,10 +49,124 @@ function renderStudents(list){
         </div>
       </td>
     </tr>`).join("");
+  syncSelectAllCheckbox();
 }
+
+// ── Selection & bulk delete ─────────────────────────────────
+function toggleStudentSelect(id, el){
+  if(el.checked) selectedStudentIds.add(id); else selectedStudentIds.delete(id);
+  updateBulkBar(); syncSelectAllCheckbox();
+}
+function toggleSelectAllStudents(el){
+  const visible = getFilteredStudents();
+  if(el.checked) visible.forEach(s=>selectedStudentIds.add(s.id));
+  else visible.forEach(s=>selectedStudentIds.delete(s.id));
+  renderStudents(visible);
+  updateBulkBar();
+}
+function syncSelectAllCheckbox(){
+  const master = document.getElementById("select-all-students");
+  if(!master) return;
+  const visible = getFilteredStudents();
+  const allChecked = visible.length>0 && visible.every(s=>selectedStudentIds.has(s.id));
+  master.checked = allChecked;
+  master.indeterminate = !allChecked && visible.some(s=>selectedStudentIds.has(s.id));
+}
+function updateBulkBar(){
+  const bar = document.getElementById("student-bulk-bar");
+  const count = document.getElementById("student-bulk-count");
+  if(!bar) return;
+  if(selectedStudentIds.size>0){
+    bar.style.display="flex";
+    count.textContent = selectedStudentIds.size+" selected";
+  } else {
+    bar.style.display="none";
+  }
+}
+function clearStudentSelection(){
+  selectedStudentIds.clear();
+  renderStudents(getFilteredStudents());
+  updateBulkBar();
+}
+async function bulkDeleteStudents(btn){
+  const ids = [...selectedStudentIds];
+  if(!ids.length) return;
+  if(!confirm(`Delete ${ids.length} selected student(s)? This also removes their marks and parent logins. This can't be undone.`)) return;
+  if(btn){ btn.disabled = true; btn.textContent = "Deleting..."; }
+  const r = await api("/students/bulk_delete","POST",{ids});
+  if(r.ok){
+    toast(`${r.deleted} student(s) deleted`,"success");
+    allStudents = allStudents.filter(s=>!selectedStudentIds.has(s.id));
+    selectedStudentIds.clear();
+    updateBulkBar();
+    renderStudents(getFilteredStudents());
+  } else {
+    toast(r.error||"Failed to delete students","error");
+    if(btn){ btn.disabled=false; btn.innerHTML = "Delete Selected"; }
+  }
+}
+
+// ── Filter by class/stream ───────────────────────────────────
+function toggleStudentFilter(){
+  const dd = document.getElementById("student-filter-dropdown");
+  const willOpen = dd.style.display === "none";
+  dd.style.display = willOpen ? "block" : "none";
+  if(willOpen){
+    const classSel = document.getElementById("filter-class");
+    if(classSel.options.length<=1){
+      classSel.innerHTML = `<option value="">All Classes</option>` +
+        (allClasses||[]).map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
+      classSel.value = studentFilter.class_id || "";
+      onFilterClassChange();
+      document.getElementById("filter-stream").value = studentFilter.stream_id || "";
+    }
+    document.addEventListener("click", closeFilterOnOutsideClick);
+  } else {
+    document.removeEventListener("click", closeFilterOnOutsideClick);
+  }
+}
+function closeFilterOnOutsideClick(e){
+  const dd = document.getElementById("student-filter-dropdown");
+  const btn = document.getElementById("student-filter-btn");
+  if(dd && !dd.contains(e.target) && e.target!==btn && !btn.contains(e.target)){
+    dd.style.display="none";
+    document.removeEventListener("click", closeFilterOnOutsideClick);
+  }
+}
+function onFilterClassChange(){
+  const classId = document.getElementById("filter-class").value;
+  const streamSel = document.getElementById("filter-stream");
+  const c = classId ? getClassById(parseInt(classId)) : null;
+  if(c && c.streams.length){
+    streamSel.innerHTML = `<option value="">All Streams</option>` +
+      c.streams.map(s=>`<option value="${s.id}">${s.stream_name}</option>`).join("");
+  } else {
+    streamSel.innerHTML = `<option value="">All Streams</option>`;
+  }
+}
+function applyStudentFilter(){
+  studentFilter.class_id  = document.getElementById("filter-class").value;
+  studentFilter.stream_id = document.getElementById("filter-stream").value;
+  document.getElementById("student-filter-dropdown").style.display="none";
+  const badge = document.getElementById("student-filter-badge");
+  const activeCount = (studentFilter.class_id?1:0) + (studentFilter.stream_id?1:0);
+  if(activeCount){ badge.style.display="inline"; badge.textContent=activeCount; }
+  else badge.style.display="none";
+  renderStudents(getFilteredStudents());
+}
+function clearStudentFilter(){
+  studentFilter = { class_id:"", stream_id:"" };
+  document.getElementById("filter-class").value="";
+  document.getElementById("filter-stream").innerHTML = `<option value="">All Streams</option>`;
+  document.getElementById("student-filter-badge").style.display="none";
+  document.getElementById("student-filter-dropdown").style.display="none";
+  renderStudents(getFilteredStudents());
+}
+
+let _studentSearchDebounce=null;
 document.getElementById("student-search").addEventListener("input",function(){
-  const q=this.value.toLowerCase();
-  renderStudents(allStudents.filter(s=>s.name.toLowerCase().includes(q)||s.class_name.includes(q)));
+  clearTimeout(_studentSearchDebounce);
+  _studentSearchDebounce = setTimeout(()=>renderStudents(getFilteredStudents()), 180);
 });
 document.getElementById("btn-add-student").addEventListener("click",()=>{
   const sel = document.getElementById("new-student-class");
@@ -75,7 +211,9 @@ function openCredentialsModal(studentName, username, tempPassword){
 async function deleteStudent(id,name){
   if(!confirm(`Delete "${name}"? This also removes all their marks.`))return;
   allStudents = allStudents.filter(s=>s.id!==id);
-  renderStudents(allStudents);
+  selectedStudentIds.delete(id);
+  updateBulkBar();
+  renderStudents(getFilteredStudents());
   const r = await api(`/students/${id}`,"DELETE");
   if(r.ok){ toast("Student removed","success"); }
   else { toast(r.error||"Failed","error"); loadStudents(); }
@@ -158,6 +296,9 @@ function openImportModal(){
   document.getElementById("import-preview-body").innerHTML="";
   document.getElementById("import-status").innerHTML="";
   document.getElementById("import-status").style.display="none";
+  document.getElementById("import-back-btn").style.display="inline-flex";
+  document.getElementById("import-confirm-btn").style.display="inline-flex";
+  document.getElementById("import-done-btn").style.display="none";
   openModal("modal-import-students");
 }
 
@@ -211,7 +352,7 @@ async function previewImport(){
     document.getElementById("import-total-label").textContent =
       data.total_rows+" total rows — showing first 10. "+(warn ? warn+" have issues." : "All looking good!");
   } catch(e){ toast("Preview failed: "+e,"error"); }
-  btn.textContent="Preview File"; btn.disabled=false;
+  finally { btn.textContent="Preview File →"; btn.disabled=false; }
 }
 
 async function downloadImportCredentials(url){
@@ -239,7 +380,7 @@ async function confirmImport(){
       headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
     });
     const data = await res.json();
-    if(!data.ok){ toast(data.error,"error"); btn.textContent="Confirm Import"; btn.disabled=false; return; }
+    if(!data.ok){ toast(data.error,"error"); return; }
     const statusEl = document.getElementById("import-status");
     statusEl.style.display="block";
     const bgColor = data.inserted > 0 ? "#E8F5E9" : "#FFF3E0";
@@ -247,8 +388,9 @@ async function confirmImport(){
     const titleText = data.inserted > 0 ? "Import Complete" : "Import Finished — Check Issues Below";
     statusEl.innerHTML = "<div style=background:"+bgColor+";border-radius:10px;padding:16px;margin-bottom:12px>"
       +"<div style=font-weight:700;font-size:1rem;color:"+titleColor+";margin-bottom:8px>"+titleText+"</div>"
-      +"<div style=display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center>"
+      +"<div style=display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--green)>"+data.inserted+"</div><div style=font-size:.75rem;color:var(--muted)>Inserted</div></div>"
+      +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--blue)>"+(data.duplicates||0)+"</div><div style=font-size:.75rem;color:var(--muted)>Duplicates</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--orange)>"+data.skipped+"</div><div style=font-size:.75rem;color:var(--muted)>Skipped</div></div>"
       +"<div style=background:white;border-radius:8px;padding:10px><div style=font-size:1.4rem;font-weight:800;color:var(--red)>"+data.errors+"</div><div style=font-size:.75rem;color:var(--muted)>Errors</div></div>"
       +"</div>"
@@ -266,6 +408,12 @@ async function confirmImport(){
         : "");
     toast(data.inserted+" students imported!","success");
     loadStudents();
+    // Lock out further clicks on this file — prevents the classic "clicked twice, got
+    // duplicates" problem. User must explicitly re-open the modal to import again.
+    document.getElementById("import-back-btn").style.display="none";
+    btn.style.display="none";
+    document.getElementById("import-done-btn").style.display="inline-flex";
+    document.getElementById("import-file-input").value="";
   } catch(e){ toast("Import failed","error"); }
-  btn.textContent="Confirm Import"; btn.disabled=false;
+  finally { btn.textContent="Confirm Import"; btn.disabled=false; }
 }
