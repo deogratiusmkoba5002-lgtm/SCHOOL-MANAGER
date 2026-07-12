@@ -51,8 +51,6 @@ async function loadDashboard(){
   const entries = [
     {val:studs.length,                    label:"Total Students",  col:"#1565C0", bg:"#E3F2FD"},
     {val:Object.keys(byClass).length,     label:"Active Classes",  col:"#00B0FF", bg:"#E1F5FE"},
-    {val:studs.filter(s=>s.class_name==="form 1"||s.class_name==="form 2").length, label:"Lower School", col:"#00C853", bg:"#E8F5E9"},
-    {val:studs.filter(s=>s.class_name==="form 3"||s.class_name==="form 4").length, label:"Upper School",  col:"#FF6D00", bg:"#FFF3E0"},
   ];
   stats.innerHTML = entries.map(e=>`
     <div class="stat-card" style="border-color:${e.col}">
