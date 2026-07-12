@@ -167,10 +167,13 @@ async function configSaveSubjects(){
   if(!cleaned.length){ toast("Add at least one subject","error"); return; }
   const btn = document.getElementById("config-subjects-save-btn");
   if(btn){ btn.disabled = true; }
-  const r = await api("/subjects","POST",{subjects:cleaned});
-  if(btn){ btn.disabled = false; }
-  if(r.ok){ toast("Subjects saved!","success"); await configLoadSubjects(); }
-  else toast(r.error||"Failed to save subjects","error");
+  try {
+    const r = await api("/subjects","POST",{subjects:cleaned});
+    if(r.ok){ toast("Subjects saved!","success"); await configLoadSubjects(); }
+    else toast(r.error||"Failed to save subjects","error");
+  } finally {
+    if(btn){ btn.disabled = false; }
+  }
 }
 
 // ── GRADING SYSTEM (edited locally, one Save call replaces the list) ────
@@ -222,8 +225,11 @@ async function configSaveGrades(){
   if(!cleaned.length){ toast("Add at least one grade rule","error"); return; }
   const btn = document.getElementById("config-grades-save-btn");
   if(btn){ btn.disabled = true; }
-  const r = await api("/grades","POST",{grades:cleaned});
-  if(btn){ btn.disabled = false; }
-  if(r.ok){ toast("Grading system saved!","success"); await configLoadGrades(); }
-  else toast(r.error||"Failed to save grading system","error");
+  try {
+    const r = await api("/grades","POST",{grades:cleaned});
+    if(r.ok){ toast("Grading system saved!","success"); await configLoadGrades(); }
+    else toast(r.error||"Failed to save grading system","error");
+  } finally {
+    if(btn){ btn.disabled = false; }
+  }
 }

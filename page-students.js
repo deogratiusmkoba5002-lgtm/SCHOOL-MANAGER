@@ -93,15 +93,20 @@ async function bulkDeleteStudents(btn){
   if(!ids.length) return;
   if(!confirm(`Delete ${ids.length} selected student(s)? This also removes their marks and parent logins. This can't be undone.`)) return;
   if(btn){ btn.disabled = true; btn.textContent = "Deleting..."; }
-  const r = await api("/students/bulk_delete","POST",{ids});
-  if(r.ok){
-    toast(`${r.deleted} student(s) deleted`,"success");
-    allStudents = allStudents.filter(s=>!selectedStudentIds.has(s.id));
-    selectedStudentIds.clear();
-    updateBulkBar();
-    renderStudents(getFilteredStudents());
-  } else {
-    toast(r.error||"Failed to delete students","error");
+  try {
+    const r = await api("/students/bulk_delete","POST",{ids});
+    if(r.ok){
+      toast(`${r.deleted} student(s) deleted`,"success");
+      allStudents = allStudents.filter(s=>!selectedStudentIds.has(s.id));
+      selectedStudentIds.clear();
+      updateBulkBar();
+      renderStudents(getFilteredStudents());
+    } else {
+      toast(r.error||"Failed to delete students","error");
+    }
+  } catch(e) {
+    toast("Failed to delete students","error");
+  } finally {
     if(btn){ btn.disabled=false; btn.innerHTML = "Delete Selected"; }
   }
 }

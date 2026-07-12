@@ -70,8 +70,17 @@ async function api(path, method="GET", body=null){
   if(_schoolId) headers["X-School-ID"] = String(_schoolId);
   const opts = {method, headers};
   if(body) opts.body = JSON.stringify(body);
-  const r = await fetch(API+path, opts);
-  return r.json();
+  let r;
+  try {
+    r = await fetch(API+path, opts);
+  } catch(networkErr) {
+    return {ok:false, error:"Network error — check your connection and try again"};
+  }
+  try {
+    return await r.json();
+  } catch(parseErr) {
+    return {ok:false, error:`Server error (${r.status || "unknown"})`};
+  }
 }
 function gradeClass(g){return `grade-${g}`}
 function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
