@@ -197,8 +197,7 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
     const caParam   = type!=="exam" ? `&ca_name=${type}` : "";
     const streamParam = stream_id ? `&stream_id=${stream_id}` : "";
     const sheet = await api(`/scoresheet?mode=${sheetMode}&class_id=${class_id}${streamParam}${caParam}`);
-    const allStu = await api("/students");
-    const studs = allStu.filter(s=>s.class_id==class_id && (stream_id ? s.stream_id==stream_id : true));
+    const studs = (sheet && sheet.results) ? sheet.results : [];
     if(!studs.length){toast("No students found in this class/stream","error");return;}
     const scoreMap={};
     if(sheet && sheet.results){ sheet.results.forEach(r=>{ const score = r.scores[subject]; if(score!==null && score!==undefined) scoreMap[r.id]=score; }); }

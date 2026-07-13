@@ -1170,26 +1170,66 @@ def api_scoresheet():
     else: term_id=int(term_id)
     if class_id:  class_id=int(class_id)
     if stream_id: stream_id=int(stream_id)
-    studs=get_students_in_scope(sid,class_id,stream_id); results=[]
+
+    studs=get_students_in_scope(sid,class_id,stream_id)
+    if not studs:
+        return jsonify({"subjects":subjects,"results":[]})
+    student_ids=[s["id"] for s in studs]
+
+    # Batch-fetch all needed scores in a handful of queries (one DB connection),
+    # instead of opening a new connection per student per subject.
+    con=get_db(); cur=con.cursor()
+    ca_scores={}; exam_scores={}; ca_avgs={}; term=None
+    if mode=="ca":
+        cur.execute("""SELECT student_id,subject,score FROM ca_scores
+                       WHERE school_id=%s AND term_id=%s AND ca_name=%s AND student_id=ANY(%s)""",
+                    (sid,term_id,ca_name,student_ids))
+        for student_id,subject,score in cur.fetchall(): ca_scores[(student_id,subject)]=score
+    elif mode=="exam":
+        cur.execute("""SELECT student_id,subject,score FROM exam_scores
+                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                    (sid,term_id,student_ids))
+        for student_id,subject,score in cur.fetchall(): exam_scores[(student_id,subject)]=score
+    elif mode=="terminal":
+        term=get_term_by_id(sid,term_id)
+        if not term:
+            cur.close(); con.close()
+            return jsonify({"subjects":subjects,"results":[]})
+        cur.execute("""SELECT student_id,subject,score FROM exam_scores
+                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                    (sid,term_id,student_ids))
+        for student_id,subject,score in cur.fetchall(): exam_scores[(student_id,subject)]=score
+        cur.execute("""SELECT student_id,subject,AVG(score) FROM ca_scores
+                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)
+                       GROUP BY student_id,subject""",
+                    (sid,term_id,student_ids))
+        for student_id,subject,avg_score in cur.fetchall(): ca_avgs[(student_id,subject)]=float(avg_score)
+    cur.close(); con.close()
+
+    grade_rules=get_grade_rules(sid)  # fetched once, not per row
+    def grade_for(score):
+        if score is None: return "-"
+        for r in grade_rules:
+            if score>=r["min_score"]: return r["grade"]
+        return "F"
+
+    results=[]
     for s in studs:
         row={"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),"scores":{},"total":0,"count":0}
         for subject in subjects:
             score=None
-            con=get_db(); cur=con.cursor()
             if mode=="ca":
-                cur.execute("SELECT score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",
-                            (sid,s["id"],subject,ca_name,term_id))
-                r=cur.fetchone(); score=r[0] if r else None
+                score=ca_scores.get((s["id"],subject))
             elif mode=="exam":
-                cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                            (sid,s["id"],subject,term_id))
-                r=cur.fetchone(); score=r[0] if r else None
-            cur.close(); con.close()
-            if mode=="terminal": f=calc_final(sid,s["id"],subject,term_id); score=round(f,1) if f is not None else None
+                score=exam_scores.get((s["id"],subject))
+            elif mode=="terminal":
+                exam=exam_scores.get((s["id"],subject)); ca_avg=ca_avgs.get((s["id"],subject))
+                if exam is not None and ca_avg is not None:
+                    score=round((ca_avg/100)*term["ca_weight"] + (exam/100)*term["exam_weight"],1)
             row["scores"][subject]=score
             if score is not None: row["total"]+=score; row["count"]+=1
         row["average"]=round(row["total"]/row["count"],2) if row["count"] else 0
-        row["grade"]=get_grade(sid,row["average"]); results.append(row)
+        row["grade"]=grade_for(row["average"]); results.append(row)
     _assign_positions(results,"average")
     return jsonify({"subjects":subjects,"results":results})
 
