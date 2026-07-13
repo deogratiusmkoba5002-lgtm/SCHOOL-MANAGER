@@ -58,15 +58,22 @@ def to_dicts(rows, cur):
     return [dict(zip(cols, r)) for r in rows]
 
 # ── PASSWORD ──────────────────────────────────────────────────
-def hash_password(pw):
+def hash_password(pw, iterations=260_000):
     salt = secrets.token_hex(16)
-    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 260_000)
-    return f"{salt}:{dk.hex()}"
+    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), iterations)
+    return f"{iterations}:{salt}:{dk.hex()}"
 
 def verify_password(pw, stored):
     try:
-        salt, dk_hex = stored.split(":")
-        dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 260_000)
+        parts = stored.split(":")
+        if len(parts) == 3:
+            iterations, salt, dk_hex = parts
+            iterations = int(iterations)
+        else:
+            # Legacy hashes (created before iteration count was stored) always used 260,000.
+            salt, dk_hex = parts
+            iterations = 260_000
+        dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), iterations)
         return dk.hex() == dk_hex
     except: return False
 
@@ -799,19 +806,22 @@ def api_add_student():
     con = get_db(); cur = con.cursor()
     cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
                 (username, hash_password(temp_pw), sid, student_id))
+    created = cur.rowcount > 0
     con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True,"parent_username":username,"temp_password":temp_pw})
+    if created:
+        return jsonify({"ok":True,"parent_username":username,"temp_password":temp_pw})
+    return jsonify({"ok":True,"parent_username":None,"temp_password":None,
+                    "warning":f"Student added, but username '{username}' is already taken by another parent account "
+                              f"(same name as an existing student). No new login was created — that student will "
+                              f"need a different name on file, or share the existing '{username}' login."})
 
 def _gen_parent_creds(school_id, student_name, phone_number, student_id):
     phone_clean = phone_number.strip(); last4 = phone_clean[-4:]
-    username_base = student_name.strip().lower().replace(" ","_")
+    username = student_name.strip().lower().replace(" ","_")
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s AND id!=%s ORDER BY id",
                 (school_id,phone_clean,student_id))
-    siblings = cur.fetchall()
-    cur.execute("SELECT username FROM users WHERE school_id=%s AND role='parent' AND username LIKE %s",
-                (school_id,username_base+"%"))
-    existing = [r[0] for r in cur.fetchall()]; cur.close(); con.close()
+    siblings = cur.fetchall(); cur.close(); con.close()
     if siblings:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s ORDER BY id",(school_id,phone_clean))
@@ -820,9 +830,7 @@ def _gen_parent_creds(school_id, student_name, phone_number, student_id):
         except ValueError: idx=len(all_same)+1
         temp_pw=f"{last4}-{idx}"
     else: temp_pw=last4
-    final_user=username_base; counter=2
-    while final_user in existing: final_user=f"{username_base}_{counter}"; counter+=1
-    return final_user, temp_pw
+    return username, temp_pw
 
 @app.route("/api/students/bulk_delete", methods=["POST"])
 def api_bulk_delete_students():
@@ -1715,10 +1723,10 @@ except ImportError:
 def hash_password_fast(pw):
     """Fast hash for temporary/bulk import passwords.
     These are throwaway — users must change on first login anyway.
-    260,000 iterations x 4000 students = death. 100 iterations = fine."""
-    salt = secrets.token_hex(16)
-    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 100)
-    return f"{salt}:{dk.hex()}"
+    260,000 iterations x 4000 students = death. 100 iterations = fine.
+    Iteration count is stored in the hash itself, so verify_password()
+    still checks it correctly regardless of how it was hashed."""
+    return hash_password(pw, iterations=100)
 
 def _parse_import_file(file_obj, filename):
     """Parse uploaded Excel or CSV. Returns list of raw row dicts."""
@@ -2038,18 +2046,23 @@ def api_import_students():
                 except ValueError: idx=len(all_s)+1
                 temp_pw=f"{last4}-{idx}"
             else: temp_pw=last4
-            cur.execute("SELECT username FROM users WHERE school_id=%s AND role='parent' AND username LIKE %s",
-                        (school_id, username_base+"%"))
-            existing=[r[0] for r in cur.fetchall()]
-            final_user=username_base; counter=2
-            while final_user in existing: final_user=f"{username_base}_{counter}"; counter+=1
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
-                        (final_user,hash_password_fast(temp_pw),school_id,student_id))
+                        (username_base,hash_password_fast(temp_pw),school_id,student_id))
+            login_created = cur.rowcount > 0
             cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
             existing_students.add(dup_key)
-            credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
-                                "parent_phone":parent_phone.strip(),"username":final_user,"password":temp_pw})
+            if login_created:
+                credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
+                                    "parent_phone":parent_phone.strip(),"username":username_base,"password":temp_pw})
+            else:
+                # Student record was created, but another student already has this exact
+                # username (same name). Report it honestly instead of listing a login
+                # that doesn't actually exist.
+                skipped.append({"row":row_num,
+                                "reason":f"Student added, but login username '{username_base}' is already taken "
+                                         f"by another student with the same name — no new login created",
+                                "data":name})
             # Commit every 200 students to avoid giant transactions
             if inserted % 200 == 0:
                 con.commit()
