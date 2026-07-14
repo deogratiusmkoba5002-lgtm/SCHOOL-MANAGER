@@ -46,7 +46,10 @@ function renderReportCard(out, d, readOnly){
     return `<tr class="${isFail?"fail-row":""}"><td style="font-weight:500;text-transform:capitalize">${r.subject}</td>${caVals}<td>${r.exam??"-"}</td><td>${r.final??"-"}</td><td>${r.position}</td><td class="${r.grade!=="-"?gradeClass(r.grade):""}">${r.grade}</td></tr>`;
   }).join("");
   const termLabel = d.term ? d.term.label : "—";
-  const pdfUrl    = `${API}/pdf/report/${sid}${term_id?"?term_id="+term_id:""}`;
+  const pdfQs = new URLSearchParams();
+  if(term_id) pdfQs.set("term_id", term_id);
+  if(_schoolId) pdfQs.set("school_id", _schoolId);
+  const pdfUrl    = `${API}/pdf/report/${sid}${pdfQs.toString()?"?"+pdfQs.toString():""}`;
   const ctBox = canEditCT ? `
     ${remarkTemplateHTML("remark-ct-"+sid)}
     <textarea id="remark-ct-${sid}" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit" placeholder="Write class teacher remark…">${d.class_teacher_remark||""}</textarea>
@@ -141,7 +144,10 @@ document.getElementById("ca-sheet-view-btn").addEventListener("click", async()=>
 document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:cc,stream_id:cs}=parseClassStream(document.getElementById("ca-sheet-class").value);
   const ca=document.getElementById("ca-sheet-assess").value;
-  window.open(`${API}/pdf/ca_sheet?class_id=${cc}${cs?`&stream_id=${cs}`:`""`}&ca_name=${ca}`,"_blank");
+  const qs=new URLSearchParams({class_id:cc, ca_name:ca});
+  if(cs) qs.set("stream_id",cs);
+  if(_schoolId) qs.set("school_id",_schoolId);
+  window.open(`${API}/pdf/ca_sheet?${qs.toString()}`,"_blank");
 });
 document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("term-sheet-class").value);
@@ -151,7 +157,10 @@ document.getElementById("term-sheet-view-btn").addEventListener("click", async()
 });
 document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:tc,stream_id:ts}=parseClassStream(document.getElementById("term-sheet-class").value);
-  window.open(`${API}/pdf/terminal_sheet?class_id=${tc}${ts?`&stream_id=${ts}`:"" }`,"_blank");
+  const qs=new URLSearchParams({class_id:tc});
+  if(ts) qs.set("stream_id",ts);
+  if(_schoolId) qs.set("school_id",_schoolId);
+  window.open(`${API}/pdf/terminal_sheet?${qs.toString()}`,"_blank");
 });
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
@@ -161,7 +170,10 @@ document.getElementById("exam-sheet-view-btn").addEventListener("click", async()
 });
 document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
-  window.open(`${API}/pdf/ca_sheet?class_id=${class_id}${stream_id?`&stream_id=${stream_id}`:"" }&ca_name=exam`,"_blank");
+  const qs=new URLSearchParams({class_id, ca_name:"exam"});
+  if(stream_id) qs.set("stream_id",stream_id);
+  if(_schoolId) qs.set("school_id",_schoolId);
+  window.open(`${API}/pdf/ca_sheet?${qs.toString()}`,"_blank");
 });
 function renderScoreSheet(container, d, label){
   if(!d.results||!d.results.length){ container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return; }

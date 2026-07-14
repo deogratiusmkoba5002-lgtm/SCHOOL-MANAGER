@@ -79,7 +79,7 @@ def verify_password(pw, stored):
 
 # ── SCHOOL_ID HELPERS ─────────────────────────────────────────
 def school_id_from_header():
-    sid = request.headers.get("X-School-ID")
+    sid = request.headers.get("X-School-ID") or request.args.get("school_id")
     if sid:
         try: return int(sid)
         except: pass
