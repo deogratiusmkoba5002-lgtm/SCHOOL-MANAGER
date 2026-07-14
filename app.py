@@ -79,7 +79,7 @@ def verify_password(pw, stored):
 
 # ── SCHOOL_ID HELPERS ─────────────────────────────────────────
 def school_id_from_header():
-    sid = request.headers.get("X-School-ID") or request.args.get("school_id")
+    sid = request.headers.get("X-School-ID")
     if sid:
         try: return int(sid)
         except: pass
@@ -233,59 +233,6 @@ def get_subject_position(school_id, student_id, subject, class_id, stream_id, te
         if s["id"] == student_id: return s["position"]
     return "-"
 
-def _fetch_report_data(school_id, term_id, student_ids, subjects):
-    """
-    One batch fetch for a whole class/term instead of N-students x M-subjects
-    x (3-4 queries each). Returns (term, finals, ca_detail, exam_map).
-    finals/exam_map are keyed by (student_id, subject); ca_detail is keyed
-    by (student_id, subject) -> {"CA1": score, ...}.
-    """
-    term = get_term_by_id(school_id, term_id)
-    if not term or not student_ids:
-        return term, {}, {}, {}
-    con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT student_id,subject,ca_name,score FROM ca_scores
-                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
-                (school_id, term_id, student_ids))
-    ca_detail = {}; ca_sums = {}
-    for sid, subj, ca_name, score in cur.fetchall():
-        ca_detail.setdefault((sid, subj), {})[ca_name] = score
-        ca_sums.setdefault((sid, subj), []).append(score)
-    cur.execute("""SELECT student_id,subject,score FROM exam_scores
-                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
-                (school_id, term_id, student_ids))
-    exam_map = {}
-    for sid, subj, score in cur.fetchall():
-        exam_map[(sid, subj)] = score
-    cur.close(); con.close()
-    finals = {}
-    for (sid, subj), scores in ca_sums.items():
-        exam = exam_map.get((sid, subj))
-        if exam is not None:
-            ca_avg = sum(scores) / len(scores)
-            finals[(sid, subj)] = (ca_avg/100)*term["ca_weight"] + (exam/100)*term["exam_weight"]
-    return term, finals, ca_detail, exam_map
-
-def _rank_from_finals(school_id, students, subjects, finals):
-    """Class/stream ranking computed purely in Python from a pre-fetched
-    finals dict — no DB access per student."""
-    rows = []
-    for s in students:
-        vals = [finals[(s["id"], subj)] for subj in subjects if (s["id"], subj) in finals]
-        avg = sum(vals)/len(vals) if vals else 0
-        rows.append({"id": s["id"], "name": s["name"], "average": round(avg, 2), "grade": get_grade(school_id, avg)})
-    _assign_positions(rows, "average")
-    return rows
-
-def _subject_position_from_finals(student_id, subject, scope_ids, finals):
-    """Subject-level position within a scope (class or stream), computed
-    from the pre-fetched finals dict instead of a fresh query per student."""
-    scores = [{"id": sid, "score": finals[(sid, subject)]} for sid in scope_ids if (sid, subject) in finals]
-    _assign_positions(scores, "score")
-    for sc in scores:
-        if sc["id"] == student_id: return sc["position"]
-    return "-"
-
 def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT id FROM subject_assignments
@@ -294,6 +241,99 @@ def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
                 (school_id, username, subject, class_id, stream_id))
     row = cur.fetchone(); cur.close(); con.close()
     return row is not None
+
+
+# ── BULK SCORE FETCHING (performance) ───────────────────────────
+# Report cards, their PDFs, and the parent portal used to compute every
+# figure (CA average, final score, class position, stream position,
+# subject position) with its own tiny query on its own fresh DB
+# connection — repeated once per subject, and for positions, once per
+# subject PER STUDENT in the class. For a class of 40 students and 15
+# subjects that's thousands of round trips for a single report. These
+# helpers fetch every CA/exam score for a whole class+term in exactly
+# two queries; everything else (averages, finals, rankings) is then
+# plain Python math with zero further DB access.
+
+def get_term_scores_bulk(school_id, term_id, student_ids):
+    """{student_id: {subject: {"ca": {ca_name: score}, "exam": score_or_None}}}"""
+    if not student_ids: return {}
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT student_id, subject, ca_name, score FROM ca_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    ca_rows = cur.fetchall()
+    cur.execute("""SELECT student_id, subject, score FROM exam_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    exam_rows = cur.fetchall()
+    cur.close(); con.close()
+    data = {}
+    for student_id, subject, ca_name, score in ca_rows:
+        d = data.setdefault(student_id, {}).setdefault(subject, {"ca": {}, "exam": None})
+        d["ca"][ca_name] = score
+    for student_id, subject, score in exam_rows:
+        d = data.setdefault(student_id, {}).setdefault(subject, {"ca": {}, "exam": None})
+        d["exam"] = score
+    return data
+
+def _final_from_entry(entry, ca_weight, exam_weight):
+    if not entry: return None
+    ca_vals = list(entry["ca"].values())
+    if not ca_vals or entry["exam"] is None: return None
+    ca_avg = sum(ca_vals) / len(ca_vals)
+    return (ca_avg/100)*ca_weight + (entry["exam"]/100)*exam_weight
+
+def compute_student_finals(scores_bulk, student_id, subjects, ca_weight, exam_weight):
+    student_data = scores_bulk.get(student_id, {})
+    return {subj: _final_from_entry(student_data.get(subj), ca_weight, exam_weight) for subj in subjects}
+
+def compute_average_from_finals(finals):
+    vals = [v for v in finals.values() if v is not None]
+    return sum(vals)/len(vals) if vals else 0
+
+def get_subject_rank_map(class_rows, subject):
+    """class_rows: [{"id":..., "finals":{subject:final_or_None}}, ...] -> {student_id: position}"""
+    scored = [{"id": r["id"], "score": r["finals"].get(subject)} for r in class_rows if r["finals"].get(subject) is not None]
+    _assign_positions(scored, "score")
+    return {r["id"]: r["position"] for r in scored}
+
+def get_subject_assess_rank_map(scores_bulk, student_ids, subject, assess):
+    """Rank by a single assessment's raw score (a CA name, or 'exam') rather than the weighted final."""
+    scored = []
+    for stid in student_ids:
+        entry = scores_bulk.get(stid, {}).get(subject)
+        if not entry: continue
+        val = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+        if val is not None: scored.append({"id": stid, "score": val})
+    _assign_positions(scored, "score")
+    return {r["id"]: r["position"] for r in scored}
+
+def get_class_report_data(school_id, term_id, class_id, stream_id, subjects, ca_weight, exam_weight):
+    """
+    One-shot computation of everything needed to render a report card /
+    PDF / parent result for an entire class (and, if given, a stream
+    within it) for one term — exactly 2 score queries total, regardless
+    of class size or subject count.
+    Returns (class_rows, class_rank_map, stream_rank_map, scores_bulk).
+    class_rows: [{"id","name","stream_id","average","finals":{subject:final}}]
+    """
+    class_students = get_students_in_scope(school_id, class_id)
+    ids = [s["id"] for s in class_students]
+    scores_bulk = get_term_scores_bulk(school_id, term_id, ids)
+    class_rows = []
+    for s in class_students:
+        finals = compute_student_finals(scores_bulk, s["id"], subjects, ca_weight, exam_weight)
+        avg = compute_average_from_finals(finals)
+        class_rows.append({"id": s["id"], "name": s["name"], "stream_id": s.get("stream_id"),
+                           "average": round(avg, 2), "finals": finals})
+    _assign_positions(class_rows, "average")
+    class_rank_map = {r["id"]: r for r in class_rows}
+    stream_rank_map = None
+    if stream_id:
+        stream_rows = [dict(r) for r in class_rows if r["stream_id"] == stream_id]
+        _assign_positions(stream_rows, "average")
+        stream_rank_map = {r["id"]: r for r in stream_rows}
+    return class_rows, class_rank_map, stream_rank_map, scores_bulk
 
 
 # ── INIT DB ───────────────────────────────────────────────────
@@ -1111,10 +1151,6 @@ def api_set_school_info():
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:student_id>", methods=["GET"])
 def api_report(student_id):
-    # Rewritten to batch-fetch all class marks in ~5 queries total instead of
-    # the old approach (get_positions -> get_ranking -> calc_student_average
-    # -> calc_final, called per student per subject), which for a 50-student
-    # class x 15 subjects meant 1,000+ DB round trips for a single report.
     sid = school_id_from_header(); subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
@@ -1127,44 +1163,43 @@ def api_report(student_id):
     if not student: return jsonify({"ok":False,"error":"Student not found"}),404
     term = get_term_by_id(sid,int(term_id)) if term_id else get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No term available"}),400
-    tid=term["id"]; ca_count=term["ca_count"]
+    tid=term["id"]; ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
     class_id=student["class_id"]; stream_id=student["stream_id"]
 
-    class_students = get_students_in_scope(sid, class_id)
-    class_ids = [s["id"] for s in class_students]
-    term, finals, ca_detail, exam_map = _fetch_report_data(sid, tid, class_ids, subjects)
+    class_rows, class_rank_map, stream_rank_map, scores_bulk = get_class_report_data(
+        sid, tid, class_id, stream_id, subjects, ca_w, ex_w)
+    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
 
-    class_ranking = _rank_from_finals(sid, class_students, subjects, finals)
-    c_pos   = next((r["position"] for r in class_ranking if r["id"]==student_id), "-")
-    c_total = len(class_ranking)
-    s_pos, s_total = None, None
-    if stream_id:
-        stream_students = [s for s in class_students if s["stream_id"]==stream_id]
-        stream_ranking  = _rank_from_finals(sid, stream_students, subjects, finals)
-        s_pos   = next((r["position"] for r in stream_ranking if r["id"]==student_id), "-")
-        s_total = len(stream_ranking)
+    c_entry = class_rank_map.get(student_id)
+    c_pos   = c_entry["position"] if c_entry else "-"
+    c_total = len(class_rows)
+    s_pos = s_total = None
+    if stream_id and stream_rank_map is not None:
+        s_entry = stream_rank_map.get(student_id)
+        s_pos   = s_entry["position"] if s_entry else "-"
+        s_total = len(stream_rank_map)
 
-    scope_ids = [s["id"] for s in class_students if (not stream_id or s["stream_id"]==stream_id)]
-    own_vals = [finals[(student_id, subj)] for subj in subjects if (student_id, subj) in finals]
-    avg = sum(own_vals)/len(own_vals) if own_vals else 0
+    student_finals = c_entry["finals"] if c_entry else compute_student_finals(scores_bulk, student_id, subjects, ca_w, ex_w)
+    avg = c_entry["average"] if c_entry else round(compute_average_from_finals(student_finals), 2)
+    student_scores = scores_bulk.get(student_id, {})
 
     rows = []
     for subject in subjects:
-        ca_map    = ca_detail.get((student_id, subject), {})
+        entry     = student_scores.get(subject, {})
+        ca_map    = entry.get("ca", {})
         ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
-        exam_val  = exam_map.get((student_id, subject))
-        final_val = finals.get((student_id, subject))
-        subj_pos  = _subject_position_from_finals(student_id, subject, scope_ids, finals) if final_val is not None else "-"
+        exam_val  = entry.get("exam")
+        final_val = student_finals.get(subject)
+        subj_pos  = subject_rank_maps[subject].get(student_id, "-") if final_val is not None else "-"
         rows.append({"subject":subject,"ca":ca_scores,"exam":exam_val,
                      "final":round(final_val,1) if final_val is not None else None,
                      "grade":get_grade(sid,final_val) if final_val is not None else "-","position":subj_pos})
-
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT * FROM remarks WHERE school_id=%s AND student_id=%s AND term_id=%s",(sid,student_id,tid))
     rmk_row = cur.fetchone(); rmk = to_dict(rmk_row,cur) if rmk_row else None
     cur.close(); con.close()
     return jsonify({"ok":True,"student":student,"term":term,"rows":rows,
-                    "average":round(avg,2),"grade":get_grade(sid,avg),
+                    "average":avg,"grade":get_grade(sid,avg),
                     "class_position":c_pos,"class_total":c_total,
                     "stream_position":s_pos,"stream_total":s_total,
                     "class_teacher_remark":rmk["class_teacher_remark"] if rmk else "",
@@ -1211,17 +1246,20 @@ def api_subject_ranking():
     else: term_id=int(term_id)
     if stream_id: stream_id=int(stream_id)
     if class_id:  class_id=int(class_id)
-    studs=get_students_in_scope(sid,class_id,stream_id); rows=[]
-    for s in studs:
-        con=get_db(); cur=con.cursor()
-        if assess=="exam":
-            cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                        (sid,s["id"],subject,term_id))
-        else:
-            cur.execute("SELECT score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",
-                        (sid,s["id"],subject,assess,term_id))
-        row=cur.fetchone(); cur.close(); con.close()
-        if row: rows.append({"id":s["id"],"name":s["name"],"score":round(row[0],2),"grade":get_grade(sid,row[0])})
+    studs=get_students_in_scope(sid,class_id,stream_id)
+    if not studs: return jsonify([])
+    student_ids=[s["id"] for s in studs]
+    con=get_db(); cur=con.cursor()
+    if assess=="exam":
+        cur.execute("SELECT student_id,score FROM exam_scores WHERE school_id=%s AND student_id=ANY(%s) AND subject=%s AND term_id=%s",
+                    (sid,student_ids,subject,term_id))
+    else:
+        cur.execute("SELECT student_id,score FROM ca_scores WHERE school_id=%s AND student_id=ANY(%s) AND subject=%s AND ca_name=%s AND term_id=%s",
+                    (sid,student_ids,subject,assess,term_id))
+    score_map=dict(cur.fetchall()); cur.close(); con.close()
+    name_map={s["id"]:s["name"] for s in studs}
+    rows=[{"id":stid,"name":name_map[stid],"score":round(sc,2),"grade":get_grade(sid,sc)}
+          for stid,sc in score_map.items()]
     _assign_positions(rows,"score"); return jsonify(rows)
 
 # ── SCORE SHEETS ──────────────────────────────────────────────
@@ -1407,51 +1445,58 @@ def api_parent_results():
                    WHERE s.id=%s AND s.school_id=%s""",(stid,sid))
     row=cur.fetchone(); student=to_dict(row,cur) if row else None; cur.close(); con.close()
     if not student: return jsonify({"ok":False,"error":"Student not found"}),404
-    ca_count=term["ca_count"]; class_id=student["class_id"]; stream_id=student["stream_id"]
+    ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
+    class_id=student["class_id"]; stream_id=student["stream_id"]
+
+    class_rows, class_rank_map, stream_rank_map, scores_bulk = get_class_report_data(
+        sid, term_id, class_id, stream_id, subjects, ca_w, ex_w)
+    class_ids = [r["id"] for r in class_rows]
+    student_scores = scores_bulk.get(stid, {})
+
     results=[]
-    for subject in subjects:
-        con=get_db(); cur=con.cursor()
-        cur.execute("SELECT ca_name,score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (sid,stid,subject,term_id))
-        ca_rows=cur.fetchall()
-        cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (sid,stid,subject,term_id))
-        exam_row=cur.fetchone(); cur.close(); con.close()
-        ca_map={r[0]:r[1] for r in ca_rows}
-        ca_scores={f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
-        exam_val=exam_row[0] if exam_row else None
-        if assess:
+    if assess:
+        assess_rank_maps={}
+        for subject in subjects:
+            entry=student_scores.get(subject,{})
+            ca_map=entry.get("ca",{})
+            ca_scores={f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
+            exam_val=entry.get("exam")
             score=exam_val if assess=="exam" else ca_map.get(assess)
             if score is None: continue
-            scope=get_students_in_scope(sid,class_id,stream_id)
-            scores_list=[]
-            con=get_db(); cur=con.cursor()
-            for st in scope:
-                if assess=="exam":
-                    cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                                (sid,st["id"],subject,term_id))
-                else:
-                    cur.execute("SELECT score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND ca_name=%s AND term_id=%s",
-                                (sid,st["id"],subject,assess,term_id))
-                r2=cur.fetchone()
-                if r2: scores_list.append({"id":st["id"],"score":r2[0]})
-            cur.close(); con.close()
-            _assign_positions(scores_list,"score")
-            pos=next((x["position"] for x in scores_list if x["id"]==stid),"-")
+            if subject not in assess_rank_maps:
+                assess_rank_maps[subject]=get_subject_assess_rank_map(scores_bulk,class_ids,subject,assess)
+            pos=assess_rank_maps[subject].get(stid,"-")
             results.append({"subject":subject,"ca":ca_scores,"exam":exam_val,"score":score,
                             "grade":get_grade(sid,score),"position":pos})
-        else:
+    else:
+        subject_rank_maps={subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
+        student_finals = class_rank_map.get(stid,{}).get("finals") or compute_student_finals(scores_bulk,stid,subjects,ca_w,ex_w)
+        for subject in subjects:
+            entry=student_scores.get(subject,{})
+            ca_map=entry.get("ca",{})
+            ca_scores={f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
+            exam_val=entry.get("exam")
             if not ca_map and exam_val is None: continue
-            final_val=calc_final(sid,stid,subject,term_id)
-            subj_pos=get_subject_position(sid,stid,subject,class_id,stream_id,term_id) if final_val is not None else "-"
+            final_val=student_finals.get(subject)
+            subj_pos=subject_rank_maps[subject].get(stid,"-") if final_val is not None else "-"
             results.append({"subject":subject,"ca":ca_scores,"exam":exam_val,
                             "final":round(final_val,1) if final_val is not None else None,
                             "grade":get_grade(sid,final_val) if final_val is not None else "-","position":subj_pos})
-    c_pos,c_total,s_pos,s_total=get_positions(sid,stid,class_id,stream_id,term_id)
+
+    c_entry=class_rank_map.get(stid)
+    c_pos=c_entry["position"] if c_entry else "-"
+    c_total=len(class_rows)
+    s_pos=s_total=None
+    if stream_id and stream_rank_map is not None:
+        s_entry=stream_rank_map.get(stid)
+        s_pos=s_entry["position"] if s_entry else "-"
+        s_total=len(stream_rank_map)
+
     if assess and results:
         scores_only=[r["score"] for r in results if r.get("score") is not None]
         avg=round(sum(scores_only)/len(scores_only),2) if scores_only else 0
-    else: avg=round(calc_student_average(sid,stid,term_id),2)
+    else:
+        avg = c_entry["average"] if c_entry else round(compute_average_from_finals(compute_student_finals(scores_bulk,stid,subjects,ca_w,ex_w)),2)
     return jsonify({"ok":True,"student":student,"term":term,"results":results,"ca_count":ca_count,
                     "average":avg,"grade":get_grade(sid,avg),
                     "class_position":c_pos,"class_total":c_total,
@@ -1481,10 +1526,9 @@ def api_platform_announcement_read(aid):
 # ── PDF ────────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from functools import partial
 
 def _get_logo_element(school_id, max_h=2*cm):
     path = get_config_val(school_id,"logo_path","")
@@ -1497,155 +1541,48 @@ def _get_logo_element(school_id, max_h=2*cm):
     return None
 
 def _school_header_story(school_id, styles, title_text, subtitle_text=""):
-    story=[]
-    NAVY   = colors.HexColor("#0A1628")
-    H_BG   = colors.HexColor("#1565C0")
-    ACCENT = colors.HexColor("#00B0FF")
-    MUTED  = colors.HexColor("#546E7A")
-    t_s  = ParagraphStyle("T",  parent=styles["Title"],  fontSize=17, textColor=NAVY,
-                           spaceAfter=1, alignment=1, fontName="Helvetica-Bold", leading=19)
-    s_s  = ParagraphStyle("S",  parent=styles["Normal"], fontSize=8.5, alignment=1,
-                           spaceAfter=2, textColor=MUTED)
-    ttl_s= ParagraphStyle("TT", parent=styles["Normal"], fontSize=11, alignment=1,
-                           spaceAfter=1, spaceBefore=2, textColor=H_BG, fontName="Helvetica-Bold")
+    story=[]; H_BG=colors.HexColor("#1A6FA8")
+    t_s=ParagraphStyle("T",parent=styles["Title"],fontSize=16,textColor=H_BG,spaceAfter=2,alignment=1)
+    s_s=ParagraphStyle("S",parent=styles["Normal"],fontSize=9,alignment=1,spaceAfter=4)
     motto=get_config_val(school_id,"motto",""); sname=get_school_name(school_id)
-    logo=_get_logo_element(school_id,1.9*cm)
+    logo=_get_logo_element(school_id,1.8*cm)
     if logo:
         name_para=Paragraph(f"<b>{sname}</b>",t_s)
-        sub_para=Paragraph(f'<i>"{motto}"</i>',s_s) if motto else None
+        sub_para=Paragraph(motto,s_s) if motto else None
         inner=[[logo,[name_para]+([sub_para] if sub_para else [])]]
-        tbl=Table(inner,colWidths=[2.3*cm,None])
+        tbl=Table(inner,colWidths=[2.2*cm,None])
         tbl.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),6)]))
         story.append(tbl)
     else:
         story.append(Paragraph(sname,t_s))
         if motto: story.append(Paragraph(f'<i>"{motto}"</i>',s_s))
-    if title_text: story.append(Paragraph(title_text,ttl_s))
+    if title_text: story.append(Paragraph(title_text,s_s))
     if subtitle_text: story.append(Paragraph(subtitle_text,s_s))
-    # Brand stripe — a slim navy + accent-blue double rule under the header,
-    # instead of a plain gap, so every generated document reads as "designed".
-    story.append(HRFlowable(width="100%", thickness=2, color=NAVY, spaceBefore=5, spaceAfter=0))
-    story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceBefore=0, spaceAfter=10))
-    return story
+    story.append(Spacer(1,0.3*cm)); return story
 
-# Grade + rank colors reused across every PDF so a grade or a top-3 position
-# is instantly recognizable by color, not just by the number next to it.
-GRADE_COLORS = {
-    "A": colors.HexColor("#00A651"),
-    "B": colors.HexColor("#1565C0"),
-    "C": colors.HexColor("#FF6D00"),
-    "D": colors.HexColor("#F9A825"),
-    "F": colors.HexColor("#D32F2F"),
-}
-def _grade_color(grade):
-    return GRADE_COLORS.get(str(grade).upper(), colors.HexColor("#546E7A"))
-
-MEDAL_COLORS = {1: colors.HexColor("#B8860B"), 2: colors.HexColor("#757575"), 3: colors.HexColor("#A0522D")}
-
-def _page_footer(canvas, doc, school_id, label=""):
-    """Drawn on every single page (onFirstPage/onLaterPages), so a 1000-student
-    score sheet that spans dozens of pages still looks finished throughout —
-    not just on page one."""
-    canvas.saveState()
-    w, h = doc.pagesize
-    canvas.setStrokeColor(colors.HexColor("#B7D6EC"))
-    canvas.setLineWidth(0.6)
-    canvas.line(doc.leftMargin, 1.1*cm, w-doc.rightMargin, 1.1*cm)
-    canvas.setFont("Helvetica", 7.5)
-    canvas.setFillColor(colors.HexColor("#546E7A"))
-    left_txt = get_school_name(school_id) + (f"   •   {label}" if label else "")
-    canvas.drawString(doc.leftMargin, 0.65*cm, left_txt)
-    canvas.drawRightString(w-doc.rightMargin, 0.65*cm, f"Page {doc.page}")
-    canvas.restoreState()
-
-def _fetch_sheet_scores(school_id, mode, term_id, ca_name, student_ids, subjects):
-    """
-    Batch-fetch every score a score-sheet PDF needs in a small, fixed number
-    of queries — instead of the old approach of one fresh DB connection per
-    (student, subject) pair. For a class of 1000+ students across ~15
-    subjects that was 15,000+ connections; this is 1-2 queries total,
-    which is the actual fix for "the score sheet takes forever to load".
-    Returns {(student_id, subject): score}
-    """
-    scores = {}
-    if not student_ids: return scores
-    con = get_db(); cur = con.cursor()
-    if mode == "ca":
-        cur.execute("""SELECT student_id,subject,score FROM ca_scores
-                       WHERE school_id=%s AND term_id=%s AND ca_name=%s AND student_id=ANY(%s)""",
-                    (school_id, term_id, ca_name, student_ids))
-        for sid, subj, sc in cur.fetchall(): scores[(sid, subj)] = sc
-    elif mode == "exam":
-        cur.execute("""SELECT student_id,subject,score FROM exam_scores
-                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
-                    (school_id, term_id, student_ids))
-        for sid, subj, sc in cur.fetchall(): scores[(sid, subj)] = sc
-    elif mode == "terminal":
-        term = get_term_by_id(school_id, term_id)
-        exam_map, ca_avg_map = {}, {}
-        cur.execute("""SELECT student_id,subject,score FROM exam_scores
-                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
-                    (school_id, term_id, student_ids))
-        for sid, subj, sc in cur.fetchall(): exam_map[(sid, subj)] = sc
-        cur.execute("""SELECT student_id,subject,AVG(score) FROM ca_scores
-                       WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)
-                       GROUP BY student_id,subject""",
-                    (school_id, term_id, student_ids))
-        for sid, subj, avg_score in cur.fetchall(): ca_avg_map[(sid, subj)] = float(avg_score)
-        if term:
-            for sid in student_ids:
-                for subj in subjects:
-                    ex = exam_map.get((sid, subj)); ca = ca_avg_map.get((sid, subj))
-                    if ex is not None and ca is not None:
-                        scores[(sid, subj)] = round((ca/100)*term["ca_weight"] + (ex/100)*term["exam_weight"], 1)
-    cur.close(); con.close()
-    return scores
-
-def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,scores_dict,term=None):
-    """
-    scores_dict: {(student_id, subject): score} — pre-fetched in one or two
-    queries by the caller via _fetch_sheet_scores(). No DB access happens
-    inside this function at all, which is what makes it fast regardless of
-    whether there are 30 students or 3000.
-    """
+def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,term=None):
     subj_map=get_subject_map(school_id)
-    NAVY  = colors.HexColor("#0A1628")
-    H_BG  = colors.HexColor("#1565C0")
-    S_BG  = colors.HexColor("#0D47A1")
-    ODD   = colors.HexColor("#EAF4FC")
-    EVEN  = colors.white
-    RED   = colors.HexColor("#C0392B")
-    WHITE = colors.white
-
-    doc=SimpleDocTemplate(filename,pagesize=landscape(A4),
-                           rightMargin=1.1*cm,leftMargin=1.1*cm,
-                           topMargin=1.1*cm,bottomMargin=1.6*cm)
+    H_BG=colors.HexColor("#1A6FA8"); S_BG=colors.HexColor("#5BA4CF")
+    ODD=colors.HexColor("#E8F4FC"); EVEN=colors.white
+    RED=colors.HexColor("#C0392B"); WHITE=colors.white
+    doc=SimpleDocTemplate(filename,pagesize=landscape(A4),rightMargin=1.2*cm,leftMargin=1.2*cm,topMargin=1.2*cm,bottomMargin=1.2*cm)
     styles=getSampleStyleSheet(); story=[]
     tl=term["label"] if term else ""
     story+=_school_header_story(school_id,styles,subtitle,tl)
-
-    grade_rules=get_grade_rules(school_id)  # fetched once — not per student
-    def _local_grade(score):
-        for r in grade_rules:
-            if score>=r["min_score"]: return r["grade"]
-        return grade_rules[-1]["grade"] if grade_rules else "F"
-
     results=[]
     for s in students:
         row={"name":s["name"],"stream":s.get("stream_name") or "","scores":{},"total":0,"count":0}
         for subj in subjects:
-            sc=scores_dict.get((s["id"],subj)); row["scores"][subj]=sc
+            sc=get_score_fn(s["id"],subj); row["scores"][subj]=sc
             if sc is not None: row["total"]+=sc; row["count"]+=1
         row["average"]=row["total"]/row["count"] if row["count"] else 0
-        row["grade"]=_local_grade(row["average"]); results.append(row)
+        row["grade"]=get_grade(school_id,row["average"]); results.append(row)
     _assign_positions(results,"average")
-
     has_streams=any(r["stream"] for r in results)
     hdr=["#","Student"]
     if has_streams: hdr.append("Stream")
     hdr+=[subj_map.get(s,s[:4].upper()) for s in subjects]+["Total","Avg","Pos","Grd"]
-
-    tdata=[hdr]; fail_cells=[]; grade_cells=[]; medal_rows=[]
+    tdata=[hdr]; fail_cells=[]
     for ri,r in enumerate(results,1):
         row=[str(r["position"]),r["name"]]
         if has_streams: row.append(r["stream"] or "—")
@@ -1659,39 +1596,22 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,scores_dict,te
               f"{r['average']:.1f}" if r["count"] else "-",
               str(r["position"]),r["grade"] if r["count"] else "-"]
         tdata.append(row)
-        if r["count"]: grade_cells.append((ri,r["grade"]))
-        if r["position"] in (1,2,3): medal_rows.append((ri,r["position"]))
-
-    sc_w=1.15*cm; extra=0.85*cm if has_streams else 0
-    cw=[0.65*cm,3.0*cm]+([extra] if has_streams else [])+[sc_w]*len(subjects)+[1.45*cm,1.25*cm,0.85*cm,0.95*cm]
+    sc_w=1.2*cm; extra=0.8*cm if has_streams else 0
+    cw=[0.7*cm,3.0*cm]+([extra] if has_streams else [])+[sc_w]*len(subjects)+[1.5*cm,1.3*cm,0.9*cm,1.0*cm]
     tbl=Table(tdata,colWidths=cw,repeatRows=1)
     ts=[("BACKGROUND",(0,0),(-1,0),H_BG),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.8),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.5),
         ("ALIGN",(0,0),(-1,0),"CENTER"),("FONTNAME",(0,1),(-1,-1),"Helvetica"),
-        ("FONTSIZE",(0,1),(-1,-1),7.2),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[ODD,EVEN]),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#B7D6EC")),
-        ("LINEBELOW",(0,0),(-1,0),1.1,NAVY),
-        ("TOPPADDING",(0,0),(-1,-1),3.2),("BOTTOMPADDING",(0,0),(-1,-1),3.2),
+        ("FONTSIZE",(0,1),(-1,-1),7),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[ODD,EVEN]),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#A0C4E0")),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
         ("BACKGROUND",(-4,0),(-1,0),S_BG),("FONTNAME",(-4,1),(-1,-1),"Helvetica-Bold")]
-    for (ri,ci) in fail_cells:
-        ts.append(("TEXTCOLOR",(ci,ri),(ci,ri),RED))
-        ts.append(("FONTNAME",(ci,ri),(ci,ri),"Helvetica-Bold"))
-    for (ri,grade) in grade_cells:
-        ts.append(("TEXTCOLOR",(-1,ri),(-1,ri),_grade_color(grade)))
-        ts.append(("FONTNAME",(-1,ri),(-1,ri),"Helvetica-Bold"))
-    for (ri,pos) in medal_rows:
-        ts.append(("TEXTCOLOR",(0,ri),(0,ri),MEDAL_COLORS[pos]))
-        ts.append(("FONTNAME",(0,ri),(0,ri),"Helvetica-Bold"))
-        ts.append(("TEXTCOLOR",(-2,ri),(-2,ri),MEDAL_COLORS[pos]))
-        ts.append(("FONTNAME",(-2,ri),(-2,ri),"Helvetica-Bold"))
+    for (ri,ci) in fail_cells: ts.append(("TEXTCOLOR",(ci,ri),(ci,ri),RED))
     tbl.setStyle(TableStyle(ts)); story.append(tbl)
     story.append(Spacer(1,0.3*cm))
-
-    ft=ParagraphStyle("F",parent=styles["Normal"],fontSize=7.2,textColor=colors.HexColor("#546E7A"))
-    story.append(Paragraph(f"<b>{len(students)}</b> students listed &nbsp;|&nbsp; Term: <b>{tl}</b>",ft))
-
-    page_fn = partial(_page_footer, school_id=school_id, label=subtitle)
-    doc.build(story, onFirstPage=page_fn, onLaterPages=page_fn)
+    ft=ParagraphStyle("F",parent=styles["Normal"],fontSize=6.5,textColor=colors.grey,alignment=2)
+    story.append(Paragraph(f"Generated | {len(students)} students | {tl}",ft))
+    doc.build(story)
 
 @app.route("/api/pdf/report/<int:sid>", methods=["GET"])
 def pdf_report(sid):
@@ -1707,15 +1627,29 @@ def pdf_report(sid):
     if not term: return jsonify({"error":"No term"}),400
     tid=term["id"]; ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
     class_id=student["class_id"]; stream_id=student["stream_id"]
-    c_pos,c_total,s_pos,s_total=get_positions(school_id,sid,class_id,stream_id,tid)
+
+    class_rows, class_rank_map, stream_rank_map, scores_bulk = get_class_report_data(
+        school_id, tid, class_id, stream_id, subjects, ca_w, ex_w)
+    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
+    c_entry=class_rank_map.get(sid)
+    c_pos=c_entry["position"] if c_entry else "-"
+    c_total=len(class_rows)
+    s_pos=s_total=None
+    if stream_id and stream_rank_map is not None:
+        s_entry=stream_rank_map.get(sid)
+        s_pos=s_entry["position"] if s_entry else "-"
+        s_total=len(stream_rank_map)
+    student_finals = c_entry["finals"] if c_entry else compute_student_finals(scores_bulk, sid, subjects, ca_w, ex_w)
+    avg = c_entry["average"] if c_entry else compute_average_from_finals(student_finals)
+    student_scores = scores_bulk.get(sid, {})
+
     safe=student["name"].replace(" ","_")
     fname=os.path.join(tempfile.gettempdir(),f"RC_{school_id}_{safe}_{tid}.pdf")
     doc=SimpleDocTemplate(fname,pagesize=A4,rightMargin=1.5*cm,leftMargin=1.5*cm,topMargin=1.5*cm,bottomMargin=1.5*cm)
     styles=getSampleStyleSheet(); story=[]
-    NAVY=colors.HexColor("#0A1628"); H_BG=colors.HexColor("#1565C0"); ODD=colors.HexColor("#EAF4FC"); WHITE=colors.white; RED=colors.HexColor("#C0392B")
+    H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC"); WHITE=colors.white; RED=colors.HexColor("#C0392B")
     story+=_school_header_story(school_id,styles,"STUDENT REPORT CARD")
     stream_label=f"{student['class_name']} {student['stream_name']}" if student.get("stream_name") else student["class_name"]
-    avg=calc_student_average(school_id,sid,tid)
     info=[[" Name:",student["name"],"Class:",stream_label],
           ["Term:",term["label"],"Weights:",f"CA {ca_w}% | Exam {ex_w}%"],
           ["Class Position:",f"{c_pos}/{c_total}","Grade:",get_grade(school_id,avg)]]
@@ -1726,26 +1660,19 @@ def pdf_report(sid):
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     story+=[it,Spacer(1,0.4*cm)]
     hdr=["Subject"]+[f"CA{i}" for i in range(1,ca_count+1)]+["Exam","Final","Pos","Grd","Remark","Sign"]
-    tdata=[hdr]; tot,cnt=0,0; fail_rows=[]; grade_rows=[]
+    tdata=[hdr]; tot,cnt=0,0; fail_rows=[]
     for subject in subjects:
-        con=get_db(); cur=con.cursor()
-        cur.execute("SELECT ca_name,score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (school_id,sid,subject,tid))
-        ca_rows=cur.fetchall()
-        cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (school_id,sid,subject,tid))
-        exam_row=cur.fetchone(); cur.close(); con.close()
-        ca_map={r[0]:r[1] for r in ca_rows}
+        entry=student_scores.get(subject,{})
+        ca_map=entry.get("ca",{})
         row_data=[subject.title()]+[f"{ca_map.get(f'CA{i}'):.1f}" if ca_map.get(f"CA{i}") is not None else "-" for i in range(1,ca_count+1)]
-        exam_v=exam_row[0] if exam_row else None
+        exam_v=entry.get("exam")
         row_data.append(f"{exam_v:.1f}" if exam_v is not None else "-")
-        final_v=calc_final(school_id,sid,subject,tid)
+        final_v=student_finals.get(subject)
         if final_v is not None: tot+=final_v; cnt+=1
         row_data.append(f"{final_v:.1f}" if final_v is not None else "-")
-        row_data.append(str(get_subject_position(school_id,sid,subject,class_id,stream_id,tid)) if final_v is not None else "-")
+        row_data.append(str(subject_rank_maps[subject].get(sid,"-")) if final_v is not None else "-")
         row_data.append(get_grade(school_id,final_v) if final_v is not None else "-")
         row_data+=["",""]
-        if final_v is not None: grade_rows.append((len(tdata), get_grade(school_id,final_v)))
         if final_v is not None and final_v<50: fail_rows.append(len(tdata))
         tdata.append(row_data)
     ca_cw=1.1*cm; cw=[4.0*cm]+[ca_cw]*ca_count+[1.4*cm,1.4*cm,1.0*cm,1.1*cm,2.4*cm,1.6*cm]
@@ -1756,11 +1683,6 @@ def pdf_report(sid):
          ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#A0C4E0")),("ROWBACKGROUNDS",(0,1),(-1,-1),[ODD,WHITE]),
          ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]
     for ri in fail_rows: mts.append(("TEXTCOLOR",(0,ri),(-1,ri),RED))
-    grd_col = ca_count+4
-    for (ri,grd) in grade_rows:
-        mts.append(("TEXTCOLOR",(grd_col,ri),(grd_col,ri),_grade_color(grd)))
-        mts.append(("FONTNAME",(grd_col,ri),(grd_col,ri),"Helvetica-Bold"))
-    mts.append(("LINEBELOW",(0,0),(-1,0),1.1,NAVY))
     mt.setStyle(TableStyle(mts)); story+=[mt,Spacer(1,0.4*cm)]
     comp_avg=tot/cnt if cnt else 0
     summary_data=[["AVERAGE",f"{comp_avg:.2f}","GRADE",get_grade(school_id,comp_avg),"CLASS POS",f"{c_pos}/{c_total}"]]
@@ -1782,9 +1704,7 @@ def pdf_report(sid):
     story+=[rmt,Spacer(1,0.4*cm)]
     sig=Table([["Class Teacher Sign: _______________","Head Sign: _______________","Date: _______________"]],colWidths=[6*cm,6*cm,5*cm])
     sig.setStyle(TableStyle([("FONTSIZE",(0,0),(-1,-1),7.5),("FONTNAME",(0,0),(-1,-1),"Helvetica")]))
-    story.append(sig)
-    page_fn = partial(_page_footer, school_id=school_id, label=f"Report Card - {term['label']}")
-    doc.build(story, onFirstPage=page_fn, onLaterPages=page_fn)
+    story.append(sig); doc.build(story)
     return send_file(fname,as_attachment=True,
                      download_name=f"RC_{student['name'].replace(' ','_')}_{term['label'].replace(' ','_')}.pdf",
                      mimetype="application/pdf")
@@ -1800,18 +1720,12 @@ def pdf_ca_sheet():
     if stream_id: stream_id=int(stream_id)
     studs=get_students_in_scope(school_id,class_id,stream_id)
     if not studs: return jsonify({"error":"No students"}),404
-    student_ids=[s["id"] for s in studs]
     fname=os.path.join(tempfile.gettempdir(),f"CA_{school_id}_{class_id}_{ca_name}_{tid}.pdf")
-    # "exam" here means the Exam Score Sheet re-uses this same route — route it
-    # to the real exam_scores table instead of querying ca_scores for a
-    # ca_name of 'exam' (which never matches anything and silently gave blanks).
-    if ca_name.lower()=="exam":
-        scores=_fetch_sheet_scores(school_id,"exam",tid,None,student_ids,subjects)
-        subtitle="FINAL EXAM SCORE SHEET"
-    else:
-        scores=_fetch_sheet_scores(school_id,"ca",tid,ca_name,student_ids,subjects)
-        subtitle=f"{ca_name.upper()} SCORE SHEET"
-    _blue_sheet_pdf(school_id,fname,subtitle,studs,subjects,scores,term)
+    scores_bulk=get_term_scores_bulk(school_id,tid,[s["id"] for s in studs])
+    def get_score(stid,subj):
+        entry=scores_bulk.get(stid,{}).get(subj)
+        return entry["ca"].get(ca_name) if entry else None
+    _blue_sheet_pdf(school_id,fname,f"{ca_name.upper()} SCORE SHEET",studs,subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
@@ -1824,10 +1738,13 @@ def pdf_terminal_sheet():
     if stream_id: stream_id=int(stream_id)
     studs=get_students_in_scope(school_id,class_id,stream_id)
     if not studs: return jsonify({"error":"No students"}),404
-    student_ids=[s["id"] for s in studs]
     fname=os.path.join(tempfile.gettempdir(),f"Terminal_{school_id}_{class_id}_{tid}.pdf")
-    scores=_fetch_sheet_scores(school_id,"terminal",tid,None,student_ids,subjects)
-    _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,subjects,scores,term)
+    scores_bulk=get_term_scores_bulk(school_id,tid,[s["id"] for s in studs])
+    ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
+    def get_score(stid,subj):
+        f=_final_from_entry(scores_bulk.get(stid,{}).get(subj),ca_w,ex_w)
+        return round(f,1) if f is not None else None
+    _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 

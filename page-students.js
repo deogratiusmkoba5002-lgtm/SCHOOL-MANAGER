@@ -11,10 +11,23 @@ async function loadStudents(){
     tb.innerHTML = `<tr><td colspan="6"><div class="spinner"></div><p style="text-align:center;color:var(--muted);font-size:.85rem;margin-top:-8px">Loading students…</p></td></tr>`;
   }
   const fresh = await api("/students");
-  allStudents = fresh;
+  allStudents = scopeStudentsForUser(fresh);
   selectedStudentIds.clear();
   updateBulkBar();
   renderStudents(getFilteredStudents());
+}
+
+// Class teachers only see the students in the class (and, if set, the
+// stream) they are class teacher of — everyone else (admin) sees all.
+function scopeStudentsForUser(students){
+  if(currentUser && currentUser.role==="teacher" && currentUser.is_class_teacher && currentUser.class_id){
+    return students.filter(s=>{
+      if(String(s.class_id) !== String(currentUser.class_id)) return false;
+      if(currentUser.stream_id) return String(s.stream_id) === String(currentUser.stream_id);
+      return true;
+    });
+  }
+  return students;
 }
 
 function getFilteredStudents(){

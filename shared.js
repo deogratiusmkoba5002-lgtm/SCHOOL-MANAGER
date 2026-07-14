@@ -263,7 +263,6 @@ const NAV_ADMIN = [
   {id:"classes",   icon:schoolSVG(),  label:"Classes"},
   {id:"teachers",  icon:teacherSVG(), label:"Teachers"},
   {id:"terms",     icon:calSVG(),     label:"Terms"},
-  {id:"reports",   icon:reportSVG(),  label:"Report Cards"},
   {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},
   {id:"rankings",  icon:starSVG(),    label:"Rankings"},
   {id:"past",      icon:historySVG(), label:"Past Terms"},
@@ -282,7 +281,7 @@ function buildTeacherNav(user){
     {id:"rankings",icon:starSVG(),   label:"Rankings"},
   ];
   if(user.is_class_teacher){
-    items.push({id:"reports", icon:reportSVG(), label:"Report Cards"});
+    items.push({id:"students", icon:peopleSVG(), label:"Students"});
     items.push({id:"sheets",  icon:tableSVG(),  label:"Score Sheets"});
   }
   items.push({id:"past", icon:historySVG(), label:"Past Terms"});
