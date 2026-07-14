@@ -233,6 +233,59 @@ def get_subject_position(school_id, student_id, subject, class_id, stream_id, te
         if s["id"] == student_id: return s["position"]
     return "-"
 
+def _fetch_report_data(school_id, term_id, student_ids, subjects):
+    """
+    One batch fetch for a whole class/term instead of N-students x M-subjects
+    x (3-4 queries each). Returns (term, finals, ca_detail, exam_map).
+    finals/exam_map are keyed by (student_id, subject); ca_detail is keyed
+    by (student_id, subject) -> {"CA1": score, ...}.
+    """
+    term = get_term_by_id(school_id, term_id)
+    if not term or not student_ids:
+        return term, {}, {}, {}
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT student_id,subject,ca_name,score FROM ca_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    ca_detail = {}; ca_sums = {}
+    for sid, subj, ca_name, score in cur.fetchall():
+        ca_detail.setdefault((sid, subj), {})[ca_name] = score
+        ca_sums.setdefault((sid, subj), []).append(score)
+    cur.execute("""SELECT student_id,subject,score FROM exam_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    exam_map = {}
+    for sid, subj, score in cur.fetchall():
+        exam_map[(sid, subj)] = score
+    cur.close(); con.close()
+    finals = {}
+    for (sid, subj), scores in ca_sums.items():
+        exam = exam_map.get((sid, subj))
+        if exam is not None:
+            ca_avg = sum(scores) / len(scores)
+            finals[(sid, subj)] = (ca_avg/100)*term["ca_weight"] + (exam/100)*term["exam_weight"]
+    return term, finals, ca_detail, exam_map
+
+def _rank_from_finals(school_id, students, subjects, finals):
+    """Class/stream ranking computed purely in Python from a pre-fetched
+    finals dict — no DB access per student."""
+    rows = []
+    for s in students:
+        vals = [finals[(s["id"], subj)] for subj in subjects if (s["id"], subj) in finals]
+        avg = sum(vals)/len(vals) if vals else 0
+        rows.append({"id": s["id"], "name": s["name"], "average": round(avg, 2), "grade": get_grade(school_id, avg)})
+    _assign_positions(rows, "average")
+    return rows
+
+def _subject_position_from_finals(student_id, subject, scope_ids, finals):
+    """Subject-level position within a scope (class or stream), computed
+    from the pre-fetched finals dict instead of a fresh query per student."""
+    scores = [{"id": sid, "score": finals[(sid, subject)]} for sid in scope_ids if (sid, subject) in finals]
+    _assign_positions(scores, "score")
+    for sc in scores:
+        if sc["id"] == student_id: return sc["position"]
+    return "-"
+
 def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT id FROM subject_assignments
@@ -1058,6 +1111,10 @@ def api_set_school_info():
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:student_id>", methods=["GET"])
 def api_report(student_id):
+    # Rewritten to batch-fetch all class marks in ~5 queries total instead of
+    # the old approach (get_positions -> get_ranking -> calc_student_average
+    # -> calc_final, called per student per subject), which for a 50-student
+    # class x 15 subjects meant 1,000+ DB round trips for a single report.
     sid = school_id_from_header(); subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
@@ -1072,25 +1129,36 @@ def api_report(student_id):
     if not term: return jsonify({"ok":False,"error":"No term available"}),400
     tid=term["id"]; ca_count=term["ca_count"]
     class_id=student["class_id"]; stream_id=student["stream_id"]
-    c_pos,c_total,s_pos,s_total = get_positions(sid,student_id,class_id,stream_id,tid)
-    avg = calc_student_average(sid,student_id,tid)
+
+    class_students = get_students_in_scope(sid, class_id)
+    class_ids = [s["id"] for s in class_students]
+    term, finals, ca_detail, exam_map = _fetch_report_data(sid, tid, class_ids, subjects)
+
+    class_ranking = _rank_from_finals(sid, class_students, subjects, finals)
+    c_pos   = next((r["position"] for r in class_ranking if r["id"]==student_id), "-")
+    c_total = len(class_ranking)
+    s_pos, s_total = None, None
+    if stream_id:
+        stream_students = [s for s in class_students if s["stream_id"]==stream_id]
+        stream_ranking  = _rank_from_finals(sid, stream_students, subjects, finals)
+        s_pos   = next((r["position"] for r in stream_ranking if r["id"]==student_id), "-")
+        s_total = len(stream_ranking)
+
+    scope_ids = [s["id"] for s in class_students if (not stream_id or s["stream_id"]==stream_id)]
+    own_vals = [finals[(student_id, subj)] for subj in subjects if (student_id, subj) in finals]
+    avg = sum(own_vals)/len(own_vals) if own_vals else 0
+
     rows = []
     for subject in subjects:
-        con = get_db(); cur = con.cursor()
-        cur.execute("SELECT ca_name,score FROM ca_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (sid,student_id,subject,tid))
-        ca_rows = cur.fetchall()
-        cur.execute("SELECT score FROM exam_scores WHERE school_id=%s AND student_id=%s AND subject=%s AND term_id=%s",
-                    (sid,student_id,subject,tid))
-        exam_row = cur.fetchone(); cur.close(); con.close()
-        ca_map   = {r[0]:r[1] for r in ca_rows}
-        ca_scores= {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
-        exam_val = exam_row[0] if exam_row else None
-        final_val= calc_final(sid,student_id,subject,tid)
-        subj_pos = get_subject_position(sid,student_id,subject,class_id,stream_id,tid) if final_val is not None else "-"
+        ca_map    = ca_detail.get((student_id, subject), {})
+        ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
+        exam_val  = exam_map.get((student_id, subject))
+        final_val = finals.get((student_id, subject))
+        subj_pos  = _subject_position_from_finals(student_id, subject, scope_ids, finals) if final_val is not None else "-"
         rows.append({"subject":subject,"ca":ca_scores,"exam":exam_val,
                      "final":round(final_val,1) if final_val is not None else None,
                      "grade":get_grade(sid,final_val) if final_val is not None else "-","position":subj_pos})
+
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT * FROM remarks WHERE school_id=%s AND student_id=%s AND term_id=%s",(sid,student_id,tid))
     rmk_row = cur.fetchone(); rmk = to_dict(rmk_row,cur) if rmk_row else None
