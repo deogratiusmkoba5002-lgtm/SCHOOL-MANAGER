@@ -28,6 +28,9 @@
     <div class="field">
       <label>School Registration Code</label>
       <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization" oninput="fetchBrandingByRegCode(this.value)"/>
+      <div style="text-align:right;margin-top:5px">
+        <a href="javascript:void(0)" onclick="recoverRegCode()" style="font-size:.78rem;color:var(--blue);text-decoration:none">Forgot your registration code?</a>
+      </div>
     </div>
     <div class="field">
       <label>Username</label>

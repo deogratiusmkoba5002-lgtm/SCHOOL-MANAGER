@@ -115,6 +115,7 @@ async function loadParentsPage(){
   const annTarget = document.getElementById("ann-target");
   annTarget.innerHTML = `<option value="all">All Classes</option>` +
     allClasses.map(c=>`<option value="${c.class_name}">${c.class_name}</option>`).join("");
+  annTarget.value = "all";
   const anns = await api("/announcements");
   const annList = document.getElementById("announcements-admin-list");
   if(!anns.length){
@@ -155,8 +156,14 @@ document.getElementById("btn-post-announcement").addEventListener("click", async
   const body  = document.getElementById("ann-body").value.trim();
   const sel   = document.getElementById("ann-target");
   const selected = [...sel.selectedOptions].map(o=>o.value);
-  const target_classes = selected.includes("all") ? "all" : selected.join(",");
   if(!title||!body){toast("Title and message required","error");return;}
+  let target_classes;
+  if(!selected.length){
+    target_classes = "all";
+    toast("No target classes were selected, so this was sent to All Classes.","info");
+  } else {
+    target_classes = selected.includes("all") ? "all" : selected.join(",");
+  }
   const r = await api("/announcements","POST",{title,body,target_classes,posted_by:currentUser.username});
   if(r.ok){ toast("Announcement posted!","success"); document.getElementById("ann-title").value=""; document.getElementById("ann-body").value=""; loadParentsPage(); }
   else toast(r.error||"Failed","error");

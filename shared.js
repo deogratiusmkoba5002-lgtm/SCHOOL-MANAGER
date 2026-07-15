@@ -186,6 +186,28 @@ function fetchBrandingByRegCode(regCode){
   } catch(e){}
 })();
 
+async function recoverRegCode(){
+  const u = document.getElementById("login-user").value.trim();
+  const p = document.getElementById("login-pass").value;
+  const errEl = document.getElementById("login-error");
+  errEl.style.display="none";
+  if(!u || !p){
+    errEl.textContent = "Enter your username and password above first, then click this link.";
+    errEl.style.display="block";
+    return;
+  }
+  const res = await api("/find_reg_code","POST",{username:u,password:p});
+  if(res.ok){
+    const regEl = document.getElementById("login-regcode");
+    if(regEl) regEl.value = res.reg_code;
+    fetchBrandingByRegCode(res.reg_code);
+    toast(`Found it — your school's registration code is "${res.reg_code}". It's been filled in above.`,"success");
+  } else {
+    errEl.textContent = res.error || "Could not find your registration code.";
+    errEl.style.display="block";
+  }
+}
+
 async function doLogin(){
   const regEl = document.getElementById("login-regcode");
   const reg = regEl ? regEl.value.trim() : "";

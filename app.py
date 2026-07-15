@@ -585,6 +585,14 @@ def init_db():
         try: cur.execute(s)
         except Exception as e: print(f"Seed note: {e}")
 
+    # Repair announcements from before the target-classes default-selection
+    # fix — these were saved with an empty target_classes and were invisible
+    # to every parent, regardless of what class they were meant for.
+    try:
+        cur.execute("UPDATE announcements SET target_classes='all' WHERE target_classes IS NULL OR TRIM(target_classes)=''")
+    except Exception as e:
+        print(f"announcement target_classes repair note: {e}")
+
     # Registration Code (reg_code): a unique, school-chosen identifier used at
     # login time (alongside username/password) to unambiguously pick which
     # school a login belongs to. This closes the cross-school login hole where
@@ -789,6 +797,34 @@ def api_school_info():
     cur.execute("SELECT key,value FROM school_config WHERE school_id=%s AND key=ANY(%s)", (school_id, keys))
     rows = cur.fetchall(); cur.close(); con.close()
     return jsonify({r[0]:r[1] for r in rows})
+
+@app.route("/api/find_reg_code", methods=["POST"])
+def api_find_reg_code():
+    """Recovery helper for people who don't know their school's registration
+    code (e.g. right after this feature was deployed). Given a correct
+    username+password, find which school it belongs to — but only answers
+    when the match is unambiguous. If the same username+password happens to
+    be valid in more than one school, this refuses to guess, which is exactly
+    the ambiguity the registration-code login was built to eliminate."""
+    d = request.json or {}
+    u, p = d.get("username","").strip(), d.get("password","")
+    if not u or not p:
+        return jsonify({"ok":False,"error":"Enter your username and password"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT * FROM users WHERE username=%s", (u,))
+    rows = cur.fetchall(); cols = [x[0] for x in cur.description] if cur.description else []
+    cur.close(); con.close()
+    matches = [dict(zip(cols,row)) for row in rows if verify_password(p, dict(zip(cols,row))["password"])]
+    if not matches:
+        return jsonify({"ok":False,"error":"Invalid username or password"}), 401
+    if len(matches) > 1:
+        return jsonify({"ok":False,"error":"This username and password exist in more than one school. Please ask your school admin for your registration code."}), 409
+    school_id = matches[0]["school_id"]
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT reg_code, school_name FROM schools WHERE id=%s", (school_id,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row: return jsonify({"ok":False,"error":"School not found"}), 404
+    return jsonify({"ok":True,"reg_code":row[0],"school_name":row[1]})
 
 @app.route("/api/setup_admin", methods=["POST"])
 def api_setup_admin():
@@ -1452,7 +1488,7 @@ def api_get_announcements():
 def api_post_announcement():
     sid=school_id_from_header(); d=request.json
     title=d.get("title","").strip(); body=d.get("body","").strip()
-    posted_by=d.get("posted_by",""); target_classes=d.get("target_classes","all").strip()
+    posted_by=d.get("posted_by",""); target_classes=(d.get("target_classes") or "all").strip() or "all"
     if not title or not body: return jsonify({"ok":False,"error":"Title and body required"}),400
     con=get_db(); cur=con.cursor()
     cur.execute("INSERT INTO announcements(school_id,title,body,target_classes,posted_by) VALUES(%s,%s,%s,%s,%s) RETURNING id",
