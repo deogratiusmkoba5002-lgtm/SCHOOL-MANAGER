@@ -30,7 +30,29 @@ async function loadConfigPage(){
     if(text) text.textContent = "Drag & drop or click to upload a new logo";
   }
 
-  await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades()]);
+  await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades(), configLoadRegCode()]);
+}
+
+// ── SCHOOL REGISTRATION CODE (used alongside username/password to log in) ──
+async function configLoadRegCode(){
+  const r = await api("/config/reg_code");
+  const el = document.getElementById("config-reg-code");
+  if(el) el.value = r.reg_code || "";
+}
+async function configSaveRegCode(){
+  const el = document.getElementById("config-reg-code");
+  if(!el) return;
+  const val = el.value.trim();
+  if(!val){ toast("Enter a registration code","error"); return; }
+  const btn = document.getElementById("config-reg-code-save-btn");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await api("/config/reg_code","POST",{reg_code:val});
+    if(r.ok){ toast("Registration code saved!","success"); el.value = r.reg_code; }
+    else toast(r.error||"Failed to save registration code","error");
+  } finally {
+    if(btn) btn.disabled = false;
+  }
 }
 
 // ── LOGO UPLOAD ─────────────────────────────────────────────

@@ -58,7 +58,7 @@ async function doSetup(){
     });
     const d = await r.json();
     if(d.ok){
-      msg.textContent="✓ Admin account created! Go to the main page and log in.";
+      msg.textContent="✓ Admin account created! Your school's registration code is \"school-1\" — you'll need it (along with your username & password) to log in. You can change it later from Config. Go to the main page and log in.";
       msg.className="msg success"; msg.style.display="block";
     } else {
       msg.textContent=d.error||"Failed.";

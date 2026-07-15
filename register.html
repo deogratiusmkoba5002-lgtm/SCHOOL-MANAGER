@@ -366,6 +366,12 @@ input,select,textarea{font-family:inherit;outline:none}
             <input type="tel" id="admin-phone" placeholder="+255 755 000 111">
             <div class="field-hint">This number is shown to parents and teachers who need to reach the system administrator.</div>
           </div>
+
+          <div class="field">
+            <label>School Registration Code <span style="color:var(--red)">*</span></label>
+            <input type="text" id="school-reg-code" placeholder="e.g. Peter_07">
+            <div class="field-hint">A short unique code your staff will type alongside their username &amp; password to log in — this is what points a login at your school specifically, so it must be different from every other school's code. It doesn't have to match your school's name (e.g. Saint Peter's High School could use "Peter_07"). Letters, numbers, underscore and hyphen only, 3–32 characters.</div>
+          </div>
         </div>
 
         <div class="reg-card">
@@ -606,6 +612,9 @@ function validateStep(n){
     if(!adminUser){ toast("Choose an admin username","error"); document.getElementById("admin-username").focus(); return false; }
     if(!adminPass || adminPass.length<6){ toast("Admin password must be at least 6 characters","error"); document.getElementById("admin-password").focus(); return false; }
     if(adminPass !== adminPassConfirm){ toast("Passwords don't match","error"); document.getElementById("admin-password-confirm").focus(); return false; }
+    const regCode = document.getElementById("school-reg-code").value.trim();
+    if(!regCode){ toast("Choose a school registration code","error"); document.getElementById("school-reg-code").focus(); return false; }
+    if(!/^[A-Za-z0-9_-]{3,32}$/.test(regCode)){ toast("Registration code must be 3–32 characters: letters, numbers, underscore or hyphen only","error"); document.getElementById("school-reg-code").focus(); return false; }
   }
   if(n===2){
     const valid = classes.every(c=>c.name.trim());
@@ -806,6 +815,7 @@ async function submitRegistration(){
     fd.append("email",       document.getElementById("school-email").value.trim());
     fd.append("admin_phone", document.getElementById("admin-phone").value.trim());
     fd.append("motto",       document.getElementById("school-motto").value.trim());
+    fd.append("reg_code",    document.getElementById("school-reg-code").value.trim());
     fd.append("classes",     JSON.stringify(classes.filter(c=>c.name.trim())));
     fd.append("subjects",    JSON.stringify(subjects.filter(s=>s.name.trim())));
     fd.append("grades",      JSON.stringify(grades));

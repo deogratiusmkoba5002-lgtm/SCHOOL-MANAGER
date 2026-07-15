@@ -46,10 +46,10 @@ function renderReportCard(out, d, readOnly){
     return `<tr class="${isFail?"fail-row":""}"><td style="font-weight:500;text-transform:capitalize">${r.subject}</td>${caVals}<td>${r.exam??"-"}</td><td>${r.final??"-"}</td><td>${r.position}</td><td class="${r.grade!=="-"?gradeClass(r.grade):""}">${r.grade}</td></tr>`;
   }).join("");
   const termLabel = d.term ? d.term.label : "—";
-  const pdfQs = new URLSearchParams();
-  if(term_id) pdfQs.set("term_id", term_id);
-  if(_schoolId) pdfQs.set("school_id", _schoolId);
-  const pdfUrl    = `${API}/pdf/report/${sid}${pdfQs.toString()?"?"+pdfQs.toString():""}`;
+  const pdfParams = new URLSearchParams();
+  if(term_id) pdfParams.set("term_id", term_id);
+  if(_schoolId) pdfParams.set("school_id", _schoolId);
+  const pdfUrl    = `${API}/pdf/report/${sid}?${pdfParams.toString()}`;
   const ctBox = canEditCT ? `
     ${remarkTemplateHTML("remark-ct-"+sid)}
     <textarea id="remark-ct-${sid}" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit" placeholder="Write class teacher remark…">${d.class_teacher_remark||""}</textarea>
@@ -144,10 +144,10 @@ document.getElementById("ca-sheet-view-btn").addEventListener("click", async()=>
 document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:cc,stream_id:cs}=parseClassStream(document.getElementById("ca-sheet-class").value);
   const ca=document.getElementById("ca-sheet-assess").value;
-  const qs=new URLSearchParams({class_id:cc, ca_name:ca});
-  if(cs) qs.set("stream_id",cs);
-  if(_schoolId) qs.set("school_id",_schoolId);
-  window.open(`${API}/pdf/ca_sheet?${qs.toString()}`,"_blank");
+  const params=new URLSearchParams({class_id:cc, ca_name:ca});
+  if(cs) params.set("stream_id",cs);
+  if(_schoolId) params.set("school_id",_schoolId);
+  window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");
 });
 document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("term-sheet-class").value);
@@ -157,10 +157,10 @@ document.getElementById("term-sheet-view-btn").addEventListener("click", async()
 });
 document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:tc,stream_id:ts}=parseClassStream(document.getElementById("term-sheet-class").value);
-  const qs=new URLSearchParams({class_id:tc});
-  if(ts) qs.set("stream_id",ts);
-  if(_schoolId) qs.set("school_id",_schoolId);
-  window.open(`${API}/pdf/terminal_sheet?${qs.toString()}`,"_blank");
+  const params=new URLSearchParams({class_id:tc});
+  if(ts) params.set("stream_id",ts);
+  if(_schoolId) params.set("school_id",_schoolId);
+  window.open(`${API}/pdf/terminal_sheet?${params.toString()}`,"_blank");
 });
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
@@ -170,10 +170,10 @@ document.getElementById("exam-sheet-view-btn").addEventListener("click", async()
 });
 document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
-  const qs=new URLSearchParams({class_id, ca_name:"exam"});
-  if(stream_id) qs.set("stream_id",stream_id);
-  if(_schoolId) qs.set("school_id",_schoolId);
-  window.open(`${API}/pdf/ca_sheet?${qs.toString()}`,"_blank");
+  const params=new URLSearchParams({class_id, ca_name:"exam"});
+  if(stream_id) params.set("stream_id",stream_id);
+  if(_schoolId) params.set("school_id",_schoolId);
+  window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");
 });
 function renderScoreSheet(container, d, label){
   if(!d.results||!d.results.length){ container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return; }
@@ -182,7 +182,7 @@ function renderScoreSheet(container, d, label){
   const rows = d.results.map((r,i)=>{
     const cells=subs.map(s=>{ const v=r.scores[s]; const fail=v!==null&&v!==undefined&&v<50; return `<td style="${fail?"color:var(--red)":""}">${v!==null&&v!==undefined?v:"-"}</td>`; }).join("");
     const avgFail=r.average>0&&r.average<50;
-    return `<tr><td style="color:var(--muted)">${r.position}</td><td style="font-weight:600">${r.name}</td>${cells}<td style="font-weight:600">${r.count>0?r.total.toFixed(1):"-"}</td><td style="font-weight:600;color:${avgFail?"var(--red)":"var(--blue)"}">${r.average>0?r.average:"-"}</td><td>${r.position}</td><td class="${r.grade?gradeClass(r.grade):""}">${r.grade||"-"}</td></tr>`;
+    return `<tr><td style="color:var(--muted)">${i+1}</td><td style="font-weight:600">${r.name}</td>${cells}<td style="font-weight:600">${r.count>0?r.total.toFixed(1):"-"}</td><td style="font-weight:600;color:${avgFail?"var(--red)":"var(--blue)"}">${r.average>0?r.average:"-"}</td><td>${r.position}</td><td class="${r.grade?gradeClass(r.grade):""}">${r.grade||"-"}</td></tr>`;
   }).join("");
   container.innerHTML=`<div class="table-card"><div class="table-toolbar"><span class="table-toolbar-title">${label} – ${d.results.length} students</span></div><div class="table-wrap"><table class="scoresheet-table"><thead>${hdr}</thead><tbody>${rows}</tbody></table></div></div>`;
 }

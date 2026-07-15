@@ -125,48 +125,78 @@ function get_grade_js(score){
 // ── LOGIN ────────────────────────────────────────────────────
 document.getElementById("login-btn").addEventListener("click", doLogin);
 document.getElementById("login-pass").addEventListener("keydown", e=>e.key==="Enter"&&doLogin());
+const _regCodeEl = document.getElementById("login-regcode");
+if(_regCodeEl) _regCodeEl.addEventListener("keydown", e=>e.key==="Enter"&&doLogin());
+
+function applySchoolBranding(info){
+  if(!info) return;
+  if(info.school_name){
+    const el = document.getElementById("login-school-name");
+    if(el) el.textContent = info.school_name;
+    const sn = document.getElementById("sidebar-school-name");
+    if(sn) sn.textContent = info.school_name;
+  }
+  if(info.motto){
+    const el = document.getElementById("login-school-sub");
+    if(el) el.textContent = info.motto;
+  }
+  if(info.logo_path){
+    const img1 = document.getElementById("login-school-logo");
+    const ico1 = document.getElementById("login-default-icon");
+    if(img1){ img1.src="/"+info.logo_path; img1.style.display="block"; }
+    if(ico1) ico1.style.display="none";
+    const img2 = document.getElementById("sidebar-school-logo");
+    const ico2 = document.getElementById("sidebar-default-icon");
+    if(img2){ img2.src="/"+info.logo_path; img2.style.display="block"; }
+    if(ico2) ico2.style.display="none";
+  }
+  if(info.registration_complete !== undefined && info.registration_complete !== "1"){
+    const errEl = document.getElementById("login-error");
+    if(errEl){ errEl.textContent="⚠ School setup incomplete. Log in as admin to complete registration."; errEl.style.display="block"; }
+  }
+}
+
+// As the person types their school's registration code on the login page,
+// fetch that school's branding (name/logo) so they can confirm it's the
+// right school before they enter their username and password.
+let _brandingDebounce = null;
+function fetchBrandingByRegCode(regCode){
+  clearTimeout(_brandingDebounce);
+  if(!regCode || regCode.trim().length < 3) return;
+  _brandingDebounce = setTimeout(async ()=>{
+    try{
+      const res = await fetch("/api/school/info?reg_code="+encodeURIComponent(regCode.trim()));
+      if(!res.ok) return;
+      const info = await res.json();
+      if(info && info.school_name) applySchoolBranding(info);
+    } catch(e){}
+  }, 400);
+}
 
 (async function preloadSchoolBranding(){
+  // Legacy support: a direct link with ?school_id=N still previews branding,
+  // but no longer drives login — the registration code does that now.
   try{
     const urlSid = new URLSearchParams(window.location.search).get("school_id") || "";
-    const res = await fetch("/api/school/info" + (urlSid ? "?school_id="+urlSid : "?school_id=1"));
+    if(!urlSid) return;
+    const res = await fetch("/api/school/info?school_id="+urlSid);
     if(!res.ok) return;
     const info = await res.json();
-    if(info.school_name){
-      const el = document.getElementById("login-school-name");
-      if(el) el.textContent = info.school_name;
-      const sn = document.getElementById("sidebar-school-name");
-      if(sn) sn.textContent = info.school_name;
-    }
-    if(info.motto){
-      const el = document.getElementById("login-school-sub");
-      if(el) el.textContent = info.motto;
-    }
-    if(info.logo_path){
-      const img1 = document.getElementById("login-school-logo");
-      const ico1 = document.getElementById("login-default-icon");
-      if(img1){ img1.src="/"+info.logo_path; img1.style.display="block"; }
-      if(ico1) ico1.style.display="none";
-      const img2 = document.getElementById("sidebar-school-logo");
-      const ico2 = document.getElementById("sidebar-default-icon");
-      if(img2){ img2.src="/"+info.logo_path; img2.style.display="block"; }
-      if(ico2) ico2.style.display="none";
-    }
-    if(info.registration_complete !== "1"){
-      const errEl = document.getElementById("login-error");
-      if(errEl){ errEl.textContent="⚠ School setup incomplete. Log in as admin to complete registration."; errEl.style.display="block"; }
-    }
+    applySchoolBranding(info);
   } catch(e){}
 })();
 
 async function doLogin(){
+  const regEl = document.getElementById("login-regcode");
+  const reg = regEl ? regEl.value.trim() : "";
   const u = document.getElementById("login-user").value.trim();
   const p = document.getElementById("login-pass").value;
   const errEl = document.getElementById("login-error");
   errEl.style.display="none";
+  if(!reg){errEl.textContent="Please enter your school's registration code";errEl.style.display="block";return;}
   if(!u||!p){errEl.textContent="Please enter username and password";errEl.style.display="block";return;}
   try{
-    const res = await api("/login","POST",{username:u,password:p});
+    const res = await api("/login","POST",{reg_code:reg, username:u,password:p});
     if(res.ok){
       if(res.user.role==="admin" && !res.registration_complete){
         window.location.href="/register"; return;
@@ -368,6 +398,8 @@ document.getElementById("logout-btn").addEventListener("click",()=>{
   document.getElementById("login-page").style.display="flex";
   document.getElementById("login-user").value="";
   document.getElementById("login-pass").value="";
+  const regEl = document.getElementById("login-regcode");
+  if(regEl) regEl.value="";
   document.getElementById("login-error").style.display="none";
 });
 

@@ -26,6 +26,10 @@
     <p class="login-subtitle">Sign in to your account to continue</p>
     <div class="login-error" id="login-error"></div>
     <div class="field">
+      <label>School Registration Code</label>
+      <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization" oninput="fetchBrandingByRegCode(this.value)"/>
+    </div>
+    <div class="field">
       <label>Username</label>
       <input type="text" id="login-user" placeholder="Enter username" autocomplete="username"/>
     </div>
@@ -846,6 +850,22 @@
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
           Save School Identity
         </button>
+      </div>
+
+      <!-- Registration Code (login) -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z"/></svg>
+          School Registration Code
+        </div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
+          Staff enter this code alongside their username and password to log in — it's what tells the system which school's data to open, so it must be unique across every school on the platform. This is useful for a teacher who works at more than one school: they simply switch codes to reach the other school's account.
+        </p>
+        <div class="field" style="max-width:320px">
+          <label>Registration Code</label>
+          <input type="text" id="config-reg-code" placeholder="e.g. Peter_07"/>
+        </div>
+        <button class="btn btn-outline" id="config-reg-code-save-btn" onclick="configSaveRegCode()">Save Registration Code</button>
       </div>
 
       <!-- Classes & Streams -->

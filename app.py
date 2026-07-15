@@ -1,7 +1,7 @@
 """
 School Manager - Flask API Backend (v7 - Full Multi-Tenant)
 """
-import hashlib, os, tempfile, secrets, json
+import hashlib, os, tempfile, secrets, json, re
 import psycopg2, psycopg2.extras
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
@@ -80,10 +80,46 @@ def verify_password(pw, stored):
 # ── SCHOOL_ID HELPERS ─────────────────────────────────────────
 def school_id_from_header():
     sid = request.headers.get("X-School-ID")
+    if not sid:
+        # Browser navigation (<a href>, window.open) used for PDF downloads
+        # can't set custom headers, so those links pass school_id as a
+        # query parameter instead — fall back to that here.
+        sid = request.args.get("school_id")
     if sid:
         try: return int(sid)
         except: pass
     return 1
+
+_REG_CODE_RE = re.compile(r'^[A-Za-z0-9_-]{3,32}$')
+
+def valid_reg_code(code):
+    return bool(code) and bool(_REG_CODE_RE.match(code.strip()))
+
+def get_school_id_by_reg_code(reg_code):
+    """Resolve a school's registration code (case-insensitive) to its school_id.
+    This is the single source of truth for which school a login belongs to —
+    it replaces guessing based on username/password alone, which is what let
+    a teacher with the same username+password in two different schools get
+    logged into the wrong one."""
+    if not reg_code: return None
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id FROM schools WHERE LOWER(reg_code)=LOWER(%s)", (reg_code.strip(),))
+    row = cur.fetchone(); cur.close(); con.close()
+    return row[0] if row else None
+
+def generate_unique_reg_code(base):
+    """Auto-generate a unique reg_code from a school name, e.g. for schools
+    that don't pick their own, or for backfilling pre-existing schools."""
+    base = re.sub(r'[^A-Za-z0-9_-]', '', (base or "").strip().replace(" ", "_"))[:24] or "school"
+    con = get_db(); cur = con.cursor()
+    candidate = base; suffix = 0
+    while True:
+        cur.execute("SELECT 1 FROM schools WHERE LOWER(reg_code)=LOWER(%s)", (candidate,))
+        if not cur.fetchone(): break
+        suffix += 1
+        candidate = f"{base}_{suffix}"
+    cur.close(); con.close()
+    return candidate
 
 def get_config_val(school_id, key, default=""):
     try:
@@ -549,6 +585,24 @@ def init_db():
         try: cur.execute(s)
         except Exception as e: print(f"Seed note: {e}")
 
+    # Registration Code (reg_code): a unique, school-chosen identifier used at
+    # login time (alongside username/password) to unambiguously pick which
+    # school a login belongs to. This closes the cross-school login hole where
+    # two schools with the same username+password could authenticate into
+    # each other's data. Every school must always have one, so schools created
+    # before this feature existed get auto-backfilled with "school-{id}" —
+    # editable afterwards from Config.
+    try:
+        cur.execute("ALTER TABLE schools ADD COLUMN IF NOT EXISTS reg_code TEXT")
+        cur.execute("SELECT id FROM schools WHERE reg_code IS NULL OR reg_code=''")
+        for (missing_id,) in cur.fetchall():
+            cur.execute("UPDATE schools SET reg_code=%s WHERE id=%s", (f"school-{missing_id}", missing_id))
+        cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='idx_schools_reg_code_ci'")
+        if not cur.fetchone():
+            cur.execute("CREATE UNIQUE INDEX idx_schools_reg_code_ci ON schools (LOWER(reg_code))")
+    except Exception as e:
+        print(f"reg_code migration note: {e}")
+
     # Superadmin from env
     sa_user = os.environ.get("SUPERADMIN_USERNAME","")
     sa_pass = os.environ.get("SUPERADMIN_PASSWORD","")
@@ -619,8 +673,16 @@ def api_register_school():
     email        = data.get("email","").strip()
     admin_phone  = data.get("admin_phone","").strip()
     motto        = data.get("motto","").strip()
+    reg_code     = data.get("reg_code","").strip()
     if not school_name: return jsonify({"ok":False,"error":"School name required"}), 400
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
+    if reg_code:
+        if not valid_reg_code(reg_code):
+            return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
+        if get_school_id_by_reg_code(reg_code):
+            return jsonify({"ok":False,"error":f"Registration code '{reg_code}' is already taken by another school. Please choose a different one."}), 409
+    else:
+        reg_code = generate_unique_reg_code(school_name)
     logo_path = ""
     if "logo" in request.files:
         f = request.files["logo"]
@@ -642,7 +704,7 @@ def api_register_school():
     if not grades_data:   return jsonify({"ok":False,"error":"At least one grade rule required"}), 400
     con = get_db(); cur = con.cursor()
     try:
-        cur.execute("INSERT INTO schools(school_name) VALUES(%s) RETURNING id", (school_name,))
+        cur.execute("INSERT INTO schools(school_name,reg_code) VALUES(%s,%s) RETURNING id", (school_name, reg_code))
         school_id = cur.fetchone()[0]
         cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',%s)",
                     (admin_user, hash_password(admin_pass), school_id))
@@ -684,29 +746,25 @@ def api_register_school():
 # ── AUTH ──────────────────────────────────────────────────────
 @app.route("/api/login", methods=["POST"])
 def api_login():
-    d = request.json
+    d = request.json or {}
+    reg_code = (d.get("reg_code") or "").strip()
     u, p = d.get("username","").strip(), d.get("password","")
-    hint_sid = request.headers.get("X-School-ID")
+    if not reg_code: return jsonify({"ok":False,"error":"Enter your school's registration code"}), 400
     if not u or not p: return jsonify({"ok":False,"error":"Enter username and password"}), 400
+    school_id = get_school_id_by_reg_code(reg_code)
+    if not school_id:
+        return jsonify({"ok":False,"error":"School registration code not recognized"}), 401
+    # The registration code pins the school unambiguously, so this lookup is
+    # always scoped to exactly one school — a username/password that matches
+    # a *different* school can never authenticate here, by construction.
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT * FROM users WHERE username=%s", (u,))
-    rows = cur.fetchall(); cols = [x[0] for x in cur.description]
+    cur.execute("SELECT * FROM users WHERE username=%s AND school_id=%s", (u, school_id))
+    row = cur.fetchone(); cols = [x[0] for x in cur.description] if cur.description else []
     cur.close(); con.close()
-    if not rows: return jsonify({"ok":False,"error":"Invalid username or password"}), 401
-    user = None
-    if hint_sid:
-        try: hint_sid = int(hint_sid)
-        except: hint_sid = None
-    for row in rows:
-        r = dict(zip(cols, row))
-        if hint_sid and r["school_id"] != hint_sid: continue
-        if verify_password(p, r["password"]): user = r; break
-    if not user:
-        for row in rows:
-            r = dict(zip(cols, row))
-            if verify_password(p, r["password"]): user = r; break
-    if not user: return jsonify({"ok":False,"error":"Invalid username or password"}), 401
-    school_id = user["school_id"]
+    if not row: return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
+    user = dict(zip(cols, row))
+    if not verify_password(p, user["password"]):
+        return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
     return jsonify({"ok":True,"user":{
         "username":             user["username"],
         "role":                 user["role"],
@@ -720,7 +778,12 @@ def api_login():
 
 @app.route("/api/school/info", methods=["GET"])
 def api_school_info():
-    school_id = request.args.get("school_id",1,type=int)
+    reg_code = request.args.get("reg_code")
+    if reg_code:
+        school_id = get_school_id_by_reg_code(reg_code)
+        if not school_id: return jsonify({})
+    else:
+        school_id = request.args.get("school_id",1,type=int)
     keys = ["school_name","phone","email","admin_phone","motto","logo_path","registration_complete"]
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT key,value FROM school_config WHERE school_id=%s AND key=ANY(%s)", (school_id, keys))
@@ -1140,6 +1203,29 @@ def api_set_school_name():
     if not name: return jsonify({"ok":False,"error":"Name cannot be empty"}),400
     set_config_val(sid,"school_name",name); return jsonify({"ok":True})
 
+@app.route("/api/config/reg_code", methods=["GET"])
+def api_get_reg_code():
+    sid = school_id_from_header()
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT reg_code FROM schools WHERE id=%s", (sid,))
+    row = cur.fetchone(); cur.close(); con.close()
+    return jsonify({"reg_code": row[0] if row else ""})
+
+@app.route("/api/config/reg_code", methods=["POST"])
+def api_set_reg_code():
+    sid = school_id_from_header()
+    new_code = ((request.json or {}).get("reg_code") or "").strip()
+    if not valid_reg_code(new_code):
+        return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id FROM schools WHERE LOWER(reg_code)=LOWER(%s) AND id!=%s", (new_code, sid))
+    if cur.fetchone():
+        cur.close(); con.close()
+        return jsonify({"ok":False,"error":"That registration code is already taken by another school. Please choose a different one."}), 409
+    cur.execute("UPDATE schools SET reg_code=%s WHERE id=%s", (new_code, sid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"reg_code":new_code})
+
 @app.route("/api/config/school_info", methods=["POST"])
 def api_set_school_info():
     sid = school_id_from_header(); d = request.json
@@ -1511,8 +1597,8 @@ def api_platform_announcements():
                           CASE WHEN par.school_id IS NOT NULL THEN 1 ELSE 0 END AS is_read
                    FROM platform_announcements pa
                    LEFT JOIN platform_announcement_reads par ON par.announcement_id=pa.id AND par.school_id=%s
-                   WHERE pa.target='all' OR pa.target LIKE %s
-                   ORDER BY pa.posted_at DESC""",(sid,f"%{sid}%"))
+                   WHERE pa.target='all' OR pa.target=%s
+                   ORDER BY pa.posted_at DESC""",(sid,str(sid)))
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/platform_announcements/<int:aid>/read", methods=["POST"])
@@ -1524,7 +1610,7 @@ def api_platform_announcement_read(aid):
 
 
 # ── PDF ────────────────────────────────────────────────────────
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4, A3, landscape
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -1565,7 +1651,10 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
     H_BG=colors.HexColor("#1A6FA8"); S_BG=colors.HexColor("#5BA4CF")
     ODD=colors.HexColor("#E8F4FC"); EVEN=colors.white
     RED=colors.HexColor("#C0392B"); WHITE=colors.white
-    doc=SimpleDocTemplate(filename,pagesize=landscape(A4),rightMargin=1.2*cm,leftMargin=1.2*cm,topMargin=1.2*cm,bottomMargin=1.2*cm)
+    # Many subjects make a landscape-A4 sheet overcrowded — bump up to
+    # landscape A3 automatically once there are enough subject columns.
+    page_size = landscape(A3) if len(subjects) > 10 else landscape(A4)
+    doc=SimpleDocTemplate(filename,pagesize=page_size,rightMargin=1.2*cm,leftMargin=1.2*cm,topMargin=1.2*cm,bottomMargin=1.2*cm)
     styles=getSampleStyleSheet(); story=[]
     tl=term["label"] if term else ""
     story+=_school_header_story(school_id,styles,subtitle,tl)
@@ -1584,7 +1673,7 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
     hdr+=[subj_map.get(s,s[:4].upper()) for s in subjects]+["Total","Avg","Pos","Grd"]
     tdata=[hdr]; fail_cells=[]
     for ri,r in enumerate(results,1):
-        row=[str(r["position"]),r["name"]]
+        row=[str(ri),r["name"]]
         if has_streams: row.append(r["stream"] or "—")
         for ci,subj in enumerate(subjects):
             sc=r["scores"][subj]
@@ -1597,7 +1686,7 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
               str(r["position"]),r["grade"] if r["count"] else "-"]
         tdata.append(row)
     sc_w=1.2*cm; extra=0.8*cm if has_streams else 0
-    cw=[0.7*cm,3.0*cm]+([extra] if has_streams else [])+[sc_w]*len(subjects)+[1.5*cm,1.3*cm,0.9*cm,1.0*cm]
+    cw=[0.8*cm,4.4*cm]+([extra] if has_streams else [])+[sc_w]*len(subjects)+[1.5*cm,1.3*cm,0.9*cm,1.0*cm]
     tbl=Table(tdata,colWidths=cw,repeatRows=1)
     ts=[("BACKGROUND",(0,0),(-1,0),H_BG),("TEXTCOLOR",(0,0),(-1,0),WHITE),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.5),
@@ -1645,7 +1734,9 @@ def pdf_report(sid):
 
     safe=student["name"].replace(" ","_")
     fname=os.path.join(tempfile.gettempdir(),f"RC_{school_id}_{safe}_{tid}.pdf")
-    doc=SimpleDocTemplate(fname,pagesize=A4,rightMargin=1.5*cm,leftMargin=1.5*cm,topMargin=1.5*cm,bottomMargin=1.5*cm)
+    # Many CA columns get cramped in portrait — switch to landscape automatically.
+    page_size = landscape(A4) if ca_count > 4 else A4
+    doc=SimpleDocTemplate(fname,pagesize=page_size,rightMargin=1.5*cm,leftMargin=1.5*cm,topMargin=1.5*cm,bottomMargin=1.5*cm)
     styles=getSampleStyleSheet(); story=[]
     H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC"); WHITE=colors.white; RED=colors.HexColor("#C0392B")
     story+=_school_header_story(school_id,styles,"STUDENT REPORT CARD")

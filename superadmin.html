@@ -323,7 +323,6 @@ textarea{resize:vertical;min-height:90px}
               <label>Target</label>
               <select id="ann-target">
                 <option value="all">All Schools</option>
-                <option value="1">School #1 (current)</option>
               </select>
             </div>
             <div style="display:flex;align-items:flex-end">
@@ -452,6 +451,16 @@ async function loadSchools(){
       <td><span style="font-size:.82rem;color:#555">${esc(s.active_term || "—")}</span></td>
       <td><span class="badge badge-pending">${esc(s.payment_status || "pending")}</span></td>
     </tr>`).join("");
+
+  populateAnnounceTargets(schools);
+}
+
+function populateAnnounceTargets(schools){
+  const sel = document.getElementById("ann-target");
+  const current = sel.value;
+  sel.innerHTML = `<option value="all">All Schools</option>` +
+    schools.map(s=>`<option value="${s.id}">${esc(s.school_name)}</option>`).join("");
+  if([...sel.options].some(o=>o.value===current)) sel.value = current;
 }
 
 // ── ANNOUNCEMENTS ───────────────────────────────────────────
