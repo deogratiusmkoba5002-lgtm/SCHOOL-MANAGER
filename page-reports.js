@@ -234,8 +234,36 @@ async function loadTerms(){
     <td style="font-weight:600">${t.label}</td>
     <td>${t.ca_count}</td><td>${t.ca_weight}%</td><td>${t.exam_weight}%</td>
     <td><span class="badge ${t.status==='open'?'badge-green':'badge-grey'}">${t.status.toUpperCase()}</span></td>
-    <td>${t.status==='open'?`<button class="btn btn-sm btn-red" onclick="closeTerm(${t.id},'${t.label}')">Close Term</button>`:'<span style="color:var(--muted);font-size:.8rem">Locked</span>'}</td>
+    <td>${t.status==='open'?`<div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-outline" onclick="editTerm(${t.id})">Edit</button>
+        <button class="btn btn-sm btn-red" onclick="closeTerm(${t.id},'${t.label}')">Close Term</button>
+      </div>`:'<span style="color:var(--muted);font-size:.8rem">Locked</span>'}</td>
   </tr>`).join("");
+}
+
+// Admin can edit an open term's label/CA count/weights any time — plans
+// change mid-term (extra CA added, weights renegotiated, typo in label, etc).
+let editingTermId = null;
+const TERM_BTN_DEFAULT_HTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg> Open Term`;
+function editTerm(id){
+  const t = allTerms.find(x=>x.id===id);
+  if(!t) return;
+  editingTermId = id;
+  document.getElementById("term-label").value = t.label;
+  document.getElementById("term-ca-count").value = t.ca_count;
+  document.getElementById("term-ca-weight").value = t.ca_weight;
+  document.getElementById("term-exam-weight").value = t.exam_weight;
+  document.getElementById("btn-open-term").innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Save Changes to "${t.label}"`;
+  document.getElementById("create-term-card").scrollIntoView({behavior:"smooth"});
+  toast(`Editing "${t.label}" — update the fields and click Save`,"info");
+}
+function cancelEditTerm(){
+  editingTermId = null;
+  document.getElementById("term-label").value="";
+  document.getElementById("term-ca-count").value=2;
+  document.getElementById("term-ca-weight").value=30;
+  document.getElementById("term-exam-weight").value=70;
+  document.getElementById("btn-open-term").innerHTML = TERM_BTN_DEFAULT_HTML;
 }
 document.getElementById("btn-open-term").addEventListener("click", async()=>{
   const label     = document.getElementById("term-label").value.trim();
@@ -243,6 +271,12 @@ document.getElementById("btn-open-term").addEventListener("click", async()=>{
   const ca_weight = parseInt(document.getElementById("term-ca-weight").value);
   const exam_weight = 100 - ca_weight;
   if(!label){toast("Enter a term label","error");return;}
+  if(editingTermId){
+    const r = await api(`/terms/${editingTermId}`,"PATCH",{label,ca_count,ca_weight,exam_weight});
+    if(r.ok){ toast("Term updated!","success"); cancelEditTerm(); await loadTerms(); await refreshTermBanner(); }
+    else toast(r.error||"Failed","error");
+    return;
+  }
   const r = await api("/terms","POST",{label,ca_count,ca_weight,exam_weight});
   if(r.ok){ toast(`${label} opened!`,"success"); document.getElementById("term-label").value=""; await loadTerms(); await refreshTermBanner(); }
   else toast(r.error||"Failed","error");

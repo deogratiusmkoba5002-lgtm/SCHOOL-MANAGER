@@ -312,7 +312,6 @@ async function bootApp(){
 const NAV_ADMIN = [
   {id:"dashboard", icon:homeSVG(),    label:"Dashboard"},
   {id:"students",  icon:peopleSVG(),  label:"Students"},
-  {id:"classes",   icon:schoolSVG(),  label:"Classes"},
   {id:"teachers",  icon:teacherSVG(), label:"Teachers"},
   {id:"terms",     icon:calSVG(),     label:"Terms"},
   {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},

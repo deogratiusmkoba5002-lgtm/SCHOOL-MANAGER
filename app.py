@@ -1164,6 +1164,47 @@ def api_create_term():
                 (sid,label,ca_count,ca_weight,ex_weight))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
+@app.route("/api/terms/<int:tid>", methods=["PATCH"])
+def api_update_term(tid):
+    sid = school_id_from_header(); d = request.json or {}
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT status FROM terms WHERE id=%s AND school_id=%s",(tid,sid))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Term not found"}),404
+    if row[0]=="closed":
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Closed terms are locked and can't be edited"}),400
+
+    fields=[]; vals=[]
+    if d.get("label") is not None:
+        label=d.get("label","").strip()
+        if not label:
+            cur.close(); con.close(); return jsonify({"ok":False,"error":"Term label required"}),400
+        fields.append("label=%s"); vals.append(label)
+    if d.get("ca_count") is not None:
+        try: ca_count=int(d.get("ca_count"))
+        except (TypeError,ValueError):
+            cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid CA count"}),400
+        if ca_count<1:
+            cur.close(); con.close(); return jsonify({"ok":False,"error":"Number of CAs must be at least 1"}),400
+        fields.append("ca_count=%s"); vals.append(ca_count)
+    if d.get("ca_weight") is not None and d.get("exam_weight") is not None:
+        try:
+            ca_weight=int(d.get("ca_weight")); exam_weight=int(d.get("exam_weight"))
+        except (TypeError,ValueError):
+            cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid weights"}),400
+        if ca_weight+exam_weight!=100:
+            cur.close(); con.close(); return jsonify({"ok":False,"error":"Weights must sum to 100"}),400
+        fields.append("ca_weight=%s"); vals.append(ca_weight)
+        fields.append("exam_weight=%s"); vals.append(exam_weight)
+    if not fields:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Nothing to update"}),400
+
+    vals += [tid, sid]
+    cur.execute(f"UPDATE terms SET {','.join(fields)} WHERE id=%s AND school_id=%s", vals)
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
 @app.route("/api/terms/<int:tid>/close", methods=["POST"])
 def api_close_term(tid):
     sid = school_id_from_header()
@@ -1605,19 +1646,46 @@ def api_parent_results():
                             "final":round(final_val,1) if final_val is not None else None,
                             "grade":get_grade(sid,final_val) if final_val is not None else "-","position":subj_pos})
 
-    c_entry=class_rank_map.get(stid)
-    c_pos=c_entry["position"] if c_entry else "-"
-    c_total=len(class_rows)
-    s_pos=s_total=None
-    if stream_id and stream_rank_map is not None:
-        s_entry=stream_rank_map.get(stid)
-        s_pos=s_entry["position"] if s_entry else "-"
-        s_total=len(stream_rank_map)
-
-    if assess and results:
-        scores_only=[r["score"] for r in results if r.get("score") is not None]
-        avg=round(sum(scores_only)/len(scores_only),2) if scores_only else 0
+    if assess:
+        # Rank by THIS assessment's own average across subjects, not the term's
+        # weighted final. Finals are only computable once both CA and exam marks
+        # exist, so before the exam is entered every student's final average is
+        # 0 — that ties the whole class and everyone was showing up as "1st".
+        stream_id_map = {r["id"]: r.get("stream_id") for r in class_rows}
+        assess_scores=[]
+        for cid in class_ids:
+            student_data = scores_bulk.get(cid, {})
+            vals=[]
+            for subject in subjects:
+                entry = student_data.get(subject, {})
+                v = entry.get("exam") if assess=="exam" else (entry.get("ca") or {}).get(assess)
+                if v is not None: vals.append(v)
+            if vals: assess_scores.append({"id":cid,"score":sum(vals)/len(vals)})
+        _assign_positions(assess_scores,"score")
+        assess_pos_map={r["id"]:r["position"] for r in assess_scores}
+        c_pos = assess_pos_map.get(stid,"-")
+        c_total = len(assess_scores)
+        s_pos=s_total=None
+        if stream_id:
+            stream_scores=[dict(r) for r in assess_scores if stream_id_map.get(r["id"])==stream_id]
+            _assign_positions(stream_scores,"score")
+            stream_pos_map={r["id"]:r["position"] for r in stream_scores}
+            s_pos = stream_pos_map.get(stid,"-")
+            s_total = len(stream_scores)
+        if results:
+            scores_only=[r["score"] for r in results if r.get("score") is not None]
+            avg=round(sum(scores_only)/len(scores_only),2) if scores_only else 0
+        else:
+            avg = 0
     else:
+        c_entry=class_rank_map.get(stid)
+        c_pos=c_entry["position"] if c_entry else "-"
+        c_total=len(class_rows)
+        s_pos=s_total=None
+        if stream_id and stream_rank_map is not None:
+            s_entry=stream_rank_map.get(stid)
+            s_pos=s_entry["position"] if s_entry else "-"
+            s_total=len(stream_rank_map)
         avg = c_entry["average"] if c_entry else round(compute_average_from_finals(compute_student_finals(scores_bulk,stid,subjects,ca_w,ex_w)),2)
     return jsonify({"ok":True,"student":student,"term":term,"results":results,"ca_count":ca_count,
                     "average":avg,"grade":get_grade(sid,avg),
