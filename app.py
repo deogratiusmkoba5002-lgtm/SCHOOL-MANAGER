@@ -1,11 +1,12 @@
 """
 School Manager - Flask API Backend (v7 - Full Multi-Tenant)
 """
-import hashlib, os, tempfile, secrets, json, re
+import hashlib, os, tempfile, secrets, json, re, io, base64
 import psycopg2, psycopg2.extras
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+
 
 try:
     from dotenv import load_dotenv
@@ -24,7 +25,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 IMPORT_EXPORT_FOLDER = os.path.join(BASE_DIR, "storage", "import_exports")
 os.makedirs(IMPORT_EXPORT_FOLDER, exist_ok=True)
 ALLOWED_LOGO_EXT = {"png","jpg","jpeg","gif","webp","svg"}
-
+def _mime_for_ext(ext):
+    return {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
+            "gif":"image/gif","webp":"image/webp","svg":"image/svg+xml"}.get(ext, "application/octet-stream")
 _FALLBACK_SUBJECTS = [
     "mathematics","physics","chemistry","biology","geography","history","civics",
     "english","literature","kiswahili","bible knowledge","book keeping","commerce",
@@ -691,17 +694,17 @@ def api_register_school():
             return jsonify({"ok":False,"error":f"Registration code '{reg_code}' is already taken by another school. Please choose a different one."}), 409
     else:
         reg_code = generate_unique_reg_code(school_name)
-    logo_path = ""
+    logo_b64 = ""; logo_mime = ""
     if "logo" in request.files:
         f = request.files["logo"]
         if f and f.filename:
             ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
             if ext not in ALLOWED_LOGO_EXT: return jsonify({"ok":False,"error":"Logo must be an image"}), 400
-            logos_dir = os.path.join(UPLOAD_FOLDER, "logos")
-            os.makedirs(logos_dir, exist_ok=True)
-            fname = secure_filename(f"school_logo_{secrets.token_hex(6)}.{ext}")
-            f.save(os.path.join(logos_dir, fname))
-            logo_path = f"storage/uploads/logos/{fname}"
+            raw = f.read()
+            if len(raw) > 2*1024*1024:
+                return jsonify({"ok":False,"error":"Logo must be smaller than 2MB"}), 400
+            logo_mime = _mime_for_ext(ext)
+            logo_b64  = base64.b64encode(raw).decode("ascii")
     try:
         classes_data  = json.loads(data.get("classes","[]"))
         subjects_data = json.loads(data.get("subjects","[]"))
@@ -716,8 +719,12 @@ def api_register_school():
         school_id = cur.fetchone()[0]
         cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',%s)",
                     (admin_user, hash_password(admin_pass), school_id))
+        logo_path = f"api/logo/{school_id}" if logo_b64 else ""
         cfg = {"school_name":school_name,"phone":phone,"email":email,"admin_phone":admin_phone,
                "motto":motto,"logo_path":logo_path,"registration_complete":"1"}
+        if logo_b64:
+            cfg["logo_data"] = logo_b64
+            cfg["logo_mime"] = logo_mime
         for k,v in cfg.items():
             cur.execute("INSERT INTO school_config(school_id,key,value) VALUES(%s,%s,%s) ON CONFLICT(school_id,key) DO UPDATE SET value=EXCLUDED.value",
                         (school_id, k, v))
@@ -1721,13 +1728,20 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 
 def _get_logo_element(school_id, max_h=2*cm):
-    path = get_config_val(school_id,"logo_path","")
-    if not path: return None
-    full = os.path.join(BASE_DIR, path)
-    if os.path.exists(full):
+    logo_data = get_config_val(school_id, "logo_data", "")
+    if logo_data:
         try:
-            img=Image(full); img.drawHeight=max_h; img.drawWidth=max_h; return img
+            raw = base64.b64decode(logo_data)
+            img = Image(io.BytesIO(raw)); img.drawHeight=max_h; img.drawWidth=max_h; return img
         except: pass
+    # Fallback for any older logo still sitting on disk (e.g. one committed to Git)
+    path = get_config_val(school_id,"logo_path","")
+    if path and not path.startswith("api/logo/"):
+        full = os.path.join(BASE_DIR, path)
+        if os.path.exists(full):
+            try:
+                img=Image(full); img.drawHeight=max_h; img.drawWidth=max_h; return img
+            except: pass
     return None
 
 def _esc(s):
@@ -2064,6 +2078,40 @@ def superadmin_page(): return send_from_directory(BASE_DIR,"superadmin.html")
 @app.route("/storage/uploads/logos/<filename>")
 def serve_logo_static(filename):
     return send_from_directory(os.path.join(UPLOAD_FOLDER,"logos"),filename)
+
+@app.route("/api/config/logo", methods=["POST"])
+def api_upload_logo():
+    school_id = school_id_from_header()
+    if "logo" not in request.files:
+        return jsonify({"ok":False,"error":"No logo file uploaded"}), 400
+    f = request.files["logo"]
+    if not f or not f.filename:
+        return jsonify({"ok":False,"error":"No logo file uploaded"}), 400
+    ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
+    if ext not in ALLOWED_LOGO_EXT:
+        return jsonify({"ok":False,"error":"Logo must be an image (png, jpg, jpeg, gif, webp, svg)"}), 400
+    raw = f.read()
+    if len(raw) > 2*1024*1024:
+        return jsonify({"ok":False,"error":"Logo must be smaller than 2MB"}), 400
+    logo_mime = _mime_for_ext(ext)
+    logo_b64  = base64.b64encode(raw).decode("ascii")
+    set_config_val(school_id, "logo_data", logo_b64)
+    set_config_val(school_id, "logo_mime", logo_mime)
+    logo_path = f"api/logo/{school_id}"
+    set_config_val(school_id, "logo_path", logo_path)
+    return jsonify({"ok":True,"logo_path":logo_path})
+
+@app.route("/api/logo/<int:school_id>")
+def serve_logo_db(school_id):
+    data = get_config_val(school_id, "logo_data", "")
+    mime = get_config_val(school_id, "logo_mime", "image/png")
+    if not data:
+        return ("Not found", 404)
+    try:
+        raw = base64.b64decode(data)
+    except Exception:
+        return ("Not found", 404)
+    return send_file(io.BytesIO(raw), mimetype=mime)
 
 @app.route("/<path:filename>")
 def serve_static(filename):
