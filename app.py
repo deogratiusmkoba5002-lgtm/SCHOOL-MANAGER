@@ -1730,6 +1730,9 @@ def _get_logo_element(school_id, max_h=2*cm):
         except: pass
     return None
 
+def _esc(s):
+    return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
 def _school_header_story(school_id, styles, title_text, subtitle_text=""):
     story=[]; H_BG=colors.HexColor("#1A6FA8")
     t_s=ParagraphStyle("T",parent=styles["Title"],fontSize=16,textColor=H_BG,spaceAfter=2,alignment=1)
@@ -1750,52 +1753,49 @@ def _school_header_story(school_id, styles, title_text, subtitle_text=""):
     if subtitle_text: story.append(Paragraph(subtitle_text,s_s))
     story.append(Spacer(1,0.3*cm)); return story
 
-def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,term=None):
+def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,term=None,class_label=""):
     subj_map=get_subject_map(school_id)
     H_BG=colors.HexColor("#1A6FA8"); S_BG=colors.HexColor("#5BA4CF")
     ODD=colors.HexColor("#E8F4FC"); EVEN=colors.white
     RED=colors.HexColor("#C0392B"); WHITE=colors.white
-    # Many subjects make a landscape-A4 sheet overcrowded — bump up to
-    # landscape A3 automatically once there are enough subject columns.
     page_size = landscape(A3) if len(subjects) > 10 else landscape(A4)
     doc=SimpleDocTemplate(filename,pagesize=page_size,rightMargin=1.2*cm,leftMargin=1.2*cm,topMargin=1.2*cm,bottomMargin=1.2*cm)
     styles=getSampleStyleSheet(); story=[]
     tl=term["label"] if term else ""
-    story+=_school_header_story(school_id,styles,subtitle,tl)
+    title_text = f"{subtitle} — {class_label}" if class_label else subtitle
+    story+=_school_header_story(school_id,styles,title_text,tl)
     results=[]
     for s in students:
-        row={"name":s["name"],"stream":s.get("stream_name") or "","scores":{},"total":0,"count":0}
+        row={"name":s["name"],"scores":{},"total":0,"count":0}
         for subj in subjects:
             sc=get_score_fn(s["id"],subj); row["scores"][subj]=sc
             if sc is not None: row["total"]+=sc; row["count"]+=1
         row["average"]=row["total"]/row["count"] if row["count"] else 0
         row["grade"]=get_grade(school_id,row["average"]); results.append(row)
     _assign_positions(results,"average")
-    has_streams=any(r["stream"] for r in results)
-    hdr=["#","Student"]
-    if has_streams: hdr.append("Stream")
-    hdr+=[subj_map.get(s,s[:4].upper()) for s in subjects]+["Total","Avg","Pos","Grd"]
+    name_style = ParagraphStyle("NameCell", parent=styles["Normal"], fontSize=7.5, leading=8.5)
+    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in subjects]+["Total","Avg","Pos","Grd"]
     tdata=[hdr]; fail_cells=[]
     for ri,r in enumerate(results,1):
-        row=[str(ri),r["name"]]
-        if has_streams: row.append(r["stream"] or "—")
+        row=[str(ri),Paragraph(_esc(r["name"]),name_style)]
         for ci,subj in enumerate(subjects):
             sc=r["scores"][subj]
             if sc is not None:
-                if sc<50: fail_cells.append((ri,ci+(3 if has_streams else 2)))
+                if sc<50: fail_cells.append((ri,ci+2))
                 row.append(f"{sc:.1f}")
             else: row.append("-")
         row+=[f"{r['total']:.1f}" if r["count"] else "-",
               f"{r['average']:.1f}" if r["count"] else "-",
               str(r["position"]),r["grade"] if r["count"] else "-"]
         tdata.append(row)
-    sc_w=1.2*cm; extra=0.8*cm if has_streams else 0
-    cw=[0.8*cm,4.4*cm]+([extra] if has_streams else [])+[sc_w]*len(subjects)+[1.5*cm,1.3*cm,0.9*cm,1.0*cm]
+    sc_w=1.2*cm
+    cw=[0.8*cm,6.2*cm]+[sc_w]*len(subjects)+[1.5*cm,1.3*cm,0.9*cm,1.0*cm]
     tbl=Table(tdata,colWidths=cw,repeatRows=1)
     ts=[("BACKGROUND",(0,0),(-1,0),H_BG),("TEXTCOLOR",(0,0),(-1,0),WHITE),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.5),
         ("ALIGN",(0,0),(-1,0),"CENTER"),("FONTNAME",(0,1),(-1,-1),"Helvetica"),
         ("FONTSIZE",(0,1),(-1,-1),7),("ALIGN",(0,1),(-1,-1),"CENTER"),("ALIGN",(1,1),(1,-1),"LEFT"),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("ROWBACKGROUNDS",(0,1),(-1,-1),[ODD,EVEN]),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#A0C4E0")),
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
         ("BACKGROUND",(-4,0),(-1,0),S_BG),("FONTNAME",(-4,1),(-1,-1),"Helvetica-Bold")]
@@ -1920,7 +1920,8 @@ def pdf_ca_sheet():
     def get_score(stid,subj):
         entry=scores_bulk.get(stid,{}).get(subj)
         return entry["ca"].get(ca_name) if entry else None
-    _blue_sheet_pdf(school_id,fname,f"{ca_name.upper()} SCORE SHEET",studs,subjects,get_score,term)
+    class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
+    _blue_sheet_pdf(school_id,fname,f"{ca_name.upper()} SCORE SHEET",studs,subjects,get_score,term,class_label=class_label)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
@@ -1939,6 +1940,7 @@ def pdf_terminal_sheet():
     def get_score(stid,subj):
         f=_final_from_entry(scores_bulk.get(stid,{}).get(subj),ca_w,ex_w)
         return round(f,1) if f is not None else None
+    class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
     _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 

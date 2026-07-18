@@ -207,15 +207,45 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   #sidebar{position:fixed;left:-240px;z-index:100;transition:left .25s;height:100vh}
   #sidebar.open{left:0}
   #overlay.show{display:block}
-  #main{padding:68px 16px 20px 16px}
-  .form-grid{grid-template-columns:1fr}
-  .stats-grid{grid-template-columns:1fr 1fr}
-  .page-title{font-size:1.3rem}
-  #term-banner{margin:-68px -16px 20px -16px!important}
+  #main{padding:64px 14px 20px 14px}
+  .form-grid{grid-template-columns:1fr;gap:12px}
+  .stats-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .page-title{font-size:1.25rem}
+  .page-sub{font-size:.8rem}
+  #term-banner{margin:-64px -14px 18px -14px!important}
+  .term-banner{padding:8px 14px;flex-direction:column;align-items:flex-start;gap:4px}
   .summary-band{flex-wrap:wrap}
-  .summary-cell{min-width:80px}
-  .table-wrap{font-size:.8rem}
-  .modal{padding:24px 20px}
+  .summary-cell{min-width:calc(50% - 2px);flex:1 1 calc(50% - 2px)}
+  .table-wrap{font-size:.78rem}
+  thead th{padding:8px 10px;font-size:.68rem}
+  tbody td{padding:8px 10px}
+  .modal{padding:22px 18px;width:94vw}
+  .section-card{padding:16px 14px;overflow-x:hidden}
+  .table-toolbar{padding:14px 16px}
+  .table-toolbar-title{font-size:.88rem}
+  .search-box input{width:140px}
+  .report-header-grid{grid-template-columns:1fr;gap:10px}
+  .report-info-row{gap:12px}
+  .btn{padding:8px 14px;font-size:.8rem}
+  .stat-card{padding:14px;gap:10px}
+  .stat-val{font-size:1.35rem}
+  .tabs{gap:3px;padding:3px}
+  .tab{padding:7px 12px;font-size:.78rem}
+  canvas{max-width:100%!important}
+  #analytics-chart{width:100%!important;height:220px!important}
+}
+
+@media(max-width:480px){
+  html{font-size:14px}
+  .stats-grid{grid-template-columns:1fr}
+  .summary-cell{min-width:100%;flex:1 1 100%}
+  .login-card{padding:24px 18px}
+  .modal{width:96vw;padding:18px 14px}
+  .table-wrap{font-size:.72rem}
+  thead th{padding:6px 8px;font-size:.63rem}
+  tbody td{padding:7px 8px}
+  .section-card{padding:14px 12px}
+  .page-title{font-size:1.1rem}
 }
 
 /* ── CONFIG PAGE: SCHOOL SETTINGS BUILDER (shared with registration wizard) ── */

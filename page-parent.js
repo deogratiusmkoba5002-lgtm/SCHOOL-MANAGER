@@ -278,21 +278,24 @@ function renderAnalytics(){
   if(analyticsTab==="avg"){ points = analyticsData.map(d=>d.avg); }
   else { analyticsSubject = document.getElementById("analytics-subject-sel").value; points = analyticsData.map(d=>d.subjectScores[analyticsSubject]??null); }
   const dpr = window.devicePixelRatio||1;
-  const W   = canvas.offsetWidth || canvas.parentElement.offsetWidth || 500;
-  const H   = 260;
-  canvas.width = W*dpr; canvas.height = H*dpr;
-  canvas.style.width = W+"px"; canvas.style.height = H+"px";
-  const ctx = canvas.getContext("2d"); ctx.scale(dpr,dpr);
-  const PAD = {top:20, right:20, bottom:80, left:48};
+  const container = canvas.parentElement;
+  const W = Math.max((container.clientWidth||500) - 4, 260);
+  const isSmall = W < 420;
+  const H = isSmall ? 220 : 260;
+  canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr);
+  canvas.style.width = "100%"; canvas.style.height = H+"px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0); // reset instead of compounding scale each render
+  const PAD = isSmall ? {top:16, right:10, bottom:60, left:34} : {top:20, right:20, bottom:80, left:48};
   const cW  = W - PAD.left - PAD.right;
   const cH  = H - PAD.top  - PAD.bottom;
   ctx.clearRect(0,0,W,H);
   const gridLines = [0,25,50,75,100];
   ctx.strokeStyle="#E3F2FD"; ctx.lineWidth=1;
-  ctx.fillStyle="#546E7A"; ctx.font="11px Arial";
+  ctx.fillStyle="#546E7A"; ctx.font= isSmall ? "9px Arial" : "11px Arial";
   gridLines.forEach(v=>{ const y = PAD.top + cH - (v/100)*cH; ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+cW,y); ctx.stroke(); ctx.textAlign="right"; ctx.fillText(v, PAD.left-6, y+4); });
   const step = points.length>1 ? cW/(points.length-1) : cW;
-  ctx.fillStyle="#546E7A"; ctx.font="9px Arial";
+  ctx.fillStyle="#546E7A"; ctx.font = isSmall ? "8px Arial" : "9px Arial";
   labels.forEach((lbl,i)=>{ const x = PAD.left + (points.length>1 ? i*step : cW/2); const y = PAD.top+cH+14; ctx.save(); ctx.translate(x,y); ctx.rotate(-Math.PI/4); ctx.textAlign="right"; ctx.fillText(lbl, 0, 0); ctx.restore(); });
   const validPoints = points.map((v,i)=>v!==null?{x:PAD.left+(points.length>1?i*step:cW/2), y:PAD.top+cH-(v/100)*cH, v}:null);
   ctx.strokeStyle="#1565C0"; ctx.lineWidth=2.5; ctx.lineJoin="round"; ctx.lineCap="round";
@@ -300,7 +303,7 @@ function renderAnalytics(){
   validPoints.forEach(p=>{ if(!p) return; if(first){ctx.moveTo(p.x,p.y);first=false;} else ctx.lineTo(p.x,p.y); }); ctx.stroke();
   const firstValid = validPoints.find(p=>p); const lastValid = [...validPoints].reverse().find(p=>p);
   if(firstValid&&lastValid){ ctx.beginPath(); ctx.moveTo(firstValid.x, PAD.top+cH); validPoints.forEach(p=>{ if(p) ctx.lineTo(p.x,p.y); }); ctx.lineTo(lastValid.x, PAD.top+cH); ctx.closePath(); const grad=ctx.createLinearGradient(0,PAD.top,0,PAD.top+cH); grad.addColorStop(0,"rgba(21,101,192,.18)"); grad.addColorStop(1,"rgba(21,101,192,.02)"); ctx.fillStyle=grad; ctx.fill(); }
-  validPoints.forEach(p=>{ if(!p) return; const fail = p.v < 50; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fillStyle= fail ? "#F44336" : "#1565C0"; ctx.fill(); ctx.strokeStyle="white"; ctx.lineWidth=2; ctx.stroke(); ctx.fillStyle= fail ? "#C62828" : "#0A1628"; ctx.font="bold 11px Arial"; ctx.textAlign="center"; ctx.fillText(p.v, p.x, p.y-10); });
+  validPoints.forEach(p=>{ if(!p) return; const fail = p.v < 50; const r = isSmall?4:5; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fillStyle= fail ? "#F44336" : "#1565C0"; ctx.fill(); ctx.strokeStyle="white"; ctx.lineWidth=2; ctx.stroke(); ctx.fillStyle= fail ? "#C62828" : "#0A1628"; ctx.font=isSmall?"bold 9px Arial":"bold 11px Arial"; ctx.textAlign="center"; ctx.fillText(p.v, p.x, p.y-10); });
 }
 function renderAnalyticsSummary(){
   if(!analyticsData||analyticsData.length<1) return;
