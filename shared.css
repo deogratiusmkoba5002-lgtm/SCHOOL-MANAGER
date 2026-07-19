@@ -233,6 +233,27 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   .tab{padding:7px 12px;font-size:.78rem}
   canvas{max-width:100%!important}
   #analytics-chart{width:100%!important;height:220px!important}
+  
+  #student-filter-dropdown{
+    position:fixed!important;
+    top:50%!important;
+    left:50%!important;
+    right:auto!important;
+    transform:translate(-50%,-50%);
+    width:min(300px,88vw)!important;
+    max-height:80vh;
+    overflow-y:auto;
+    z-index:2000;
+    box-shadow:0 12px 40px rgba(0,0,0,.28)!important;
+  }
+  #student-filter-dropdown::before{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:rgba(10,22,40,.45);
+    z-index:-1;
+    margin:-1000px; 
+  }
 }
 
 @media(max-width:480px){
