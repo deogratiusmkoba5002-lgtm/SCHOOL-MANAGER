@@ -1015,20 +1015,9 @@ def api_add_student():
                               f"need a different name on file, or share the existing '{username}' login."})
 
 def _gen_parent_creds(school_id, student_name, phone_number, student_id):
-    phone_clean = phone_number.strip(); last4 = phone_clean[-4:]
     username = student_name.strip().lower().replace(" ","_")
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s AND id!=%s ORDER BY id",
-                (school_id,phone_clean,student_id))
-    siblings = cur.fetchall(); cur.close(); con.close()
-    if siblings:
-        con = get_db(); cur = con.cursor()
-        cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s ORDER BY id",(school_id,phone_clean))
-        all_same=[r[0] for r in cur.fetchall()]; cur.close(); con.close()
-        try: idx=all_same.index(student_id)+1
-        except ValueError: idx=len(all_same)+1
-        temp_pw=f"{last4}-{idx}"
-    else: temp_pw=last4
+    temp_pw  = phone_number.strip()[-4:]
+    
     return username, temp_pw
 
 @app.route("/api/students/bulk_delete", methods=["POST"])
@@ -2443,17 +2432,8 @@ def api_import_students():
                         (school_id, name, class_id, stream_id, parent_phone.strip()))
             student_id   = cur.fetchone()[0]
             username_base= name.strip().lower().replace(" ","_")
-            last4        = parent_phone.strip()[-4:]
-            cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s AND id!=%s ORDER BY id",
-                        (school_id, parent_phone.strip(), student_id))
-            siblings = cur.fetchall()
-            if siblings:
-                cur.execute("SELECT id FROM students WHERE school_id=%s AND phone_number=%s ORDER BY id",(school_id,parent_phone.strip()))
-                all_s=[r[0] for r in cur.fetchall()]
-                try: idx=all_s.index(student_id)+1
-                except ValueError: idx=len(all_s)+1
-                temp_pw=f"{last4}-{idx}"
-            else: temp_pw=last4
+            temp_pw = parent_phone.strip()[-4:]
+            
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
                         (username_base,hash_password_fast(temp_pw),school_id,student_id))
             login_created = cur.rowcount > 0
