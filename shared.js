@@ -316,6 +316,7 @@ const NAV_ADMIN = [
   {id:"terms",     icon:calSVG(),     label:"Terms"},
   {id:"sheets",    icon:tableSVG(),   label:"Score Sheets"},
   {id:"rankings",  icon:starSVG(),    label:"Rankings"},
+  {id:"admin-analytics", icon:starSVG(), label:"View Admin Analytics"},
   {id:"past",      icon:historySVG(), label:"Past Terms"},
   {id:"parents",   icon:peopleSVG(),  label:"Parents"},
   {id:"config",    icon:gearSVG(),    label:"Config"},
@@ -330,10 +331,12 @@ function buildTeacherNav(user){
   const items = [
     {id:"marks",   icon:editSVG(),   label:"Enter Marks"},
     {id:"rankings",icon:starSVG(),   label:"Rankings"},
+    {id:"teacher-analytics", icon:starSVG(), label:"Teacher Analytics"},
   ];
   if(user.is_class_teacher){
     items.push({id:"students", icon:peopleSVG(), label:"Students"});
     items.push({id:"sheets",  icon:tableSVG(),  label:"Score Sheets"});
+    items.push({id:"ct-analytics", icon:starSVG(), label:"Class Teacher Analytics"});
   }
   items.push({id:"past", icon:historySVG(), label:"Past Terms"});
   return items;
@@ -395,6 +398,9 @@ function _showPage(id){
   if(id==="terms")     loadTerms();
   if(id==="past")      setupPastTerms();
   if(id==="config")    loadConfigPage();
+  if(id==="admin-analytics") loadAdminAnalytics();
+  if(id==="ct-analytics") loadCTAnalytics();
+  if(id==="teacher-analytics") loadTeacherAnalytics();
 }
 
 // ── LOGOUT ───────────────────────────────────────────────────

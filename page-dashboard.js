@@ -44,6 +44,7 @@ function renderDashSchoolHeader(){
 async function loadDashboard(){
   renderDashSchoolHeader();
   loadPlatformNotices();
+  loadClassAnalyticsCard();
   const studs = await api("/students");
   const stats = document.getElementById("dash-stats");
   const byClass = {};
@@ -65,4 +66,25 @@ async function loadDashboard(){
        ${recent.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td><span class="badge badge-blue">${cap(s.class_name)}</span></td></tr>`).join("")}
        </tbody></table></div>`
     : `<div class="empty-state">${emptySVG()}<p>No students yet</p></div>`;
+}
+
+async function loadClassAnalyticsCard(){
+  if(!currentUser || currentUser.role!=="admin") return;
+  const d = await api("/analytics/dashboard_classes");
+  const card = document.getElementById("dash-class-analytics-card");
+  const body = document.getElementById("dash-class-analytics-body");
+  if(!card || !body) return;
+  if(!d.ok || (!d.best && !d.weakest)){ card.style.display="none"; return; }
+  card.style.display="block";
+  body.innerHTML = `
+    <div style="background:#E8F5E9;border-radius:10px;padding:14px">
+      <div style="font-size:.75rem;font-weight:700;color:#2E7D32;text-transform:uppercase">🏆 Best Performing Class</div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--navy);margin-top:4px">${d.best?d.best.class_name:"—"}</div>
+      <div style="font-size:.85rem;color:var(--muted)">${d.best?d.best.average+"% average":""}</div>
+    </div>
+    <div style="background:#FFEBEE;border-radius:10px;padding:14px">
+      <div style="font-size:.75rem;font-weight:700;color:#C62828;text-transform:uppercase">⚠ Weakest Performing Class</div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--navy);margin-top:4px">${d.weakest?d.weakest.class_name:"—"}</div>
+      <div style="font-size:.85rem;color:var(--muted)">${d.weakest?d.weakest.average+"% average":""}</div>
+    </div>`;
 }

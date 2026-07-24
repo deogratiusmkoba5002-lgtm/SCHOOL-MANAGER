@@ -375,6 +375,176 @@ def get_class_report_data(school_id, term_id, class_id, stream_id, subjects, ca_
     return class_rows, class_rank_map, stream_rank_map, scores_bulk
 
 
+def _get_all_terms_ordered(school_id):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT * FROM terms WHERE school_id=%s ORDER BY id ASC", (school_id,))
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return rows
+
+def _assessments_for_term(term):
+    return [f"CA{i}" for i in range(1, term["ca_count"] + 1)] + ["exam"]
+
+def get_all_students_in_school(school_id):
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
+                   FROM students s JOIN classes c ON s.class_id=c.id
+                   LEFT JOIN streams st ON s.stream_id=st.id
+                   WHERE s.school_id=%s ORDER BY s.name""", (school_id,))
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return rows
+
+def _compute_overall_series(school_id, class_id, stream_id, subjects):
+    """Chronological list of {"term_id","label","assess","values":{sid:avg},
+    "avg":float,"ranks":{sid:pos},"student_count"} — one entry per CA/Exam
+    across every term, using each student's average raw score across all
+    subjects for that single assessment."""
+    students = get_students_in_scope(school_id, class_id, stream_id) if class_id \
+        else get_all_students_in_school(school_id)
+    student_ids = [s["id"] for s in students]
+    name_map = {s["id"]: s["name"] for s in students}
+    if not student_ids: return [], name_map
+
+    points = []
+    for term in _get_all_terms_ordered(school_id):
+        scores_bulk = get_term_scores_bulk(school_id, term["id"], student_ids)
+        for assess in _assessments_for_term(term):
+            values = {}
+            for sid in student_ids:
+                entry_map = scores_bulk.get(sid, {})
+                vals = []
+                for subj in subjects:
+                    entry = entry_map.get(subj)
+                    if not entry: continue
+                    v = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+                    if v is not None: vals.append(v)
+                values[sid] = round(sum(vals) / len(vals), 2) if vals else None
+            present = {sid: v for sid, v in values.items() if v is not None}
+            if not present: continue
+            ranked = [{"id": sid, "score": v} for sid, v in present.items()]
+            _assign_positions(ranked, "score")
+            ranks = {r["id"]: r["position"] for r in ranked}
+            avg = round(sum(present.values()) / len(present), 2)
+            label = f"{term['label']} {'Exam' if assess=='exam' else assess}"
+            points.append({"term_id": term["id"], "assess": assess, "label": label,
+                           "values": values, "avg": avg, "ranks": ranks,
+                           "student_count": len(present)})
+    return points, name_map
+
+def _compute_subject_series(school_id, class_id, stream_id, subject):
+    """Same shape as _compute_overall_series but for a single subject's raw
+    CA/Exam marks — used for Subject Teacher analytics."""
+    students = get_students_in_scope(school_id, class_id, stream_id)
+    student_ids = [s["id"] for s in students]
+    name_map = {s["id"]: s["name"] for s in students}
+    if not student_ids: return [], name_map
+
+    points = []
+    for term in _get_all_terms_ordered(school_id):
+        scores_bulk = get_term_scores_bulk(school_id, term["id"], student_ids)
+        for assess in _assessments_for_term(term):
+            values = {}
+            for sid in student_ids:
+                entry = scores_bulk.get(sid, {}).get(subject)
+                if not entry: continue
+                v = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+                if v is not None: values[sid] = v
+            if not values: continue
+            ranked = [{"id": sid, "score": v} for sid, v in values.items()]
+            _assign_positions(ranked, "score")
+            ranks = {r["id"]: r["position"] for r in ranked}
+            avg = round(sum(values.values()) / len(values), 2)
+            label = f"{term['label']} {'Exam' if assess=='exam' else assess}"
+            points.append({"term_id": term["id"], "assess": assess, "label": label,
+                           "values": values, "avg": avg, "ranks": ranks,
+                           "student_count": len(values)})
+    return points, name_map
+
+def _build_common_cards(points, name_map, school_id):
+    """Shared card logic for both overall (admin/class-teacher) and
+    subject-level (subject teacher) analytics. A student is only flagged as
+    improved/declining/outstanding/at-risk when BOTH the mark and the
+    position move together — this is the whole point of the spec: marks
+    alone or position alone can mislead when exam difficulty varies."""
+    if not points:
+        return {"graph": [], "current_label": None, "average": None,
+                "outstanding": [], "needs_support": [], "improved": [],
+                "declining": [], "at_risk": []}
+
+    graph = [{"label": p["label"], "value": p["avg"]} for p in points[-5:]]
+    latest = points[-1]
+    prev = points[-2] if len(points) >= 2 else None
+    latest_vals, latest_ranks, latest_avg = latest["values"], latest["ranks"], latest["avg"]
+    total = len(latest_ranks)
+
+    outstanding, needs_support = [], []
+    for sid, val in latest_vals.items():
+        if val is None: continue
+        pos = latest_ranks.get(sid)
+        if pos is None: continue
+        name = name_map.get(sid, "?")
+        if pos <= 3 and val >= latest_avg + 5:
+            outstanding.append({"id": sid, "name": name, "value": val, "position": pos})
+        if total >= 3 and pos > total - 3 and val <= latest_avg - 5:
+            needs_support.append({"id": sid, "name": name, "value": val, "position": pos})
+    outstanding.sort(key=lambda r: r["position"])
+    needs_support.sort(key=lambda r: -r["position"])
+
+    improved, declining = [], []
+    if prev:
+        prev_vals, prev_ranks = prev["values"], prev["ranks"]
+        for sid in set(latest_vals) & set(prev_vals):
+            lv, pv = latest_vals[sid], prev_vals[sid]
+            lp, pp = latest_ranks.get(sid), prev_ranks.get(sid)
+            if None in (lv, pv, lp, pp): continue
+            name = name_map.get(sid, "?")
+            if lv > pv and lp < pp:
+                improved.append({"id": sid, "name": name, "prev_value": pv, "current_value": lv,
+                                 "prev_position": pp, "current_position": lp})
+            elif lv < pv and lp > pp:
+                declining.append({"id": sid, "name": name, "prev_value": pv, "current_value": lv,
+                                  "prev_position": pp, "current_position": lp})
+
+    at_risk = []
+    grade_rules = get_grade_rules(school_id)
+    lowest_rule = min(grade_rules, key=lambda r: r["min_score"]) if grade_rules else None
+    if prev and lowest_rule:
+        prev_vals = prev["values"]
+        for sid in set(latest_vals) & set(prev_vals):
+            lv, pv = latest_vals[sid], prev_vals[sid]
+            if lv is None or pv is None: continue
+            if lowest_rule["min_score"] <= lv <= lowest_rule["max_score"] and \
+               lowest_rule["min_score"] <= pv <= lowest_rule["max_score"]:
+                at_risk.append({"id": sid, "name": name_map.get(sid, "?"), "value": lv,
+                                "reason": "Lowest grade in two consecutive examinations."})
+
+    return {"graph": graph, "current_label": latest["label"], "average": round(latest_avg, 2),
+            "outstanding": outstanding, "needs_support": needs_support,
+            "improved": improved, "declining": declining, "at_risk": at_risk}
+
+def _best_weakest_subject(school_id, class_id, stream_id, subjects, term_id, assess):
+    students = get_students_in_scope(school_id, class_id, stream_id) if class_id \
+        else get_all_students_in_school(school_id)
+    ids = [s["id"] for s in students]
+    if not ids: return None, None
+    scores_bulk = get_term_scores_bulk(school_id, term_id, ids)
+    subj_avgs = {}
+    for subj in subjects:
+        vals = []
+        for sid in ids:
+            entry = scores_bulk.get(sid, {}).get(subj)
+            if not entry: continue
+            v = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+            if v is not None: vals.append(v)
+        if vals: subj_avgs[subj] = round(sum(vals) / len(vals), 2)
+    if not subj_avgs: return None, None
+    best = max(subj_avgs.items(), key=lambda kv: kv[1])
+    weak = min(subj_avgs.items(), key=lambda kv: kv[1])
+    return {"subject": best[0], "average": best[1]}, {"subject": weak[0], "average": weak[1]}
+
+
+
+
+
 # ── INIT DB ───────────────────────────────────────────────────
 def init_db():
     con = get_db(); cur = con.cursor()
@@ -1421,6 +1591,83 @@ def api_subject_ranking():
           for stid,sc in score_map.items()]
     _assign_positions(rows,"score"); return jsonify(rows)
 
+
+
+# ── ANALYTICS ROUTES ───────────────────────────────────────────
+@app.route("/api/analytics/overview", methods=["GET"])
+def api_analytics_overview():
+    sid = school_id_from_header()
+    username  = request.args.get("username", "")
+    role      = request.args.get("role", "")
+    class_id  = request.args.get("class_id") or None
+    stream_id = request.args.get("stream_id") or None
+    class_id  = int(class_id) if class_id else None
+    stream_id = int(stream_id) if stream_id else None
+
+    # A class teacher can only ever see their own class/stream — enforced
+    # server-side regardless of what the request asked for, since this is
+    # the same trust boundary marks entry already relies on.
+    if role == "teacher":
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT is_class_teacher,class_id,stream_id FROM users WHERE username=%s AND school_id=%s",
+                    (username, sid))
+        row = cur.fetchone(); cur.close(); con.close()
+        if not row or not row[0]:
+            return jsonify({"ok": False, "error": "Not a class teacher"}), 403
+        if row[1] is None:
+            return jsonify({"ok": False, "error": "No class assigned"}), 403
+        class_id, stream_id = row[1], row[2]
+
+    subjects = get_subjects(sid)
+    points, name_map = _compute_overall_series(sid, class_id, stream_id, subjects)
+    result = _build_common_cards(points, name_map, sid)
+    if points:
+        best_subj, weak_subj = _best_weakest_subject(
+            sid, class_id, stream_id, subjects, points[-1]["term_id"], points[-1]["assess"])
+        result["best_subject"] = best_subj
+        result["weakest_subject"] = weak_subj
+    else:
+        result["best_subject"] = None
+        result["weakest_subject"] = None
+    return jsonify({"ok": True, **result})
+
+@app.route("/api/analytics/subject", methods=["GET"])
+def api_analytics_subject():
+    sid       = school_id_from_header()
+    username  = request.args.get("username", "")
+    role      = request.args.get("role", "")
+    subject   = request.args.get("subject", "").lower().strip()
+    class_id  = request.args.get("class_id")
+    stream_id = request.args.get("stream_id") or None
+    if not subject or not class_id:
+        return jsonify({"ok": False, "error": "subject and class_id required"}), 400
+    class_id  = int(class_id)
+    stream_id = int(stream_id) if stream_id else None
+    if role == "teacher" and not teacher_can_access(sid, username, subject, class_id, stream_id):
+        return jsonify({"ok": False, "error": "Access denied"}), 403
+
+    points, name_map = _compute_subject_series(sid, class_id, stream_id, subject)
+    result = _build_common_cards(points, name_map, sid)
+    return jsonify({"ok": True, **result})
+
+@app.route("/api/analytics/dashboard_classes", methods=["GET"])
+def api_analytics_dashboard_classes():
+    sid = school_id_from_header()
+    subjects = get_subjects(sid)
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id,class_name FROM classes WHERE school_id=%s ORDER BY class_name", (sid,))
+    classes = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    results = []
+    for c in classes:
+        points, _ = _compute_overall_series(sid, c["id"], None, subjects)
+        if points:
+            results.append({"class_id": c["id"], "class_name": c["class_name"], "average": points[-1]["avg"]})
+    if not results:
+        return jsonify({"ok": True, "best": None, "weakest": None})
+    best = max(results, key=lambda r: r["average"])
+    weakest = min(results, key=lambda r: r["average"])
+    return jsonify({"ok": True, "best": best, "weakest": weakest})
+
 # ── SCORE SHEETS ──────────────────────────────────────────────
 @app.route("/api/scoresheet", methods=["GET"])
 def api_scoresheet():
@@ -2050,7 +2297,8 @@ def api_reset_db():
 
 # ── STATIC ─────────────────────────────────────────────────────
 _STATIC_FILES=["shared.css","shared.js","page-dashboard.js","page-students.js",
-               "page-teachers.js","page-reports.js","page-parent.js","page-config.js"]
+               "page-teachers.js","page-reports.js","page-parent.js","page-config.js",
+               "page-analytics.js"]
 
 @app.route("/")
 def index(): return send_from_directory(BASE_DIR,"index.html")
