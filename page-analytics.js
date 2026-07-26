@@ -142,6 +142,7 @@ function onAdminAnalyticsClassChange(){
   fetchAndRenderAdminAnalytics();
 }
 async function fetchAndRenderAdminAnalytics(){
+  if(!requireSub()) return;
   const classId  = document.getElementById("admin-an-class-sel").value;
   const streamId = document.getElementById("admin-an-stream-sel").value;
   let url = "/analytics/overview?role=admin";
@@ -154,6 +155,7 @@ async function fetchAndRenderAdminAnalytics(){
 
 // ── CLASS TEACHER ANALYTICS ────────────────────────────────────
 async function loadCTAnalytics(){
+  if(!requireSub()) return;
   const d = await api(`/analytics/overview?role=teacher&username=${encodeURIComponent(currentUser.username)}`);
   if(!d.ok){
     const el = document.getElementById("ct-an-cards");
@@ -181,6 +183,7 @@ async function loadTeacherAnalytics(){
   fetchAndRenderTeacherAnalytics();
 }
 async function fetchAndRenderTeacherAnalytics(){
+  if(!requireSub()) return;
   const idx = document.getElementById("teacher-an-assign-sel").value;
   const a = teacherAssignments[idx];
   if(!a) return;

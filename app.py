@@ -2418,8 +2418,15 @@ def api_superadmin_schools():
             cur.execute("SELECT COUNT(*) FROM users WHERE school_id=%s AND role='teacher'",(sid,)); tc=cur.fetchone()[0]
             cur.execute("SELECT label FROM terms WHERE school_id=%s AND status='open' ORDER BY id DESC LIMIT 1",(sid,))
             r=cur.fetchone(); at=r[0] if r else "—"
+            cur.execute("SELECT subscription_exempt, subscription_status, subscription_plan, subscription_expires_at FROM schools WHERE id=%s",(sid,))
+            sub_row = cur.fetchone()
+            exempt, sub_status, sub_plan, sub_expires = sub_row if sub_row else (0,"inactive","",None)
+            payment_status = "demo" if exempt else (sub_status or "inactive")
             result.append({"id":sid,"school_name":s["school_name"],"registered_at":s.get("cast") or "—",
-                           "student_count":sc,"teacher_count":tc,"active_term":at,"payment_status":"pending"})
+                           "student_count":sc,"teacher_count":tc,"active_term":at,
+                           "payment_status":payment_status,
+                           "subscription_plan": sub_plan or "—",
+                           "subscription_expires_at": sub_expires.isoformat() if sub_expires else None})
         cur.close(); con.close()
         return jsonify({"ok":True,"schools":result})
     except Exception as e: return jsonify({"ok":False,"error":str(e)}),500

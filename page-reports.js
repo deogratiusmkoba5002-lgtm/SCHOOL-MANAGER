@@ -67,10 +67,10 @@ function renderReportCard(out, d, readOnly){
         <div style="font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:800;color:var(--navy)">${d.student.name}</div>
         <div style="font-size:.85rem;color:var(--muted);margin-top:4px">Student Report Card${readOnly?' <span style="color:var(--orange);font-size:.75rem">(Read-only – closed term)</span>':''}</div>
       </div>
-      <a href="${pdfUrl}" target="_blank" class="btn btn-pdf btn-sm">
+      <button class = "btn btn-pdf btn-sm" onclick="if(requiredSub())window.open('${pdfUrl}','_blank')">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
         Download PDF
-      </a>
+      </button>
     </div>
     <div class="report-info-row">
       <div class="report-info-item"><strong>Class</strong>${cap(d.student.class_name)}</div>
@@ -147,7 +147,7 @@ document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
   const params=new URLSearchParams({class_id:cc, ca_name:ca});
   if(cs) params.set("stream_id",cs);
   if(_schoolId) params.set("school_id",_schoolId);
-  window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");
+  if(requireSub()){window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");}
 });
 document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("term-sheet-class").value);
@@ -160,7 +160,7 @@ document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
   const params=new URLSearchParams({class_id:tc});
   if(ts) params.set("stream_id",ts);
   if(_schoolId) params.set("school_id",_schoolId);
-  window.open(`${API}/pdf/terminal_sheet?${params.toString()}`,"_blank");
+  if(requireSub()){window.open(`${API}/pdf/terminal_sheet?${params.toString()}`,"_blank");}
 });
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
@@ -173,7 +173,7 @@ document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   const params=new URLSearchParams({class_id, ca_name:"exam"});
   if(stream_id) params.set("stream_id",stream_id);
   if(_schoolId) params.set("school_id",_schoolId);
-  window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");
+  if(requireSub()){window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");}
 });
 function renderScoreSheet(container, d, label){
   if(!d.results||!d.results.length){ container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return; }

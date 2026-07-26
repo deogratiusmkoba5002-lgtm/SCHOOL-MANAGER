@@ -137,6 +137,7 @@ async function loadParentsPage(){
   }
 }
 document.getElementById("btn-publish-results").addEventListener("click", async()=>{
+  if(!requireSub())return;
   const status = await api("/results/status");
   if(!status.term_id){toast("No active term","error");return;}
   const r = await api("/results/toggle","POST",{term_id:status.term_id,publish:true});
@@ -152,6 +153,7 @@ document.getElementById("btn-unpublish-results").addEventListener("click", async
   else toast(r.error||"Failed","error");
 });
 document.getElementById("btn-post-announcement").addEventListener("click", async()=>{
+  if(!requireSub())return;
   const title = document.getElementById("ann-title").value.trim();
   const body  = document.getElementById("ann-body").value.trim();
   const sel   = document.getElementById("ann-target");

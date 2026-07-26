@@ -239,7 +239,7 @@ async function doLogin(){
 
 // ── CONFIG ───────────────────────────────────────────────────
 async function loadConfig(){
-  const sub = await api("/subscription/pay");
+  const sub = await api("/subscription/status");
   window.subActive = sub.ok ? sub.active : true;
   const c = await api("/config");
   config = {...config, ...c};
@@ -523,4 +523,11 @@ async function refreshTermBanner(){
     label.textContent="⚠ No active term";
     detail.textContent="Admin must open a term before marks can be entered";
   }
+}
+
+function requireSub(){
+  if(window.subActive) return true;
+  toast("This feature needs an active subscription. Go to Config → Subscription.","error");
+  showPage("config");
+  return false;
 }

@@ -30,7 +30,65 @@ async function loadConfigPage(){
     if(text) text.textContent = "Drag & drop or click to upload a new logo";
   }
 
-  await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades(), configLoadRegCode()]);
+  await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades(), configLoadRegCode(), loadSubscriptionCard()]);
+}
+
+async function loadSubscriptionCard(){
+  const s = await api("/subscription/status");
+  const statusEl = document.getElementById("sub-status-display");
+  const plansEl  = document.getElementById("sub-plans-area");
+  if(!s.ok){ statusEl.textContent = "Could not load subscription status."; return; }
+
+  if(s.exempt){
+    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Demo / grandfathered school — all features unlocked.</span>`;
+    plansEl.innerHTML = "";
+    return;
+  }
+  if(s.active){
+    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Active — ${s.plan==="max"?"Max":"Mini"} plan</span>
+      <div style="color:var(--muted);margin-top:4px">Renews/expires: ${new Date(s.expires_at).toLocaleDateString()}</div>`;
+  } else if(s.status==="pending"){
+    statusEl.innerHTML = `<span style="color:var(--orange);font-weight:600">⏳ Payment pending — check your phone to approve the USSD prompt.</span>`;
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--red);font-weight:600">🔒 No active subscription — analytics, PDFs, announcements and results publishing are locked.</span>`;
+  }
+
+  plansEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      ${Object.entries(s.plans).map(([key,p])=>`
+        <div style="border:1.5px solid var(--border);border-radius:10px;padding:16px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${key==="max"?"Max":"Mini"}</div>
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:12px">${p.label}</div>
+          <button class="btn btn-blue btn-sm" style="width:100%" onclick="startSubscriptionPayment('${key}')">Subscribe</button>
+        </div>`).join("")}
+    </div>
+    <div class="field" style="max-width:280px">
+      <label>Phone Number (for payment prompt)</label>
+      <input type="tel" id="sub-phone" placeholder="e.g. 0712345678"/>
+    </div>`;
+}
+
+async function startSubscriptionPayment(plan){
+  const phone = (document.getElementById("sub-phone")||{}).value?.trim();
+  if(!phone){ toast("Enter the phone number to receive the payment prompt","error"); return; }
+  const r = await api("/subscription/pay","POST",{plan, phone_number:phone});
+  if(!r.ok){ toast(r.error||"Failed to start payment","error"); return; }
+  toast("Payment prompt sent — check your phone!","success");
+  pollSubscriptionStatus();
+}
+
+function pollSubscriptionStatus(){
+  let tries = 0;
+  const timer = setInterval(async()=>{
+    tries++;
+    const s = await api("/subscription/status");
+    if(s.ok && s.active){
+      clearInterval(timer);
+      window.subActive = true;
+      toast("Subscription activated!","success");
+      loadSubscriptionCard();
+    } else if(tries >= 20){ clearInterval(timer); } // stop after ~100s
+  }, 5000);
 }
 
 // ── SCHOOL REGISTRATION CODE (used alongside username/password to log in) ──
