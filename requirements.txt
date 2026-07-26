@@ -5,3 +5,4 @@ psycopg2-binary
 reportlab
 openpyxl
 python-dotenv
+requests

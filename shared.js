@@ -239,6 +239,8 @@ async function doLogin(){
 
 // ── CONFIG ───────────────────────────────────────────────────
 async function loadConfig(){
+  const sub = await api("/subscription/pay");
+  window.subActive = sub.ok ? sub.active : true;
   const c = await api("/config");
   config = {...config, ...c};
   if(c.allowed_subjects && c.allowed_subjects.length) config.allowed_subjects = c.allowed_subjects;

@@ -1,11 +1,13 @@
 """
 School Manager - Flask API Backend (v7 - Full Multi-Tenant)
 """
-import hashlib, os, tempfile, secrets, json, re, io, base64
+import hashlib, os, tempfile, secrets, json, re, io, base64, time, hmac, uuid
+import requests
 import psycopg2, psycopg2.extras
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from datetime import datetime, timedelta
 
 
 try:
@@ -44,6 +46,60 @@ _FALLBACK_GRADES = [
     {"min_score":60,"max_score":69,"grade":"C"},{"min_score":50,"max_score":59,"grade":"D"},
     {"min_score":0,"max_score":49,"grade":"F"},
 ]
+
+# ── SUBSCRIPTIONS (ClickPesa) ────────────────────────────────
+SUBSCRIPTION_PLANS = {
+    "max":  {"amount": 500000, "days": 365, "label": "Max — 500,000 TZS / year"},
+    "mini": {"amount": 300000, "days": 182, "label": "Mini — 300,000 TZS / 6 months"},
+}
+CLICKPESA_BASE       = "https://api.clickpesa.com/third-parties"
+CLICKPESA_CLIENT_ID  = os.environ.get("CLICKPESA_CLIENT_ID", "")
+CLICKPESA_API_KEY    = os.environ.get("CLICKPESA_API_KEY", "")
+CLICKPESA_CHECKSUM_KEY = os.environ.get("CLICKPESA_CHECKSUM_KEY", "")  # optional, only if checksum is enabled on your app
+
+_cp_token_cache = {"token": None, "expires_at": 0}
+
+def clickpesa_token():
+    """JWTs are valid 1 hour — cache and only refresh a bit before expiry."""
+    if _cp_token_cache["token"] and time.time() < _cp_token_cache["expires_at"] - 60:
+        return _cp_token_cache["token"]
+    r = requests.post(f"{CLICKPESA_BASE}/generate-token", timeout=15,
+                       headers={"client-id": CLICKPESA_CLIENT_ID, "api-key": CLICKPESA_API_KEY})
+    data = r.json()
+    if not data.get("success"):
+        raise RuntimeError(data.get("message", "Could not get ClickPesa token"))
+    _cp_token_cache["token"] = data["token"]
+    _cp_token_cache["expires_at"] = time.time() + 3600
+    return data["token"]
+
+def clickpesa_checksum(payload):
+    """Canonical (recursively key-sorted) JSON, HMAC-SHA256, hex digest."""
+    def canon(o):
+        if isinstance(o, dict): return {k: canon(o[k]) for k in sorted(o)}
+        if isinstance(o, list): return [canon(x) for x in o]
+        return o
+    body = json.dumps(canon(payload), separators=(",", ":"))
+    return hmac.new(CLICKPESA_CHECKSUM_KEY.encode(), body.encode(), hashlib.sha256).hexdigest()
+
+def is_subscribed(school_id):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT subscription_exempt, subscription_status, subscription_expires_at FROM schools WHERE id=%s", (school_id,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row: return False
+    exempt, status, expires_at = row
+    if exempt: return True
+    return bool(status == "active" and expires_at and expires_at > datetime.utcnow())
+
+def subscription_required(f):
+    from functools import wraps
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        sid = school_id_from_header()
+        if not is_subscribed(sid):
+            return jsonify({"ok": False, "error": "subscription_required",
+                             "message": "This feature requires an active subscription."}), 402
+        return f(*args, **kwargs)
+    return wrapper
 
 # ── DB ────────────────────────────────────────────────────────
 def get_db():
@@ -721,6 +777,10 @@ def init_db():
         "ALTER TABLE grade_config ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1",
         "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1",
         "ALTER TABLE results_published ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_exempt INTEGER DEFAULT 0",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'inactive'",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT ''",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
     ]
     for m in migrations:
         try: cur.execute(m)
@@ -766,13 +826,20 @@ def init_db():
     except Exception as e:
         print(f"announcement target_classes repair note: {e}")
 
-    # Registration Code (reg_code): a unique, school-chosen identifier used at
-    # login time (alongside username/password) to unambiguously pick which
-    # school a login belongs to. This closes the cross-school login hole where
-    # two schools with the same username+password could authenticate into
-    # each other's data. Every school must always have one, so schools created
-    # before this feature existed get auto-backfilled with "school-{id}" —
-    # editable afterwards from Config.
+# Subscription grandfathering — runs exactly once, on the very next deploy.
+# Every school that exists at that moment (your demo schools included) gets
+# exempt=1 forever. Any school registered after this point gets exempt=0
+# by column default and must subscribe.
+    try:
+        cur.execute("CREATE TABLE IF NOT EXISTS _subscription_migration (id INTEGER PRIMARY KEY, applied INTEGER DEFAULT 0)")
+        cur.execute("INSERT INTO _subscription_migration(id,applied) VALUES(1,0) ON CONFLICT(id) DO NOTHING")
+        cur.execute("SELECT applied FROM _subscription_migration WHERE id=1")
+        if cur.fetchone()[0] == 0:
+            cur.execute("UPDATE schools SET subscription_exempt=1")
+            cur.execute("UPDATE _subscription_migration SET applied=1 WHERE id=1")
+            print("Subscription migration: grandfathered all existing schools.")
+    except Exception as e:
+        print(f"Subscription migration note: {e}")
     try:
         cur.execute("ALTER TABLE schools ADD COLUMN IF NOT EXISTS reg_code TEXT")
         cur.execute("SELECT id FROM schools WHERE reg_code IS NULL OR reg_code=''")
@@ -1595,6 +1662,7 @@ def api_subject_ranking():
 
 # ── ANALYTICS ROUTES ───────────────────────────────────────────
 @app.route("/api/analytics/overview", methods=["GET"])
+@subscription_required
 def api_analytics_overview():
     sid = school_id_from_header()
     username  = request.args.get("username", "")
@@ -1632,6 +1700,7 @@ def api_analytics_overview():
     return jsonify({"ok": True, **result})
 
 @app.route("/api/analytics/subject", methods=["GET"])
+@subscription_required
 def api_analytics_subject():
     sid       = school_id_from_header()
     username  = request.args.get("username", "")
@@ -1651,6 +1720,7 @@ def api_analytics_subject():
     return jsonify({"ok": True, **result})
 
 @app.route("/api/analytics/dashboard_classes", methods=["GET"])
+@subscription_required
 def api_analytics_dashboard_classes():
     sid = school_id_from_header()
     subjects = get_subjects(sid)
@@ -1769,6 +1839,7 @@ def api_get_announcements():
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/announcements", methods=["POST"])
+@subscription_required
 def api_post_announcement():
     sid=school_id_from_header(); d=request.json
     title=d.get("title","").strip(); body=d.get("body","").strip()
@@ -1813,6 +1884,9 @@ def api_results_status():
 def api_toggle_results():
     sid=school_id_from_header(); d=request.json
     term_id=d.get("term_id"); publish=bool(d.get("publish",True))
+    if publish and not is_subscribed(sid):
+        return jsonify({"ok": False, "error": "subscription_required",
+                        "message": "Publishing results requires an active subscription."}), 402
     if not term_id: return jsonify({"ok":False,"error":"term_id required"}),400
     con=get_db(); cur=con.cursor()
     cur.execute("""INSERT INTO results_published(school_id,term_id,published) VALUES(%s,%s,%s)
@@ -1955,6 +2029,105 @@ def api_platform_announcement_read(aid):
     cur.execute("INSERT INTO platform_announcement_reads(announcement_id,school_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(aid,sid))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
+@app.route("/api/subscription/status", methods=["GET"])
+def api_subscription_status():
+    sid = school_id_from_header()
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT subscription_exempt, subscription_status, subscription_plan, subscription_expires_at FROM schools WHERE id=%s", (sid,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row: return jsonify({"ok": False}), 404
+    exempt, status, plan, expires_at = row
+    return jsonify({"ok": True, "active": is_subscribed(sid), "exempt": bool(exempt),
+                     "plan": plan, "status": status,
+                     "expires_at": expires_at.isoformat() if expires_at else None,
+                     "plans": SUBSCRIPTION_PLANS})
+
+@app.route("/api/subscription/pay", methods=["POST"])
+def api_subscription_pay():
+    sid = school_id_from_header(); d = request.json or {}
+    plan  = d.get("plan", "")
+    phone = re.sub(r"\D", "", d.get("phone_number") or "")
+    if phone.startswith("0"): phone = "255" + phone[1:]   # 07xx -> 2557xx
+    if plan not in SUBSCRIPTION_PLANS: return jsonify({"ok": False, "error": "Invalid plan"}), 400
+    if not phone: return jsonify({"ok": False, "error": "Phone number required"}), 400
+    if not CLICKPESA_CLIENT_ID or not CLICKPESA_API_KEY:
+        return jsonify({"ok": False, "error": "Payments not configured yet. Contact support."}), 500
+
+    info = SUBSCRIPTION_PLANS[plan]
+    order_ref = f"SUB{sid}{uuid.uuid4().hex[:10]}".upper()  # alphanumeric only, ClickPesa requirement
+
+    try:
+        token = clickpesa_token()
+        payload = {"amount": str(info["amount"]), "currency": "TZS",
+                   "orderReference": order_ref, "phoneNumber": phone}
+        if CLICKPESA_CHECKSUM_KEY:
+            payload["checksum"] = clickpesa_checksum(payload)
+        r = requests.post(f"{CLICKPESA_BASE}/payments/initiate-ussd-push-request", json=payload, timeout=20,
+                           headers={"Authorization": f"Bearer {token}"})
+        data = r.json()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Could not reach payment provider: {e}"}), 502
+
+    if r.status_code != 200:
+        return jsonify({"ok": False, "error": data.get("message", "Payment could not be started")}), 400
+
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE schools SET subscription_status='pending' WHERE id=%s""", (sid,))
+    con.commit(); cur.close(); con.close()
+
+    # Track the pending order so the webhook (which only gives us orderReference,
+    # not school_id) can be matched back to this school + plan.
+    set_config_val(sid, f"pending_sub_{order_ref}", plan)
+
+    return jsonify({"ok": True, "order_reference": order_ref, "status": data.get("status"),
+                     "message": "Check your phone to authorize the payment."})
+
+@app.route("/api/webhooks/clickpesa", methods=["POST"])
+def api_clickpesa_webhook():
+    raw = request.get_data(as_text=True)
+    try:
+        event = json.loads(raw)
+    except Exception:
+        return ("Bad payload", 400)
+
+    if CLICKPESA_CHECKSUM_KEY and "checksum" in event:
+        received = event.get("checksum")
+        check_payload = {k: v for k, v in event.items() if k not in ("checksum", "checksumMethod")}
+        if clickpesa_checksum(check_payload) != received:
+            return ("Invalid checksum", 400)
+
+    etype = event.get("event")
+    data  = event.get("data") or {}
+    order_ref = data.get("orderReference", "")
+    if not order_ref.startswith("SUB"):
+        return ("OK", 200)  # not a subscription payment, ignore
+
+    # Recover which school + plan this order belongs to.
+    # order_ref format: SUB<school_id><random> — school_id is numeric, so
+    # peel digits off the front right after "SUB".
+    m = re.match(r"^SUB(\d+)", order_ref)
+    if not m: return ("OK", 200)
+    school_id = int(m.group(1))
+    plan = get_config_val(school_id, f"pending_sub_{order_ref}", "")
+    if plan not in SUBSCRIPTION_PLANS: return ("OK", 200)
+
+    if etype == "PAYMENT RECEIVED" and data.get("status") in ("SUCCESS", "SETTLED"):
+        days = SUBSCRIPTION_PLANS[plan]["days"]
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT subscription_expires_at FROM schools WHERE id=%s", (school_id,))
+        row = cur.fetchone()
+        base = row[0] if row and row[0] and row[0] > datetime.utcnow() else datetime.utcnow()
+        cur.execute("""UPDATE schools SET subscription_status='active', subscription_plan=%s,
+                       subscription_expires_at=%s WHERE id=%s""",
+                    (plan, base + timedelta(days=days), school_id))
+        con.commit(); cur.close(); con.close()
+    elif etype == "PAYMENT FAILED":
+        con = get_db(); cur = con.cursor()
+        cur.execute("""UPDATE schools SET subscription_status='inactive'
+                       WHERE id=%s AND subscription_status='pending'""", (school_id,))
+        con.commit(); cur.close(); con.close()
+
+    return ("OK", 200)
 
 # ── PDF ────────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4, A3, landscape
@@ -2057,6 +2230,7 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
     doc.build(story)
 
 @app.route("/api/pdf/report/<int:sid>", methods=["GET"])
+@subscription_required
 def pdf_report(sid):
     school_id=school_id_from_header(); subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
     term_id=request.args.get("term_id")
@@ -2155,6 +2329,7 @@ def pdf_report(sid):
                      mimetype="application/pdf")
 
 @app.route("/api/pdf/ca_sheet", methods=["GET"])
+@subscription_required
 def pdf_ca_sheet():
     school_id=school_id_from_header(); subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
@@ -2175,6 +2350,7 @@ def pdf_ca_sheet():
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
+@subscription_required
 def pdf_terminal_sheet():
     school_id=school_id_from_header(); subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None; term_id=request.args.get("term_id")
