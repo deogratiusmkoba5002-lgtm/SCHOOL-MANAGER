@@ -67,7 +67,7 @@ function renderReportCard(out, d, readOnly){
         <div style="font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:800;color:var(--navy)">${d.student.name}</div>
         <div style="font-size:.85rem;color:var(--muted);margin-top:4px">Student Report Card${readOnly?' <span style="color:var(--orange);font-size:.75rem">(Read-only – closed term)</span>':''}</div>
       </div>
-      <button class = "btn btn-pdf btn-sm" onclick="if(requiredSub())window.open('${pdfUrl}','_blank')">
+      <button class = "btn btn-pdf btn-sm" onclick="if(requireSub())window.open('${pdfUrl}','_blank')">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
         Download PDF
       </button>
