@@ -69,6 +69,21 @@ def is_subscribed(school_id):
     if exempt: return True
     return bool(status == "active" and expires_at and expires_at > datetime.utcnow())
 
+def _expire_stale_payment_requests(school_id=None):
+    """Lazily flips any 'pending' request older than 48h to 'expired'. Called
+    at the top of every read/write path that touches payment_requests, so the
+    transition happens the moment anyone looks — no scheduler needed. Rows are
+    never deleted; only their status changes, preserving the audit trail."""
+    con = get_db(); cur = con.cursor()
+    if school_id:
+        cur.execute("""UPDATE payment_requests SET status='expired'
+                       WHERE status='pending' AND school_id=%s
+                       AND submitted_at < NOW() - INTERVAL '48 hours'""", (school_id,))
+    else:
+        cur.execute("""UPDATE payment_requests SET status='expired'
+                       WHERE status='pending' AND submitted_at < NOW() - INTERVAL '48 hours'""")
+    con.commit(); cur.close(); con.close()
+
 def subscription_required(f):
     from functools import wraps
     @wraps(f)
@@ -2078,6 +2093,7 @@ def api_platform_announcement_read(aid):
 @app.route("/api/subscription/status", methods=["GET"])
 def api_subscription_status():
     sid = school_id_from_header()
+    _expire_stale_payment_requests(sid)
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT subscription_exempt, subscription_status, subscription_plan, subscription_expires_at FROM schools WHERE id=%s", (sid,))
     row = cur.fetchone()
@@ -2098,8 +2114,12 @@ def api_subscription_status():
             pending_request = {"id": rid, "plan": rplan, "claimed_amount": ramount,
                                 "transaction_id": rtxn, "phone_used": rphone,
                                 "payment_date": rdate, "note": rnote, "submitted_at": rsubmitted}
+        elif rstatus == "expired":
+            last_decision = {"status": "expired",
+                              "note": "This payment request expired because it was not verified within 48 hours. "
+                                      "If you already paid, contact support. Otherwise, submit a new payment request."}
         elif rstatus == "rejected":
-            last_decision = {"status": rstatus, "note": rdecision_note}
+            last_decision = {"status": "rejected", "note": rdecision_note}
 
     return jsonify({"ok": True, "active": is_subscribed(sid), "exempt": bool(exempt),
                      "plan": plan, "status": status,
@@ -2108,7 +2128,6 @@ def api_subscription_status():
                      "payment_info": _platform_payment_config(),
                      "pending_request": pending_request,
                      "last_decision": last_decision})
-
 @app.route("/api/subscription/select_free", methods=["POST"])
 def api_select_free_plan():
     sid = school_id_from_header()
@@ -2121,7 +2140,9 @@ def api_select_free_plan():
 
 @app.route("/api/subscription/request", methods=["POST"])
 def api_submit_payment_request():
-    sid = school_id_from_header(); d = request.json or {}
+    sid = school_id_from_header()
+    _expire_stale_payment_requests(sid)
+    d = request.json or {}
     plan = d.get("plan", "")
     if plan not in SUBSCRIPTION_PLANS or plan == "free":
         return jsonify({"ok": False, "error": "Invalid plan"}), 400
@@ -2139,6 +2160,14 @@ def api_submit_payment_request():
     if not pay_date: return jsonify({"ok": False, "error": "Payment date is required"}), 400
 
     con = get_db(); cur = con.cursor()
+
+    # Abuse guard: counts every submission attempt (any status) in the last
+    # 24h, so rapid cancel-and-resubmit cycling still counts against the cap.
+    cur.execute("SELECT COUNT(*) FROM payment_requests WHERE school_id=%s AND submitted_at > NOW() - INTERVAL '24 hours'", (sid,))
+    if cur.fetchone()[0] >= 5:
+        cur.close(); con.close()
+        return jsonify({"ok": False, "error": "Too many verification requests. Please contact support if you continue experiencing problems."}), 429
+
     cur.execute("SELECT id FROM payment_requests WHERE school_id=%s AND status='pending'", (sid,))
     if cur.fetchone():
         cur.close(); con.close()
@@ -2522,6 +2551,7 @@ def api_reset_db():
 def api_sa_payment_requests():
     sa, err = _require_superadmin()
     if err: return err
+    _expire_stale_payment_requests()
     status = request.args.get("status", "pending")
     con = get_db(); cur = con.cursor()
     q = """SELECT pr.id, pr.school_id, s.school_name, pr.plan, pr.claimed_amount, pr.transaction_id,
@@ -2547,7 +2577,7 @@ def api_sa_approve_payment(rid):
     row = cur.fetchone()
     if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
     school_id, plan, status = row
-    if status != "pending":
+    if status not in ("pending", "expired"):
         cur.close(); con.close(); return jsonify({"ok": False, "error": "This request was already decided"}), 409
     if plan not in SUBSCRIPTION_PLANS:
         cur.close(); con.close(); return jsonify({"ok": False, "error": "Unknown plan on this request"}), 400
@@ -2574,7 +2604,7 @@ def api_sa_reject_payment(rid):
     row = cur.fetchone()
     if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
     school_id, status = row
-    if status != "pending":
+    if status not in ("pending", "expired"):
         cur.close(); con.close(); return jsonify({"ok": False, "error": "This request was already decided"}), 409
     cur.execute("UPDATE payment_requests SET status='rejected', decided_by=%s, decided_at=NOW(), decision_note=%s WHERE id=%s",
                 (sa, note, rid))

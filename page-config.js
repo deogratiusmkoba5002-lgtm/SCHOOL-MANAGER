@@ -51,6 +51,7 @@ async function configSaveRegCode(){
   try{let _subPlansCache = null;
 let _subPaymentInfoCache = null;
 
+
 async function loadSubscriptionCard(){
   const s = await api("/subscription/status");
   const statusEl = document.getElementById("sub-status-display");
@@ -83,7 +84,12 @@ async function loadSubscriptionCard(){
     return;
   }
 
-  if(s.active){
+  if(s.last_decision && s.last_decision.status==="expired"){
+    statusEl.innerHTML = `<span style="color:var(--orange);font-weight:600">🟠 Expired (Awaiting Resubmission)</span>
+      <div style="color:var(--muted);margin-top:4px;font-size:.85rem">${escHtml(s.last_decision.note)}</div>`;
+  } 
+
+  else if (s.active){
     statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Active — ${cap(s.plan||"")} plan</span>
       <div style="color:var(--muted);margin-top:4px">Expires: ${new Date(s.expires_at).toLocaleDateString()}</div>`;
   } else if(s.last_decision && s.last_decision.status==="rejected"){
@@ -160,7 +166,7 @@ async function submitPaymentRequest(planKey){
 }
 
 async function cancelPaymentRequest(){
-  if(!confirm("Cancel this pending payment request? You can submit a new one afterward.")) return;
+  if(!confirm("Are you sure?\n\nThis does not cancel your payment. It only removes this verification request. You can submit a new one afterward.")) return;
   const r = await api("/subscription/request/cancel","POST",{});
   if(r.ok){ toast("Request cancelled","success"); loadSubscriptionCard(); }
   else toast(r.error||"Failed","error");

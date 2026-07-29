@@ -315,6 +315,7 @@ textarea{resize:vertical;min-height:90px}
         <label>Filter</label>
         <select id="pr-status-filter" onchange="loadPaymentRequests()">
           <option value="pending">Pending</option>
+          <option value="expired">Expired</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
           <option value="cancelled">Cancelled</option>
@@ -470,23 +471,23 @@ async function loadPaymentRequests(){
   const list = document.getElementById("pr-list");
   if(!data.ok || !data.requests.length){ list.innerHTML = `<div class="empty">No requests.</div>`; return; }
   list.innerHTML = data.requests.map(r=>`
-    <div class="notice-item">
-      <div class="notice-meta">
-        <span class="notice-title">${esc(r.school_name)} — ${esc(r.plan)} (${r.claimed_amount} TZS)</span>
-        <span class="notice-date">${r.submitted_at ? r.submitted_at.slice(0,16) : ""}</span>
-      </div>
-      <div class="notice-body">
-        Txn ID: <strong>${esc(r.transaction_id)}</strong> · Phone: ${esc(r.phone_used)} · Paid: ${esc(r.payment_date)}
-        ${r.note ? "<br>Note: "+esc(r.note) : ""}
-        ${r.decision_note ? "<br>Decision note: "+esc(r.decision_note) : ""}
-      </div>
-      <span class="notice-target">Status: ${esc(r.status)}</span>
-      ${r.status==="pending" ? `
-        <div style="margin-top:8px;display:flex;gap:8px">
-          <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveRequest(${r.id})">Approve</button>
-          <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectRequest(${r.id})">Reject</button>
-        </div>` : ""}
-    </div>`).join("");
+  <div class="notice-item">
+    <div class="notice-meta">
+      <span class="notice-title">${esc(r.school_name)} — ${esc(r.plan)} (${r.claimed_amount} TZS)</span>
+      <span class="notice-date">${r.submitted_at ? r.submitted_at.slice(0,16) : ""}</span>
+    </div>
+    <div class="notice-body">
+      Txn ID: <strong>${esc(r.transaction_id)}</strong> · Phone: ${esc(r.phone_used)} · Paid: ${esc(r.payment_date)}
+      ${r.note ? "<br>Note: "+esc(r.note) : ""}
+      ${r.decision_note ? "<br>Decision note: "+esc(r.decision_note) : ""}
+    </div>
+    <span class="notice-target" style="${r.status==='expired'?'background:#FFF3E0;color:#E65100':''}">Status: ${esc(r.status)}</span>
+    ${(r.status==="pending"||r.status==="expired") ? `
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveRequest(${r.id})">Approve${r.status==='expired'?' (override expiry)':''}</button>
+        <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectRequest(${r.id})">Reject</button>
+      </div>` : ""}
+  </div>`).join("");
 }
 async function approveRequest(id){
   if(!confirm("Approve this payment and activate the subscription?")) return;
