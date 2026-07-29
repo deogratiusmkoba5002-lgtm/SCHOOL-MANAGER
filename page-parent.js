@@ -33,15 +33,16 @@ async function loadParentReports(){
   loadAnalyticsData();
 }
 async function loadResAssessments(){
-  const sel     = document.getElementById("parent-res-term-sel");
-  const term_id = sel.value;
+  const term_id = document.getElementById("parent-res-term-sel").value;
   if(!term_id) return;
-  const term = parentPublishedTerms.find(t=>t.id==term_id);
-  if(!term) return;
   const assessSel = document.getElementById("parent-res-assess-sel");
   assessSel.innerHTML="";
-  for(let i=1;i<=term.ca_count;i++){ const o=document.createElement("option"); o.value=`CA${i}`; o.textContent=`CA ${i}`; assessSel.appendChild(o); }
-  const ex=document.createElement("option"); ex.value="exam"; ex.textContent="Final Exam"; assessSel.appendChild(ex);
+  const pub = await api(`/results/assessments?term_id=${term_id}`);
+  if(!pub.ok) return;
+  pub.assessments.filter(a=>a.published).forEach(a=>{
+    const o=document.createElement("option"); o.value=a.assess_key; o.textContent=a.label; assessSel.appendChild(o);
+  });
+  if(!assessSel.options.length){ const o=document.createElement("option"); o.value=""; o.textContent="No published assessments yet"; assessSel.appendChild(o); }
 }
 document.getElementById("parent-view-rc-btn").addEventListener("click", async()=>{
   const term_id = document.getElementById("parent-rc-term-sel").value;
@@ -136,14 +137,33 @@ async function loadParentsPage(){
       </div>`).join("");
   }
 }
-document.getElementById("btn-publish-results").addEventListener("click", async()=>{
-  if(!requireSub())return;
+document.getElementById("btn-publish-results").addEventListener("click", ()=>{ if(requireSub()) openPublishModal(); });
+
+async function openPublishModal(){
   const status = await api("/results/status");
-  if(!status.term_id){toast("No active term","error");return;}
-  const r = await api("/results/toggle","POST",{term_id:status.term_id,publish:true});
-  if(r.ok){toast("Results published! Parents can now see marks.","success");loadParentsPage();}
-  else toast(r.error||"Failed","error");
-});
+  if(!status.term_id){ toast("No active term","error"); return; }
+  const data = await api(`/results/assessments?term_id=${status.term_id}`);
+  if(!data.ok) return;
+  const unpublished = data.assessments.filter(a=>!a.published);
+  if(!unpublished.length){ toast("Everything for this term is already published","info"); return; }
+  const existing = document.getElementById("publish-picker"); if(existing) existing.remove();
+  const panel = document.createElement("div");
+  panel.className="section-card"; panel.id="publish-picker"; panel.style.marginTop="12px";
+  panel.innerHTML = `<div style="font-weight:700;margin-bottom:8px">Select what to publish</div>
+    ${unpublished.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0">
+      <input type="checkbox" class="pub-assess-check" value="${a.assess_key}" checked/> ${escHtml(a.label)}</label>`).join("")}
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="btn btn-green btn-sm" id="confirm-publish-selected">Publish Selected</button>
+      <button class="btn btn-outline btn-sm" onclick="this.closest('.section-card').remove()">Cancel</button>
+    </div>`;
+  document.getElementById("results-status-display").after(panel);
+  panel.querySelector("#confirm-publish-selected").addEventListener("click", async()=>{
+    const keys=[...panel.querySelectorAll(".pub-assess-check:checked")].map(c=>c.value);
+    if(!keys.length){ toast("Select at least one","error"); return; }
+    const r = await api("/results/publish_assessments","POST",{term_id:status.term_id, assess_keys:keys, publish:true});
+    if(r.ok){ toast("Published!","success"); panel.remove(); loadParentsPage(); } else toast(r.error||"Failed","error");
+  });
+}
 document.getElementById("btn-unpublish-results").addEventListener("click", async()=>{
   const status = await api("/results/status");
   if(!status.term_id){toast("No active term","error");return;}

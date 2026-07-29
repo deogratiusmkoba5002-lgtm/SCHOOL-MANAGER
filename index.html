@@ -900,6 +900,42 @@
         </div>
         <div id="sub-status-display" style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">Loading...</div>
         <div id="sub-plans-area"></div>
+        <!-- Grading System -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+            Grading System &amp; Divisions
+          </div>
+          <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">
+            Choose which examination level your school follows and whether divisions are calculated using your own grade boundaries or NECTA's official ones.
+          </p>
+          <div class="field-row">
+            <div class="field">
+              <label>Examination Level</label>
+              <select id="gs-level" onchange="onGradingLevelChange()">
+                <option value="o_level">O-Level (NECTA CSEE)</option>
+                <option value="a_level">A-Level (ACSEE)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Grades Used for Division</label>
+              <select id="gs-source">
+                <option value="school">My School's Grades</option>
+                <option value="necta">NECTA Fixed Grades</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" id="gs-principal-wrap" style="display:none">
+            <label>Principal Subjects <span class="opt">(A-Level only — used for division calculation)</span></label>
+            <select id="gs-principal-subjects" multiple style="height:130px">
+            </select>
+            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Only these subjects count toward the A-Level division and points — others are still recorded but ignored in division math.</p>
+          </div>
+          <button class="btn btn-blue" id="gs-save-btn" onclick="saveGradingSystem()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+            Save Grading System
+          </button>
+        </div>
       </div>
 
         <div class="field" style="max-width:320px">

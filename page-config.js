@@ -31,6 +31,7 @@ async function loadConfigPage(){
   }
 
   await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades(), configLoadRegCode(), loadSubscriptionCard()]);
+  await loadGradingSystemCard();
 }
 
 
@@ -41,6 +42,9 @@ async function configLoadRegCode(){
   const el = document.getElementById("config-reg-code");
   if(el) el.value = r.reg_code || "";
 }
+
+let _subPlansCache = null;
+let _subPaymentInfoCache = null;
 async function configSaveRegCode(){
   const el = document.getElementById("config-reg-code");
   if(!el) return;
@@ -48,9 +52,14 @@ async function configSaveRegCode(){
   if(!val){ toast("Enter a registration code","error"); return; }
   const btn = document.getElementById("config-reg-code-save-btn");
   if(btn) btn.disabled = true;
-  try{let _subPlansCache = null;
-let _subPaymentInfoCache = null;
-
+  try{
+    const r = await api("/config/reg_code","POST",{reg_code:val});
+    if(r.ok){toast("Registration code saved!","success"); el.value = r.reg_code;}
+    else toast(r.error||"Failed to save registration code","error");
+  } finally {
+    if(btn) btn.disabled = false;
+  }
+}
 
 async function loadSubscriptionCard(){
   const s = await api("/subscription/status");
@@ -113,6 +122,56 @@ async function loadSubscriptionCard(){
     <div id="sub-payment-flow"></div>`;
 }
 
+// ── GRADING SYSTEM (O-Level/A-Level, School/NECTA divisions) ──────
+async function loadGradingSystemCard(){
+  const s = await api("/config/grading_system");
+  const levelSel  = document.getElementById("gs-level");
+  const sourceSel = document.getElementById("gs-source");
+  if(!levelSel || !sourceSel) return;
+  levelSel.value  = s.grading_system  || "o_level";
+  sourceSel.value = s.division_source || "school";
+
+  // Populate principal-subjects multi-select from configSubjects (already
+  // loaded by configLoadSubjects earlier in the same Promise.all)
+  const principalSel = document.getElementById("gs-principal-subjects");
+  if(principalSel){
+    principalSel.innerHTML = configSubjects.map(sub=>{
+      const selected = (s.principal_subjects||[]).includes((sub.name||"").toLowerCase().trim());
+      return `<option value="${escHtml(sub.name)}" ${selected?"selected":""}>${cap(sub.name)}</option>`;
+    }).join("");
+  }
+  onGradingLevelChange();
+}
+
+function onGradingLevelChange(){
+  const level = document.getElementById("gs-level").value;
+  const wrap  = document.getElementById("gs-principal-wrap");
+  if(wrap) wrap.style.display = level==="a_level" ? "block" : "none";
+}
+
+async function saveGradingSystem(){
+  const grading_system  = document.getElementById("gs-level").value;
+  const division_source = document.getElementById("gs-source").value;
+  let principal_subjects = [];
+  if(grading_system === "a_level"){
+    const sel = document.getElementById("gs-principal-subjects");
+    principal_subjects = [...sel.selectedOptions].map(o=>o.value.toLowerCase().trim());
+    if(!principal_subjects.length){
+      toast("Select at least one principal subject for A-Level","error");
+      return;
+    }
+  }
+  const btn = document.getElementById("gs-save-btn");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await api("/config/grading_system","POST",{grading_system,division_source,principal_subjects});
+    if(r.ok) toast("Grading system saved!","success");
+    else toast(r.error||"Failed to save grading system","error");
+  } finally {
+    if(btn) btn.disabled = false;
+  }
+}
+
 async function selectFreePlan(){
   if(!confirm("Switch to the Free plan?")) return;
   const r = await api("/subscription/select_free","POST",{});
@@ -171,13 +230,7 @@ async function cancelPaymentRequest(){
   if(r.ok){ toast("Request cancelled","success"); loadSubscriptionCard(); }
   else toast(r.error||"Failed","error");
 }
-    const r = await api("/config/reg_code","POST",{reg_code:val});
-    if(r.ok){ toast("Registration code saved!","success"); el.value = r.reg_code; }
-    else toast(r.error||"Failed to save registration code","error");
-  } finally {
-    if(btn) btn.disabled = false;
-  }
-}
+
 
 // ── LOGO UPLOAD ─────────────────────────────────────────────
 async function handleConfigLogoSelect(e){

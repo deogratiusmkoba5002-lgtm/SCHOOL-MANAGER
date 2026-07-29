@@ -442,8 +442,11 @@ def _get_all_terms_ordered(school_id):
     rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
     return rows
 
-def _assessments_for_term(term):
-    return [f"CA{i}" for i in range(1, term["ca_count"] + 1)] + ["exam"]
+def _assessments_for_term(school_id, term):
+    assessments = [f"CA{i}" for i in range(1, term["ca_count"] + 1)] + ["exam"]
+    for t in get_term_tests(school_id, term["id"]):
+        assessments.append(f"test:{t['id']}")
+    return assessments
 
 def get_all_students_in_school(school_id):
     con = get_db(); cur = con.cursor()
@@ -454,29 +457,66 @@ def get_all_students_in_school(school_id):
     rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
     return rows
 
+def get_term_tests(school_id, term_id):
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT id,label FROM term_tests WHERE school_id=%s AND term_id=%s ORDER BY id",(school_id,term_id))
+    rows=cur.fetchall(); cur.close(); con.close()
+    return [{"id":r[0],"label":r[1]} for r in rows]
+
+def get_term_scores_bulk(school_id, term_id, student_ids):
+    if not student_ids: return {}
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT student_id, subject, ca_name, score FROM ca_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    ca_rows = cur.fetchall()
+    cur.execute("""SELECT student_id, subject, score FROM exam_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    exam_rows = cur.fetchall()
+    cur.execute("""SELECT student_id, subject, test_id, score FROM test_scores
+                   WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
+                (school_id, term_id, student_ids))
+    test_rows = cur.fetchall()
+    cur.close(); con.close()
+    data = {}
+    for student_id, subject, ca_name, score in ca_rows:
+        d = data.setdefault(student_id, {}).setdefault(subject, {"ca": {}, "exam": None, "tests": {}})
+        d["ca"][ca_name] = score
+    for student_id, subject, score in exam_rows:
+        d = data.setdefault(student_id, {}).setdefault(subject, {"ca": {}, "exam": None, "tests": {}})
+        d["exam"] = score
+    for student_id, subject, test_id, score in test_rows:
+        d = data.setdefault(student_id, {}).setdefault(subject, {"ca": {}, "exam": None, "tests": {}})
+        d["tests"][test_id] = score
+    return data
+
+def _score_for_assess(entry, assess):
+    if not entry: return None
+    if assess == "exam": return entry.get("exam")
+    if isinstance(assess,str) and assess.startswith("test:"):
+        try: tid = int(assess.split(":",1)[1])
+        except ValueError: return None
+        return (entry.get("tests") or {}).get(tid)
+    return (entry.get("ca") or {}).get(assess)
+
 def _compute_overall_series(school_id, class_id, stream_id, subjects):
-    """Chronological list of {"term_id","label","assess","values":{sid:avg},
-    "avg":float,"ranks":{sid:pos},"student_count"} — one entry per CA/Exam
-    across every term, using each student's average raw score across all
-    subjects for that single assessment."""
     students = get_students_in_scope(school_id, class_id, stream_id) if class_id \
         else get_all_students_in_school(school_id)
     student_ids = [s["id"] for s in students]
     name_map = {s["id"]: s["name"] for s in students}
     if not student_ids: return [], name_map
-
     points = []
     for term in _get_all_terms_ordered(school_id):
         scores_bulk = get_term_scores_bulk(school_id, term["id"], student_ids)
-        for assess in _assessments_for_term(term):
+        test_label_map = {t["id"]: t["label"] for t in get_term_tests(school_id, term["id"])}
+        for assess in _assessments_for_term(school_id, term):
             values = {}
             for sid in student_ids:
                 entry_map = scores_bulk.get(sid, {})
                 vals = []
                 for subj in subjects:
-                    entry = entry_map.get(subj)
-                    if not entry: continue
-                    v = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+                    v = _score_for_assess(entry_map.get(subj), assess)
                     if v is not None: vals.append(v)
                 values[sid] = round(sum(vals) / len(vals), 2) if vals else None
             present = {sid: v for sid, v in values.items() if v is not None}
@@ -485,40 +525,95 @@ def _compute_overall_series(school_id, class_id, stream_id, subjects):
             _assign_positions(ranked, "score")
             ranks = {r["id"]: r["position"] for r in ranked}
             avg = round(sum(present.values()) / len(present), 2)
-            label = f"{term['label']} {'Exam' if assess=='exam' else assess}"
+            if assess == "exam": label = f"{term['label']} Exam"
+            elif assess.startswith("test:"):
+                label = f"{term['label']} {test_label_map.get(int(assess.split(':')[1]),'Test')}"
+            else: label = f"{term['label']} {assess}"
             points.append({"term_id": term["id"], "assess": assess, "label": label,
-                           "values": values, "avg": avg, "ranks": ranks,
-                           "student_count": len(present)})
+                           "values": values, "avg": avg, "ranks": ranks, "student_count": len(present)})
     return points, name_map
 
 def _compute_subject_series(school_id, class_id, stream_id, subject):
-    """Same shape as _compute_overall_series but for a single subject's raw
-    CA/Exam marks — used for Subject Teacher analytics."""
     students = get_students_in_scope(school_id, class_id, stream_id)
     student_ids = [s["id"] for s in students]
     name_map = {s["id"]: s["name"] for s in students}
     if not student_ids: return [], name_map
-
     points = []
     for term in _get_all_terms_ordered(school_id):
         scores_bulk = get_term_scores_bulk(school_id, term["id"], student_ids)
-        for assess in _assessments_for_term(term):
+        test_label_map = {t["id"]: t["label"] for t in get_term_tests(school_id, term["id"])}
+        for assess in _assessments_for_term(school_id, term):
             values = {}
             for sid in student_ids:
-                entry = scores_bulk.get(sid, {}).get(subject)
-                if not entry: continue
-                v = entry["exam"] if assess == "exam" else entry["ca"].get(assess)
+                v = _score_for_assess(scores_bulk.get(sid, {}).get(subject), assess)
                 if v is not None: values[sid] = v
             if not values: continue
             ranked = [{"id": sid, "score": v} for sid, v in values.items()]
             _assign_positions(ranked, "score")
             ranks = {r["id"]: r["position"] for r in ranked}
             avg = round(sum(values.values()) / len(values), 2)
-            label = f"{term['label']} {'Exam' if assess=='exam' else assess}"
+            if assess == "exam": label = f"{term['label']} Exam"
+            elif assess.startswith("test:"):
+                label = f"{term['label']} {test_label_map.get(int(assess.split(':')[1]),'Test')}"
+            else: label = f"{term['label']} {assess}"
             points.append({"term_id": term["id"], "assess": assess, "label": label,
-                           "values": values, "avg": avg, "ranks": ranks,
-                           "student_count": len(values)})
+                           "values": values, "avg": avg, "ranks": ranks, "student_count": len(values)})
     return points, name_map
+
+@app.route("/api/tests", methods=["GET"])
+def api_get_tests():
+    sid = school_id_from_header(); term_id = request.args.get("term_id")
+    if not term_id:
+        term = get_active_term(sid)
+        if not term: return jsonify([])
+        term_id = term["id"]
+    else: term_id = int(term_id)
+    return jsonify(get_term_tests(sid, term_id))
+
+@app.route("/api/tests", methods=["POST"])
+def api_create_test():
+    sid = school_id_from_header(); d = request.json or {}
+    term_id = d.get("term_id"); label = (d.get("label") or "").strip()
+    if not term_id or not label: return jsonify({"ok":False,"error":"term_id and label required"}),400
+    con=get_db(); cur=con.cursor()
+    cur.execute("INSERT INTO term_tests(school_id,term_id,label) VALUES(%s,%s,%s) RETURNING id",(sid,int(term_id),label))
+    new_id=cur.fetchone()[0]; con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"id":new_id})
+
+@app.route("/api/tests/<int:tid>", methods=["DELETE"])
+def api_delete_test(tid):
+    sid = school_id_from_header()
+    con=get_db(); cur=con.cursor()
+    cur.execute("DELETE FROM test_scores WHERE school_id=%s AND test_id=%s",(sid,tid))
+    cur.execute("DELETE FROM published_assessments WHERE school_id=%s AND assess_key=%s",(sid,f"test:{tid}"))
+    cur.execute("DELETE FROM term_tests WHERE id=%s AND school_id=%s",(tid,sid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+@app.route("/api/marks/test", methods=["POST"])
+def api_enter_test():
+    sid = school_id_from_header(); d = request.json
+    username=d.get("username",""); subject=d.get("subject","").lower().strip()
+    class_id=int(d.get("class_id")); stream_id=d.get("stream_id") or None
+    student_id=int(d.get("student_id")); test_id=int(d.get("test_id")); score=float(d.get("score"))
+    if not (0<=score<=100): return jsonify({"ok":False,"error":"Score must be 0-100"}),400
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT role FROM users WHERE username=%s AND school_id=%s",(username,sid))
+    u=cur.fetchone(); cur.close(); con.close()
+    if not u: return jsonify({"ok":False,"error":"User not found"}),403
+    if u[0]=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
+        return jsonify({"ok":False,"error":"Access denied"}),403
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT term_id FROM term_tests WHERE id=%s AND school_id=%s",(test_id,sid))
+    row=cur.fetchone()
+    if not row: cur.close(); con.close(); return jsonify({"ok":False,"error":"Test not found"}),404
+    term_id=row[0]
+    cur.execute("""INSERT INTO test_scores(school_id,student_id,subject,test_id,score,entered_by,term_id)
+                   VALUES(%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT(school_id,student_id,subject,test_id,term_id)
+                   DO UPDATE SET score=EXCLUDED.score,entered_by=EXCLUDED.entered_by""",
+                (sid,student_id,subject,test_id,score,username,term_id))
+    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 def _build_common_cards(points, name_map, school_id):
     """Shared card logic for both overall (admin/class-teacher) and
@@ -779,6 +874,48 @@ def init_db():
         decided_at      TIMESTAMP,
         decision_note   TEXT DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS necta_grades (
+    id SERIAL PRIMARY KEY,
+    level TEXT NOT NULL,
+    min_score REAL NOT NULL,
+    max_score REAL NOT NULL,
+    grade TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    sort_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS necta_divisions (
+        id SERIAL PRIMARY KEY,
+        level TEXT NOT NULL,
+        min_points INTEGER NOT NULL,
+        max_points INTEGER NOT NULL,
+        division TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0
+    );
+        CREATE TABLE IF NOT EXISTS term_tests (
+        id         SERIAL PRIMARY KEY,
+        school_id  INTEGER NOT NULL,
+        term_id    INTEGER NOT NULL,
+        label      TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS test_scores (
+        id         SERIAL PRIMARY KEY,
+        school_id  INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        subject    TEXT NOT NULL,
+        test_id    INTEGER NOT NULL,
+        score      REAL NOT NULL,
+        entered_by TEXT,
+        term_id    INTEGER NOT NULL,
+        UNIQUE(school_id, student_id, subject, test_id, term_id)
+    );
+    CREATE TABLE IF NOT EXISTS published_assessments (
+        school_id  INTEGER NOT NULL,
+        term_id    INTEGER NOT NULL,
+        assess_key TEXT NOT NULL,
+        published  INTEGER DEFAULT 0,
+        PRIMARY KEY(school_id, term_id, assess_key)
+    );
     """)
     
 
@@ -810,6 +947,10 @@ def init_db():
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'inactive'",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT ''",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS grading_system TEXT DEFAULT 'o_level'",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS division_source TEXT DEFAULT 'school'",
+        "ALTER TABLE school_subjects ADD COLUMN IF NOT EXISTS is_principal INTEGER DEFAULT 0",
+        "ALTER TABLE grade_config ADD COLUMN IF NOT EXISTS points INTEGER",
     ]
     for m in migrations:
         try: cur.execute(m)
@@ -869,6 +1010,25 @@ def init_db():
             print("Subscription migration: grandfathered all existing schools.")
     except Exception as e:
         print(f"Subscription migration note: {e}")
+
+    try:
+        cur.execute("SELECT COUNT(*) FROM necta_grades")
+        if cur.fetchone()[0] == 0:
+            o_level = [(80,100,'A',1),(70,79,'B',2),(60,69,'C',3),(50,59,'D',4),(0,49,'F',5)]
+            a_level = [(80,100,'A',1),(70,79,'B',2),(60,69,'C',3),(50,59,'D',4),
+                    (40,49,'E',5),(35,39,'S',6),(0,34,'F',7)]
+            for i,(lo,hi,g,p) in enumerate(o_level):
+                cur.execute("INSERT INTO necta_grades(level,min_score,max_score,grade,points,sort_order) VALUES('o_level',%s,%s,%s,%s,%s)",(lo,hi,g,p,i))
+            for i,(lo,hi,g,p) in enumerate(a_level):
+                cur.execute("INSERT INTO necta_grades(level,min_score,max_score,grade,points,sort_order) VALUES('a_level',%s,%s,%s,%s,%s)",(lo,hi,g,p,i))
+            o_div = [(7,17,'I'),(18,21,'II'),(22,25,'III'),(26,33,'IV'),(34,50,'0')]
+            a_div = [(3,9,'I'),(10,12,'II'),(13,17,'III'),(18,19,'IV'),(20,21,'0')]
+            for i,(lo,hi,d) in enumerate(o_div):
+                cur.execute("INSERT INTO necta_divisions(level,min_points,max_points,division,sort_order) VALUES('o_level',%s,%s,%s,%s)",(lo,hi,d,i))
+            for i,(lo,hi,d) in enumerate(a_div):
+                cur.execute("INSERT INTO necta_divisions(level,min_points,max_points,division,sort_order) VALUES('a_level',%s,%s,%s,%s)",(lo,hi,d,i))
+    except Exception as e:
+        print(f"necta seed note: {e}")
     try:
         cur.execute("ALTER TABLE schools ADD COLUMN IF NOT EXISTS reg_code TEXT")
         cur.execute("SELECT id FROM schools WHERE reg_code IS NULL OR reg_code=''")
@@ -1201,6 +1361,65 @@ def api_save_subjects():
 def api_get_grades():
     return jsonify(get_grade_rules(school_id_from_header()))
 
+def get_school_grading_settings(school_id):
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT grading_system, division_source FROM schools WHERE id=%s",(school_id,))
+    row=cur.fetchone(); cur.close(); con.close()
+    if not row: return {"grading_system":"o_level","division_source":"school"}
+    return {"grading_system":row[0] or "o_level","division_source":row[1] or "school"}
+
+def get_necta_grades(level):
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT min_score,max_score,grade,points FROM necta_grades WHERE level=%s ORDER BY min_score DESC",(level,))
+    rows=cur.fetchall(); cur.close(); con.close()
+    return [{"min_score":r[0],"max_score":r[1],"grade":r[2],"points":r[3]} for r in rows]
+
+def get_necta_divisions(level):
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT min_points,max_points,division FROM necta_divisions WHERE level=%s ORDER BY min_points",(level,))
+    rows=cur.fetchall(); cur.close(); con.close()
+    return [{"min_points":r[0],"max_points":r[1],"division":r[2]} for r in rows]
+
+def get_grade_points_rules(school_id):
+    settings = get_school_grading_settings(school_id)
+    if settings["division_source"]=="necta":
+        return get_necta_grades(settings["grading_system"])
+    return get_grade_rules(school_id)  # now includes 'points' if admin set them
+
+def grade_and_points_for_score(rules, score):
+    if score is None: return "-", None
+    for r in sorted(rules, key=lambda r:-r["min_score"]):
+        if score >= r["min_score"]:
+            return r["grade"], r.get("points")
+    return "F", None
+
+def get_principal_subjects(school_id):
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT name FROM school_subjects WHERE school_id=%s AND is_principal=1 ORDER BY sort_order",(school_id,))
+    rows=cur.fetchall(); cur.close(); con.close()
+    return [r[0] for r in rows]
+
+def compute_division_from_finals(school_id, finals):
+    """finals: {subject: final_score_or_None}. Returns (total_points, division_label)."""
+    settings = get_school_grading_settings(school_id)
+    level = settings["grading_system"]
+    rules = get_grade_points_rules(school_id)
+    use_subjects = get_principal_subjects(school_id) if level=="a_level" else list(finals.keys())
+    if level=="a_level" and not use_subjects:
+        use_subjects = list(finals.keys())  # fallback if admin hasn't set principals yet
+    pairs = [(s, grade_and_points_for_score(rules, finals.get(s))[1]) for s in use_subjects]
+    if level=="o_level":
+        scored = sorted([p for p in pairs if p[1] is not None], key=lambda x:x[1])
+        pairs = scored[:7]
+        if len(pairs) < 5: return None, None  # must pass/attempt 5+ subjects
+    valid = [p for _,p in pairs if p is not None]
+    if not valid: return None, None
+    total = sum(valid)
+    for d in get_necta_divisions(level):
+        if d["min_points"] <= total <= d["max_points"]:
+            return total, d["division"]
+    return total, "0"
+
 @app.route("/api/grades", methods=["POST"])
 def api_save_grades():
     sid = school_id_from_header(); grades = request.json.get("grades",[])
@@ -1210,6 +1429,35 @@ def api_save_grades():
         cur.execute("INSERT INTO grade_config(school_id,min_score,max_score,grade,sort_order) VALUES(%s,%s,%s,%s,%s)",
                     (sid,float(g["min_score"]),float(g["max_score"]),str(g["grade"]).strip(),i))
     con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+@app.route("/api/config/grading_system", methods=["GET"])
+def api_get_grading_system():
+    sid = school_id_from_header()
+    s = get_school_grading_settings(sid)
+    s["principal_subjects"] = get_principal_subjects(sid)
+    return jsonify(s)
+
+@app.route("/api/config/grading_system", methods=["POST"])
+def api_set_grading_system():
+    sid = school_id_from_header(); d = request.json or {}
+    grading_system = d.get("grading_system")
+    division_source = d.get("division_source")
+    if grading_system not in ("o_level","a_level"):
+        return jsonify({"ok":False,"error":"Invalid grading system"}),400
+    if division_source not in ("school","necta"):
+        return jsonify({"ok":False,"error":"Invalid division source"}),400
+    con=get_db(); cur=con.cursor()
+    cur.execute("UPDATE schools SET grading_system=%s, division_source=%s WHERE id=%s",
+                (grading_system, division_source, sid))
+    con.commit(); cur.close(); con.close()
+    principal = d.get("principal_subjects")
+    if grading_system=="a_level" and isinstance(principal, list):
+        con=get_db(); cur=con.cursor()
+        cur.execute("UPDATE school_subjects SET is_principal=0 WHERE school_id=%s",(sid,))
+        for name in principal:
+            cur.execute("UPDATE school_subjects SET is_principal=1 WHERE school_id=%s AND name=%s",(sid,name.strip().lower()))
+        con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
 
 # ── CLASSES ───────────────────────────────────────────────────
@@ -1639,6 +1887,8 @@ def api_report(student_id):
     student_finals = c_entry["finals"] if c_entry else compute_student_finals(scores_bulk, student_id, subjects, ca_w, ex_w)
     avg = c_entry["average"] if c_entry else round(compute_average_from_finals(student_finals), 2)
     student_scores = scores_bulk.get(student_id, {})
+    finals_for_division = student_finals  # you already have this dict
+    division_points, division = compute_division_from_finals(sid, finals_for_division)
 
     rows = []
     for subject in subjects:
@@ -1661,7 +1911,7 @@ def api_report(student_id):
                     "stream_position":s_pos,"stream_total":s_total,
                     "class_teacher_remark":rmk["class_teacher_remark"] if rmk else "",
                     "head_remark":rmk["head_remark"] if rmk else "",
-                    "ca_count":ca_count,"ca_weight":term["ca_weight"],"exam_weight":term["exam_weight"]})
+                    "ca_count":ca_count,"ca_weight":term["ca_weight"],"exam_weight":term["exam_weight"],"division":division,"division_points":division_points})
 
 # ── REMARKS ───────────────────────────────────────────────────
 @app.route("/api/remarks", methods=["POST"])
@@ -1833,6 +2083,13 @@ def api_scoresheet():
                        WHERE school_id=%s AND term_id=%s AND student_id=ANY(%s)""",
                     (sid,term_id,student_ids))
         for student_id,subject,score in cur.fetchall(): exam_scores[(student_id,subject)]=score
+    elif mode=="test":
+        test_id = int(request.args.get("test_id"))
+        cur.execute("""SELECT student_id,subject,score FROM test_scores
+                    WHERE school_id=%s AND term_id=%s AND test_id=%s AND student_id=ANY(%s)""",
+                    (sid,term_id,test_id,student_ids))
+        for student_id,subject,score in cur.fetchall(): exam_scores[(student_id,subject)]=score    
+        
     elif mode=="terminal":
         term=get_term_by_id(sid,term_id)
         if not term:
@@ -1863,7 +2120,7 @@ def api_scoresheet():
             score=None
             if mode=="ca":
                 score=ca_scores.get((s["id"],subject))
-            elif mode=="exam":
+            elif mode in ("exam","test"):
                 score=exam_scores.get((s["id"],subject))
             elif mode=="terminal":
                 exam=exam_scores.get((s["id"],subject)); ca_avg=ca_avgs.get((s["id"],subject))
@@ -1955,6 +2212,43 @@ def api_toggle_results():
                 (sid,int(term_id),1 if publish else 0))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True,"published":publish})
 
+@app.route("/api/results/assessments", methods=["GET"])
+def api_list_assessments_for_publish():
+    sid = school_id_from_header(); term_id = request.args.get("term_id")
+    if not term_id:
+        term = get_active_term(sid)
+        if not term: return jsonify({"ok":True,"assessments":[]})
+        term_id = term["id"]
+    else: term_id = int(term_id)
+    term = get_term_by_id(sid, term_id)
+    if not term: return jsonify({"ok":False,"error":"Term not found"}),404
+    tests = get_term_tests(sid, term_id)
+    test_map = {t["id"]: t["label"] for t in tests}
+    keys = [f"CA{i}" for i in range(1, term["ca_count"]+1)] + ["exam"] + [f"test:{t['id']}" for t in tests]
+    con=get_db(); cur=con.cursor()
+    cur.execute("SELECT assess_key, published FROM published_assessments WHERE school_id=%s AND term_id=%s",(sid,term_id))
+    pub_map = dict(cur.fetchall()); cur.close(); con.close()
+    result=[]
+    for k in keys:
+        label = "Final Exam" if k=="exam" else (test_map.get(int(k.split(":")[1])) if k.startswith("test:") else k)
+        result.append({"assess_key":k, "label":label, "published": bool(pub_map.get(k,0))})
+    return jsonify({"ok":True,"term_id":term_id,"assessments":result})
+
+@app.route("/api/results/publish_assessments", methods=["POST"])
+def api_publish_assessments():
+    sid = school_id_from_header(); d = request.json or {}
+    term_id = d.get("term_id"); keys = d.get("assess_keys") or []; publish = bool(d.get("publish", True))
+    if publish and not is_subscribed(sid):
+        return jsonify({"ok":False,"error":"subscription_required","message":"Publishing results requires an active subscription."}),402
+    if not term_id or not keys: return jsonify({"ok":False,"error":"term_id and assess_keys required"}),400
+    con=get_db(); cur=con.cursor()
+    for k in keys:
+        cur.execute("""INSERT INTO published_assessments(school_id,term_id,assess_key,published) VALUES(%s,%s,%s,%s)
+                       ON CONFLICT(school_id,term_id,assess_key) DO UPDATE SET published=EXCLUDED.published""",
+                    (sid,int(term_id),k,1 if publish else 0))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
 # ── PARENT PORTAL ─────────────────────────────────────────────
 @app.route("/api/parent/terms", methods=["GET"])
 def api_parent_terms():
@@ -1970,11 +2264,17 @@ def api_parent_results():
     sid=school_id_from_header(); subjects=get_subjects(sid)
     student_id=request.args.get("student_id"); term_id=request.args.get("term_id"); assess=request.args.get("assess")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
-    if not term_id:
-        term=get_active_term(sid)
-        if not term: return jsonify({"ok":False,"error":"No active term"}),400
-        term_id=term["id"]
-    else: term_id=int(term_id)
+    if assess:
+        con=get_db(); cur=con.cursor()
+        cur.execute("SELECT published FROM published_assessments WHERE school_id=%s AND term_id=%s AND assess_key=%s",(sid,term_id,assess))
+        prow=cur.fetchone(); cur.close(); con.close()
+        if not prow or not prow[0]:
+            return jsonify({"ok":False,"error":"This assessment hasn't been published yet"}),403
+    else:
+        con=get_db(); cur=con.cursor()
+        cur.execute("SELECT published FROM results_published WHERE school_id=%s AND term_id=%s",(sid,term_id))
+        row=cur.fetchone(); cur.close(); con.close()
+        if not row or not row[0]: return jsonify({"ok":False,"error":"Results not yet published"}),403
     con=get_db(); cur=con.cursor()
     cur.execute("SELECT published FROM results_published WHERE school_id=%s AND term_id=%s",(sid,term_id))
     row=cur.fetchone(); cur.close(); con.close()

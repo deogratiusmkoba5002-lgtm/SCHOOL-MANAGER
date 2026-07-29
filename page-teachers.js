@@ -128,14 +128,16 @@ async function populateMarksSelects(){
   }
   rebuildMarksTypeSelect();
 }
-function rebuildMarksTypeSelect(){
+async function rebuildMarksTypeSelect(){
   const typeSel=document.getElementById("marks-type");
   typeSel.innerHTML="";
   const ca_count = (config.active_term ? config.active_term.ca_count : null) || config.ca_count || 2;
-  for(let i=1;i<=ca_count;i++){
-    const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;typeSel.appendChild(o);
-  }
+  for(let i=1;i<=ca_count;i++){ const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;typeSel.appendChild(o); }
   const ex=document.createElement("option");ex.value="exam";ex.textContent="Exam";typeSel.appendChild(ex);
+  if(config.active_term){
+    const tests = await api(`/tests?term_id=${config.active_term.id}`);
+    (tests||[]).forEach(t=>{ const o=document.createElement("option"); o.value=`test:${t.id}`; o.textContent=t.label; typeSel.appendChild(o); });
+  }
 }
 function setupMarks(){populateMarksSelects();}
 
@@ -146,7 +148,10 @@ async function saveOneMark(sid, score){
   const badge = document.getElementById(`msaved-${sid}`);
   badge.textContent="⏳"; badge.style.color="var(--orange)";
   let r;
-  if(marksType==="exam"){
+  if(marksType.startsWith("test:")){
+    r=await api("/marks/test","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:sid,test_id:marksType.split(":")[1],score});
+  } 
+  else if(marksType==="exam"){
     r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:sid,score});
   } else {
     r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:sid,ca_name:marksType,score});
@@ -185,6 +190,9 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
   const clsVal   = document.getElementById("marks-class").value;
   const type     = document.getElementById("marks-type").value;
   const {class_id, stream_id} = parseClassStream(clsVal);
+  const sheetMode = type==="exam" ? "exam" : (type.startsWith("test:") ? "test" : "ca");
+  const caParam   = (type!=="exam" && !type.startsWith("test:")) ? `&ca_name=${type}` : "";
+  const testParam = type.startsWith("test:") ? `&test_id=${type.split(":")[1]}` : "";
   if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_id, stream_id)){
     toast("You are not assigned to this subject/class","error"); return;
   }

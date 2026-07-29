@@ -239,6 +239,29 @@ async function loadTerms(){
         <button class="btn btn-sm btn-red" onclick="closeTerm(${t.id},'${t.label}')">Close Term</button>
       </div>`:'<span style="color:var(--muted);font-size:.8rem">Locked</span>'}</td>
   </tr>`).join("");
+  loadTestsForActiveTerm();
+}
+
+async function loadTestsForActiveTerm(){
+  if(!config.active_term) return;
+  const tests = await api(`/tests?term_id=${config.active_term.id}`);
+  document.getElementById("tests-list").innerHTML = tests.length ? tests.map(t=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--pale)">
+      <span>${escHtml(t.label)}</span>
+      <button class="btn btn-sm btn-red" onclick="deleteTest(${t.id})">Delete</button>
+    </div>`).join("") : `<p style="color:var(--muted);font-size:.85rem">No tests yet this term.</p>`;
+}
+async function addTest(){
+  const label = prompt("Test label (e.g. Weekly Test 1):");
+  if(!label || !label.trim()) return;
+  const r = await api("/tests","POST",{term_id:config.active_term.id, label:label.trim()});
+  if(r.ok){ toast("Test added","success"); loadTestsForActiveTerm(); }
+  else toast(r.error||"Failed","error");
+}
+async function deleteTest(id){
+  if(!confirm("Delete this test and all its scores?")) return;
+  const r = await api(`/tests/${id}`,"DELETE");
+  if(r.ok){ toast("Deleted","success"); loadTestsForActiveTerm(); }
 }
 
 // Admin can edit an open term's label/CA count/weights any time — plans
