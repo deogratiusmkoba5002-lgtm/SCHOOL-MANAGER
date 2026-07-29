@@ -307,6 +307,7 @@ async function bootApp(){
   const defaultPage = currentUser.role==="admin" ? "dashboard" : "marks";
   showPage(defaultPage);
   loadDashboard();
+  checkSubscriptionExpiryBadge();
   if(currentUser.must_change_password) openModal("modal-change-password");
 }
 
@@ -530,4 +531,31 @@ function requireSub(){
   toast("This feature needs an active subscription. Go to Config → Subscription.","error");
   showPage("config");
   return false;
+}
+
+function goToSubscriptionPage(){
+  showPage("config");
+  setTimeout(()=>{
+    const el = document.getElementById("sub-status-display");
+    if(el) el.scrollIntoView({behavior:"smooth", block:"center"});
+  }, 150);
+}
+
+async function checkSubscriptionExpiryBadge(){
+  if(!currentUser || currentUser.role!=="admin") return;
+  const s = await api("/subscription/status");
+  const badge = document.getElementById("sub-expiry-badge");
+  const text  = document.getElementById("sub-expiry-text");
+  if(!badge || !text) return;
+  if(!s.ok || s.exempt || !s.expires_at){ badge.style.display="none"; return; }
+  const daysLeft = Math.ceil((new Date(s.expires_at) - new Date()) / 86400000);
+  if(!s.active){
+    text.textContent = "Subscription expired — renew";
+    badge.style.display="flex";
+  } else if(daysLeft <= 7 && daysLeft >= 0){
+    text.textContent = daysLeft===0 ? "Expires today" : `${daysLeft} day${daysLeft===1?"":"s"} left`;
+    badge.style.display="flex";
+  } else {
+    badge.style.display="none";
+  }
 }

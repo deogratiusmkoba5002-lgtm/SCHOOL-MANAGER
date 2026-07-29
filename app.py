@@ -47,39 +47,18 @@ _FALLBACK_GRADES = [
     {"min_score":0,"max_score":49,"grade":"F"},
 ]
 
-# ── SUBSCRIPTIONS (ClickPesa) ────────────────────────────────
+# ── SUBSCRIPTIONS (Manual Mobile Money Verification) ───────────
 SUBSCRIPTION_PLANS = {
-    "max":  {"amount": 500000, "days": 365, "label": "Max — 500,000 TZS / year"},
-    "mini": {"amount": 300000, "days": 182, "label": "Mini — 300,000 TZS / 6 months"},
+    "free":     {"amount": 0,      "days": 36500,
+                 "label": "Free — basic features, forever",
+                 "features": ["Marks entry", "On-screen viewing"]},
+    "standard": {"amount": 300000, "days": 182,
+                 "label": "Standard — 300,000 TZS / 6 months",
+                 "features": ["Everything in Free", "Analytics", "PDF downloads", "Announcements", "Results publishing"]},
+    "premium":  {"amount": 500000, "days": 365,
+                 "label": "Premium — 500,000 TZS / year",
+                 "features": ["Everything in Standard", "Priority support"]},
 }
-CLICKPESA_BASE       = "https://api.clickpesa.com/third-parties"
-CLICKPESA_CLIENT_ID  = os.environ.get("CLICKPESA_CLIENT_ID", "")
-CLICKPESA_API_KEY    = os.environ.get("CLICKPESA_API_KEY", "")
-CLICKPESA_CHECKSUM_KEY = os.environ.get("CLICKPESA_CHECKSUM_KEY", "")  # optional, only if checksum is enabled on your app
-
-_cp_token_cache = {"token": None, "expires_at": 0}
-
-def clickpesa_token():
-    """JWTs are valid 1 hour — cache and only refresh a bit before expiry."""
-    if _cp_token_cache["token"] and time.time() < _cp_token_cache["expires_at"] - 60:
-        return _cp_token_cache["token"]
-    r = requests.post(f"{CLICKPESA_BASE}/generate-token", timeout=15,
-                       headers={"client-id": CLICKPESA_CLIENT_ID, "api-key": CLICKPESA_API_KEY})
-    data = r.json()
-    if not data.get("success"):
-        raise RuntimeError(data.get("message", "Could not get ClickPesa token"))
-    _cp_token_cache["token"] = data["token"]
-    _cp_token_cache["expires_at"] = time.time() + 3600
-    return data["token"]
-
-def clickpesa_checksum(payload):
-    """Canonical (recursively key-sorted) JSON, HMAC-SHA256, hex digest."""
-    def canon(o):
-        if isinstance(o, dict): return {k: canon(o[k]) for k in sorted(o)}
-        if isinstance(o, list): return [canon(x) for x in o]
-        return o
-    body = json.dumps(canon(payload), separators=(",", ":"))
-    return hmac.new(CLICKPESA_CHECKSUM_KEY.encode(), body.encode(), hashlib.sha256).hexdigest()
 
 def is_subscribed(school_id):
     con = get_db(); cur = con.cursor()
@@ -100,6 +79,17 @@ def subscription_required(f):
                              "message": "This feature requires an active subscription."}), 402
         return f(*args, **kwargs)
     return wrapper
+
+def _platform_payment_config():
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT business_name, payment_number, networks FROM platform_payment_config WHERE id=1")
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row: return {"business_name": "", "payment_number": "", "networks": []}
+    return {"business_name": row[0], "payment_number": row[1],
+            "networks": row[2].split(",") if row[2] else []}
+
+
+
 
 # ── DB ────────────────────────────────────────────────────────
 def get_db():
@@ -751,7 +741,31 @@ def init_db():
         read_at         TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY(announcement_id, school_id)
     );
+    CREATE TABLE IF NOT EXISTS platform_payment_config (
+        id             INTEGER PRIMARY KEY DEFAULT 1,
+        business_name  TEXT NOT NULL DEFAULT 'DrDemic',
+        payment_number TEXT NOT NULL DEFAULT '',
+        networks       TEXT NOT NULL DEFAULT 'M-Pesa,Airtel Money,Mixx,HaloPesa',
+        updated_at     TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS payment_requests (
+        id              SERIAL PRIMARY KEY,
+        school_id       INTEGER NOT NULL,
+        plan            TEXT NOT NULL,
+        claimed_amount  REAL NOT NULL,
+        transaction_id  TEXT NOT NULL,
+        phone_used      TEXT NOT NULL,
+        payment_date    DATE NOT NULL,
+        note            TEXT DEFAULT '',
+        status          TEXT NOT NULL DEFAULT 'pending',
+        submitted_by    TEXT,
+        submitted_at    TIMESTAMP DEFAULT NOW(),
+        decided_by      TEXT,
+        decided_at      TIMESTAMP,
+        decision_note   TEXT DEFAULT ''
+    );
     """)
+    
 
     # Migrations - add missing columns to existing tables
     migrations = [
@@ -851,6 +865,24 @@ def init_db():
     except Exception as e:
         print(f"reg_code migration note: {e}")
 
+    try:
+        cur.execute("INSERT INTO platform_payment_config(id) VALUES(1) ON CONFLICT DO NOTHING")
+        # Partial unique index: blocks reuse of a transaction ID that's currently
+        # pending or already funded an approval, but frees it up again if a
+        # request is rejected or cancelled — so a school that mistyped some
+        # OTHER field can resubmit with the same (real) transaction ID.
+        cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='idx_payment_requests_txn_ci'")
+        if not cur.fetchone():
+            cur.execute("""CREATE UNIQUE INDEX idx_payment_requests_txn_ci
+                           ON payment_requests (LOWER(transaction_id))
+                           WHERE status IN ('pending','approved')""")
+    except Exception as e:
+        print(f"payment_requests migration note: {e}")
+
+    # Superadmin from env
+    sa_user = os.environ.get("SUPERADMIN_USERNAME","")
+    
+
     # Superadmin from env
     sa_user = os.environ.get("SUPERADMIN_USERNAME","")
     sa_pass = os.environ.get("SUPERADMIN_PASSWORD","")
@@ -904,6 +936,20 @@ def init_db():
 
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
+
+    try:
+            cur.execute("INSERT INTO platform_payment_config(id) VALUES(1) ON CONFLICT DO NOTHING")
+            # Partial unique index: blocks reuse of a transaction ID that's currently
+            # pending or already funded an approval, but frees it up again if a
+            # request is rejected or cancelled — so a school that mistyped some
+            # OTHER field can resubmit with the same (real) transaction ID.
+            cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='idx_payment_requests_txn_ci'")
+            if not cur.fetchone():
+                cur.execute("""CREATE UNIQUE INDEX idx_payment_requests_txn_ci
+                               ON payment_requests (LOWER(transaction_id))
+                               WHERE status IN ('pending','approved')""")
+    except Exception as e:
+        print(f"payment_requests migration note: {e}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2034,100 +2080,94 @@ def api_subscription_status():
     sid = school_id_from_header()
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT subscription_exempt, subscription_status, subscription_plan, subscription_expires_at FROM schools WHERE id=%s", (sid,))
-    row = cur.fetchone(); cur.close(); con.close()
-    if not row: return jsonify({"ok": False}), 404
+    row = cur.fetchone()
+    if not row:
+        cur.close(); con.close(); return jsonify({"ok": False}), 404
     exempt, status, plan, expires_at = row
+
+    cur.execute("""SELECT id, plan, claimed_amount, transaction_id, phone_used,
+                          CAST(payment_date AS TEXT), note, status, CAST(submitted_at AS TEXT), decision_note
+                   FROM payment_requests WHERE school_id=%s ORDER BY id DESC LIMIT 1""", (sid,))
+    req_row = cur.fetchone(); cur.close(); con.close()
+
+    pending_request = None
+    last_decision = None
+    if req_row:
+        (rid, rplan, ramount, rtxn, rphone, rdate, rnote, rstatus, rsubmitted, rdecision_note) = req_row
+        if rstatus == "pending":
+            pending_request = {"id": rid, "plan": rplan, "claimed_amount": ramount,
+                                "transaction_id": rtxn, "phone_used": rphone,
+                                "payment_date": rdate, "note": rnote, "submitted_at": rsubmitted}
+        elif rstatus == "rejected":
+            last_decision = {"status": rstatus, "note": rdecision_note}
+
     return jsonify({"ok": True, "active": is_subscribed(sid), "exempt": bool(exempt),
                      "plan": plan, "status": status,
                      "expires_at": expires_at.isoformat() if expires_at else None,
-                     "plans": SUBSCRIPTION_PLANS})
+                     "plans": SUBSCRIPTION_PLANS,
+                     "payment_info": _platform_payment_config(),
+                     "pending_request": pending_request,
+                     "last_decision": last_decision})
 
-@app.route("/api/subscription/pay", methods=["POST"])
-def api_subscription_pay():
+@app.route("/api/subscription/select_free", methods=["POST"])
+def api_select_free_plan():
+    sid = school_id_from_header()
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE schools SET subscription_status='active', subscription_plan='free',
+                   subscription_expires_at=%s WHERE id=%s""",
+                (datetime.utcnow() + timedelta(days=SUBSCRIPTION_PLANS["free"]["days"]), sid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/subscription/request", methods=["POST"])
+def api_submit_payment_request():
     sid = school_id_from_header(); d = request.json or {}
-    plan  = d.get("plan", "")
-    phone = re.sub(r"\D", "", d.get("phone_number") or "")
-    if phone.startswith("0"): phone = "255" + phone[1:]   # 07xx -> 2557xx
-    if plan not in SUBSCRIPTION_PLANS: return jsonify({"ok": False, "error": "Invalid plan"}), 400
-    if not phone: return jsonify({"ok": False, "error": "Phone number required"}), 400
-    if not CLICKPESA_CLIENT_ID or not CLICKPESA_API_KEY:
-        return jsonify({"ok": False, "error": "Payments not configured yet. Contact support."}), 500
-
-    info = SUBSCRIPTION_PLANS[plan]
-    order_ref = f"SUB{sid}{uuid.uuid4().hex[:10]}".upper()  # alphanumeric only, ClickPesa requirement
-
+    plan = d.get("plan", "")
+    if plan not in SUBSCRIPTION_PLANS or plan == "free":
+        return jsonify({"ok": False, "error": "Invalid plan"}), 400
+    txn_id  = (d.get("transaction_id") or "").strip()
+    phone   = (d.get("phone_used") or "").strip()
+    pay_date= (d.get("payment_date") or "").strip()
+    note    = (d.get("note") or "").strip()
     try:
-        token = clickpesa_token()
-        payload = {"amount": str(info["amount"]), "currency": "TZS",
-                   "orderReference": order_ref, "phoneNumber": phone}
-        if CLICKPESA_CHECKSUM_KEY:
-            payload["checksum"] = clickpesa_checksum(payload)
-        r = requests.post(f"{CLICKPESA_BASE}/payments/initiate-ussd-push-request", json=payload, timeout=20,
-                           headers={"Authorization": f"Bearer {token}"})
-        data = r.json()
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Could not reach payment provider: {e}"}), 502
-
-    if r.status_code != 200:
-        return jsonify({"ok": False, "error": data.get("message", "Payment could not be started")}), 400
+        amount = float(d.get("claimed_amount"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Amount paid is required"}), 400
+    if not txn_id:   return jsonify({"ok": False, "error": "Transaction ID is required"}), 400
+    if not phone:    return jsonify({"ok": False, "error": "Phone number used is required"}), 400
+    if amount <= 0:  return jsonify({"ok": False, "error": "Amount paid must be greater than zero"}), 400
+    if not pay_date: return jsonify({"ok": False, "error": "Payment date is required"}), 400
 
     con = get_db(); cur = con.cursor()
-    cur.execute("""UPDATE schools SET subscription_status='pending' WHERE id=%s""", (sid,))
-    con.commit(); cur.close(); con.close()
-
-    # Track the pending order so the webhook (which only gives us orderReference,
-    # not school_id) can be matched back to this school + plan.
-    set_config_val(sid, f"pending_sub_{order_ref}", plan)
-
-    return jsonify({"ok": True, "order_reference": order_ref, "status": data.get("status"),
-                     "message": "Check your phone to authorize the payment."})
-
-@app.route("/api/webhooks/clickpesa", methods=["POST"])
-def api_clickpesa_webhook():
-    raw = request.get_data(as_text=True)
+    cur.execute("SELECT id FROM payment_requests WHERE school_id=%s AND status='pending'", (sid,))
+    if cur.fetchone():
+        cur.close(); con.close()
+        return jsonify({"ok": False, "error": "You already have a payment request pending verification. Cancel it below before submitting a new one."}), 409
     try:
-        event = json.loads(raw)
-    except Exception:
-        return ("Bad payload", 400)
+        cur.execute("""INSERT INTO payment_requests(school_id,plan,claimed_amount,transaction_id,phone_used,payment_date,note,status,submitted_by)
+                       VALUES(%s,%s,%s,%s,%s,%s,%s,'pending',%s) RETURNING id""",
+                    (sid, plan, amount, txn_id, phone, pay_date, note, d.get("username", "")))
+        new_id = cur.fetchone()[0]
+        cur.execute("UPDATE schools SET subscription_status='pending' WHERE id=%s", (sid,))
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close()
+        return jsonify({"ok": False, "error": "This transaction ID has already been submitted. If you believe this is an error, contact support."}), 409
+    cur.close(); con.close()
+    return jsonify({"ok": True, "id": new_id})
 
-    if CLICKPESA_CHECKSUM_KEY and "checksum" in event:
-        received = event.get("checksum")
-        check_payload = {k: v for k, v in event.items() if k not in ("checksum", "checksumMethod")}
-        if clickpesa_checksum(check_payload) != received:
-            return ("Invalid checksum", 400)
-
-    etype = event.get("event")
-    data  = event.get("data") or {}
-    order_ref = data.get("orderReference", "")
-    if not order_ref.startswith("SUB"):
-        return ("OK", 200)  # not a subscription payment, ignore
-
-    # Recover which school + plan this order belongs to.
-    # order_ref format: SUB<school_id><random> — school_id is numeric, so
-    # peel digits off the front right after "SUB".
-    m = re.match(r"^SUB(\d+)", order_ref)
-    if not m: return ("OK", 200)
-    school_id = int(m.group(1))
-    plan = get_config_val(school_id, f"pending_sub_{order_ref}", "")
-    if plan not in SUBSCRIPTION_PLANS: return ("OK", 200)
-
-    if etype == "PAYMENT RECEIVED" and data.get("status") in ("SUCCESS", "SETTLED"):
-        days = SUBSCRIPTION_PLANS[plan]["days"]
-        con = get_db(); cur = con.cursor()
-        cur.execute("SELECT subscription_expires_at FROM schools WHERE id=%s", (school_id,))
-        row = cur.fetchone()
-        base = row[0] if row and row[0] and row[0] > datetime.utcnow() else datetime.utcnow()
-        cur.execute("""UPDATE schools SET subscription_status='active', subscription_plan=%s,
-                       subscription_expires_at=%s WHERE id=%s""",
-                    (plan, base + timedelta(days=days), school_id))
-        con.commit(); cur.close(); con.close()
-    elif etype == "PAYMENT FAILED":
-        con = get_db(); cur = con.cursor()
-        cur.execute("""UPDATE schools SET subscription_status='inactive'
-                       WHERE id=%s AND subscription_status='pending'""", (school_id,))
-        con.commit(); cur.close(); con.close()
-
-    return ("OK", 200)
+@app.route("/api/subscription/request/cancel", methods=["POST"])
+def api_cancel_payment_request():
+    sid = school_id_from_header()
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id FROM payment_requests WHERE school_id=%s AND status='pending' ORDER BY id DESC LIMIT 1", (sid,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "No pending request to cancel"}), 404
+    cur.execute("UPDATE payment_requests SET status='cancelled', decided_at=NOW() WHERE id=%s", (row[0],))
+    cur.execute("UPDATE schools SET subscription_status='inactive' WHERE id=%s AND subscription_status='pending'", (sid,))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
 
 # ── PDF ────────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4, A3, landscape
@@ -2477,6 +2517,92 @@ def api_reset_db():
         cur.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
     con.commit(); cur.close(); con.close(); init_db()
     return jsonify({"ok":True,"message":"Database reset."})
+
+@app.route("/api/superadmin/payment_requests", methods=["GET"])
+def api_sa_payment_requests():
+    sa, err = _require_superadmin()
+    if err: return err
+    status = request.args.get("status", "pending")
+    con = get_db(); cur = con.cursor()
+    q = """SELECT pr.id, pr.school_id, s.school_name, pr.plan, pr.claimed_amount, pr.transaction_id,
+                  pr.phone_used, CAST(pr.payment_date AS TEXT), pr.note, pr.status,
+                  pr.submitted_by, CAST(pr.submitted_at AS TEXT),
+                  pr.decided_by, CAST(pr.decided_at AS TEXT), pr.decision_note
+           FROM payment_requests pr JOIN schools s ON s.id = pr.school_id"""
+    params = ()
+    if status != "all":
+        q += " WHERE pr.status=%s"; params = (status,)
+    q += " ORDER BY pr.submitted_at ASC"
+    cur.execute(q, params)
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return jsonify({"ok": True, "requests": rows})
+
+@app.route("/api/superadmin/payment_requests/<int:rid>/approve", methods=["POST"])
+def api_sa_approve_payment(rid):
+    sa, err = _require_superadmin()
+    if err: return err
+    note = (request.json or {}).get("note", "")
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT school_id, plan, status FROM payment_requests WHERE id=%s", (rid,))
+    row = cur.fetchone()
+    if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
+    school_id, plan, status = row
+    if status != "pending":
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "This request was already decided"}), 409
+    if plan not in SUBSCRIPTION_PLANS:
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "Unknown plan on this request"}), 400
+    days = SUBSCRIPTION_PLANS[plan]["days"]
+    cur.execute("SELECT subscription_expires_at FROM schools WHERE id=%s", (school_id,))
+    exp_row = cur.fetchone()
+    base = exp_row[0] if exp_row and exp_row[0] and exp_row[0] > datetime.utcnow() else datetime.utcnow()
+    cur.execute("""UPDATE schools SET subscription_status='active', subscription_plan=%s,
+                   subscription_expires_at=%s WHERE id=%s""",
+                (plan, base + timedelta(days=days), school_id))
+    cur.execute("""UPDATE payment_requests SET status='approved', decided_by=%s, decided_at=NOW(), decision_note=%s
+                   WHERE id=%s""", (sa, note, rid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/superadmin/payment_requests/<int:rid>/reject", methods=["POST"])
+def api_sa_reject_payment(rid):
+    sa, err = _require_superadmin()
+    if err: return err
+    note = (request.json or {}).get("note", "").strip()
+    if not note: return jsonify({"ok": False, "error": "A rejection reason is required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT school_id, status FROM payment_requests WHERE id=%s", (rid,))
+    row = cur.fetchone()
+    if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
+    school_id, status = row
+    if status != "pending":
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "This request was already decided"}), 409
+    cur.execute("UPDATE payment_requests SET status='rejected', decided_by=%s, decided_at=NOW(), decision_note=%s WHERE id=%s",
+                (sa, note, rid))
+    cur.execute("UPDATE schools SET subscription_status='inactive' WHERE id=%s AND subscription_status='pending'", (school_id,))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/superadmin/payment_config", methods=["GET"])
+def api_sa_get_payment_config():
+    sa, err = _require_superadmin()
+    if err: return err
+    return jsonify({"ok": True, **_platform_payment_config()})
+
+@app.route("/api/superadmin/payment_config", methods=["POST"])
+def api_sa_set_payment_config():
+    sa, err = _require_superadmin()
+    if err: return err
+    d = request.json or {}
+    business_name = (d.get("business_name") or "").strip()
+    payment_number = (d.get("payment_number") or "").strip()
+    networks = d.get("networks") or []
+    if not business_name or not payment_number:
+        return jsonify({"ok": False, "error": "Business name and payment number required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE platform_payment_config SET business_name=%s, payment_number=%s, networks=%s, updated_at=NOW() WHERE id=1""",
+                (business_name, payment_number, ",".join(networks)))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
 
 # ── STATIC ─────────────────────────────────────────────────────
 _STATIC_FILES=["shared.css","shared.js","page-dashboard.js","page-students.js",

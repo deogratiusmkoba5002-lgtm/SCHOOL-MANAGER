@@ -33,63 +33,7 @@ async function loadConfigPage(){
   await Promise.all([configLoadClasses(), configLoadSubjects(), configLoadGrades(), configLoadRegCode(), loadSubscriptionCard()]);
 }
 
-async function loadSubscriptionCard(){
-  const s = await api("/subscription/status");
-  const statusEl = document.getElementById("sub-status-display");
-  const plansEl  = document.getElementById("sub-plans-area");
-  if(!s.ok){ statusEl.textContent = "Could not load subscription status."; return; }
 
-  if(s.exempt){
-    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Demo / grandfathered school — all features unlocked.</span>`;
-    plansEl.innerHTML = "";
-    return;
-  }
-  if(s.active){
-    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Active — ${s.plan==="max"?"Max":"Mini"} plan</span>
-      <div style="color:var(--muted);margin-top:4px">Renews/expires: ${new Date(s.expires_at).toLocaleDateString()}</div>`;
-  } else if(s.status==="pending"){
-    statusEl.innerHTML = `<span style="color:var(--orange);font-weight:600">⏳ Payment pending — check your phone to approve the USSD prompt.</span>`;
-  } else {
-    statusEl.innerHTML = `<span style="color:var(--red);font-weight:600">🔒 No active subscription — analytics, PDFs, announcements and results publishing are locked.</span>`;
-  }
-
-  plansEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      ${Object.entries(s.plans).map(([key,p])=>`
-        <div style="border:1.5px solid var(--border);border-radius:10px;padding:16px">
-          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${key==="max"?"Max":"Mini"}</div>
-          <div style="font-size:.85rem;color:var(--muted);margin-bottom:12px">${p.label}</div>
-          <button class="btn btn-blue btn-sm" style="width:100%" onclick="startSubscriptionPayment('${key}')">Subscribe</button>
-        </div>`).join("")}
-    </div>
-    <div class="field" style="max-width:280px">
-      <label>Phone Number (for payment prompt)</label>
-      <input type="tel" id="sub-phone" placeholder="e.g. 0712345678"/>
-    </div>`;
-}
-
-async function startSubscriptionPayment(plan){
-  const phone = (document.getElementById("sub-phone")||{}).value?.trim();
-  if(!phone){ toast("Enter the phone number to receive the payment prompt","error"); return; }
-  const r = await api("/subscription/pay","POST",{plan, phone_number:phone});
-  if(!r.ok){ toast(r.error||"Failed to start payment","error"); return; }
-  toast("Payment prompt sent — check your phone!","success");
-  pollSubscriptionStatus();
-}
-
-function pollSubscriptionStatus(){
-  let tries = 0;
-  const timer = setInterval(async()=>{
-    tries++;
-    const s = await api("/subscription/status");
-    if(s.ok && s.active){
-      clearInterval(timer);
-      window.subActive = true;
-      toast("Subscription activated!","success");
-      loadSubscriptionCard();
-    } else if(tries >= 20){ clearInterval(timer); } // stop after ~100s
-  }, 5000);
-}
 
 // ── SCHOOL REGISTRATION CODE (used alongside username/password to log in) ──
 async function configLoadRegCode(){
@@ -104,7 +48,123 @@ async function configSaveRegCode(){
   if(!val){ toast("Enter a registration code","error"); return; }
   const btn = document.getElementById("config-reg-code-save-btn");
   if(btn) btn.disabled = true;
-  try{
+  try{let _subPlansCache = null;
+let _subPaymentInfoCache = null;
+
+async function loadSubscriptionCard(){
+  const s = await api("/subscription/status");
+  const statusEl = document.getElementById("sub-status-display");
+  const plansEl  = document.getElementById("sub-plans-area");
+  if(!s.ok){ statusEl.textContent = "Could not load subscription status."; return; }
+  _subPlansCache = s.plans;
+  _subPaymentInfoCache = s.payment_info;
+
+  if(s.exempt){
+    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Demo / grandfathered school — all features unlocked.</span>`;
+    plansEl.innerHTML = "";
+    return;
+  }
+
+  if(s.pending_request){
+    const r = s.pending_request;
+    statusEl.innerHTML = `
+      <div style="color:var(--orange);font-weight:700;margin-bottom:6px">🟡 Pending Verification</div>
+      <div style="font-size:.85rem;margin-bottom:10px">Your payment has been received for verification. This is normally completed within business hours — your subscription activates automatically once approved.</div>
+      <div style="background:white;border-radius:8px;padding:10px;font-size:.8rem;color:var(--muted);display:grid;gap:4px">
+        <div><strong>Plan:</strong> ${cap(r.plan)}</div>
+        <div><strong>Transaction ID:</strong> ${escHtml(r.transaction_id)}</div>
+        <div><strong>Amount Paid:</strong> ${r.claimed_amount}</div>
+        <div><strong>Phone Used:</strong> ${escHtml(r.phone_used)}</div>
+        <div><strong>Payment Date:</strong> ${r.payment_date}</div>
+        <div><strong>Submitted:</strong> ${r.submitted_at ? r.submitted_at.slice(0,16).replace("T"," ") : ""}</div>
+      </div>
+      <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="cancelPaymentRequest()">Cancel This Request</button>`;
+    plansEl.innerHTML = "";
+    return;
+  }
+
+  if(s.active){
+    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Active — ${cap(s.plan||"")} plan</span>
+      <div style="color:var(--muted);margin-top:4px">Expires: ${new Date(s.expires_at).toLocaleDateString()}</div>`;
+  } else if(s.last_decision && s.last_decision.status==="rejected"){
+    statusEl.innerHTML = `<span style="color:var(--red);font-weight:600">✗ Your last payment request was rejected</span>
+      <div style="color:var(--muted);margin-top:4px">Reason: ${escHtml(s.last_decision.note||"—")}</div>
+      <div style="color:var(--muted);margin-top:4px">You can submit a new request below.</div>`;
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--red);font-weight:600">🔒 No active subscription — analytics, PDFs, announcements and results publishing are locked.</span>`;
+  }
+
+  plansEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:14px">
+      ${Object.entries(s.plans).map(([key,p])=>`
+        <div style="border:1.5px solid var(--border);border-radius:10px;padding:16px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${cap(key)}</div>
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">${p.label}</div>
+          ${p.features?`<ul style="font-size:.78rem;color:var(--muted);margin:0 0 12px 16px;padding:0">${p.features.map(f=>`<li>${f}</li>`).join("")}</ul>`:""}
+          <button class="btn btn-blue btn-sm" style="width:100%" onclick="${key==='free'?'selectFreePlan()':`openPaymentInstructions('${key}')`}">${key==='free'?'Use Free Plan':'Subscribe'}</button>
+        </div>`).join("")}
+    </div>
+    <div id="sub-payment-flow"></div>`;
+}
+
+async function selectFreePlan(){
+  if(!confirm("Switch to the Free plan?")) return;
+  const r = await api("/subscription/select_free","POST",{});
+  if(r.ok){ toast("Free plan activated","success"); window.subActive = true; loadSubscriptionCard(); }
+  else toast(r.error||"Failed","error");
+}
+
+function openPaymentInstructions(planKey){
+  const plan = _subPlansCache[planKey];
+  const pay  = _subPaymentInfoCache;
+  const flow = document.getElementById("sub-payment-flow");
+  if(!plan || !pay){ toast("Could not load payment details","error"); return; }
+  flow.innerHTML = `
+    <div class="section-card" style="background:var(--pale);margin-top:8px">
+      <div style="font-weight:700;color:var(--navy);margin-bottom:10px">Step 1 — Pay via Mobile Money</div>
+      <div style="background:white;border-radius:8px;padding:14px;font-size:.9rem;display:grid;gap:6px;margin-bottom:14px">
+        <div><strong>Pay To:</strong> ${escHtml(pay.business_name)}</div>
+        <div><strong>Payment Number:</strong> ${escHtml(pay.payment_number)}</div>
+        <div><strong>Supported Networks:</strong> ${pay.networks.map(escHtml).join(", ")}</div>
+        <div><strong>Amount:</strong> ${plan.amount.toLocaleString()} TZS</div>
+      </div>
+      <div style="background:#FFF8E1;border-left:3px solid #FFD600;border-radius:8px;padding:10px 12px;font-size:.8rem;color:#5D4037;margin-bottom:16px">
+        ⚠ Use the exact amount shown. Keep the transaction message for verification.
+      </div>
+      <div style="font-weight:700;color:var(--navy);margin-bottom:10px">Step 2 — Submit Payment Details</div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Transaction ID</label><input class="form-input" id="pr-txn-id" placeholder="e.g. QWE123XYZ"/></div>
+        <div class="form-group"><label class="form-label">Phone Number Used</label><input class="form-input" id="pr-phone" placeholder="e.g. 0712345678"/></div>
+        <div class="form-group"><label class="form-label">Amount Paid</label><input class="form-input" type="number" id="pr-amount" value="${plan.amount}"/></div>
+        <div class="form-group"><label class="form-label">Payment Date</label><input class="form-input" type="date" id="pr-date" value="${new Date().toISOString().slice(0,10)}"/></div>
+        <div class="form-group full"><label class="form-label">Note (optional)</label><input class="form-input" id="pr-note" placeholder="Anything else we should know"/></div>
+      </div>
+      <button class="btn btn-blue" style="margin-top:14px" onclick="submitPaymentRequest('${planKey}')">Submit Payment</button>
+    </div>`;
+  flow.scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+async function submitPaymentRequest(planKey){
+  const transaction_id = (document.getElementById("pr-txn-id").value||"").trim();
+  const phone_used     = (document.getElementById("pr-phone").value||"").trim();
+  const claimed_amount = document.getElementById("pr-amount").value;
+  const payment_date   = document.getElementById("pr-date").value;
+  const note           = (document.getElementById("pr-note").value||"").trim();
+  if(!transaction_id){ toast("Enter the transaction ID","error"); return; }
+  if(!phone_used){ toast("Enter the phone number used","error"); return; }
+  if(!claimed_amount || parseFloat(claimed_amount)<=0){ toast("Enter the amount paid","error"); return; }
+  if(!payment_date){ toast("Enter the payment date","error"); return; }
+  const r = await api("/subscription/request","POST",{plan:planKey,transaction_id,phone_used,claimed_amount:parseFloat(claimed_amount),payment_date,note,username:currentUser.username});
+  if(r.ok){ toast("Payment submitted for verification!","success"); loadSubscriptionCard(); }
+  else toast(r.error||"Failed to submit payment","error");
+}
+
+async function cancelPaymentRequest(){
+  if(!confirm("Cancel this pending payment request? You can submit a new one afterward.")) return;
+  const r = await api("/subscription/request/cancel","POST",{});
+  if(r.ok){ toast("Request cancelled","success"); loadSubscriptionCard(); }
+  else toast(r.error||"Failed","error");
+}
     const r = await api("/config/reg_code","POST",{reg_code:val});
     if(r.ok){ toast("Registration code saved!","success"); el.value = r.reg_code; }
     else toast(r.error||"Failed to save registration code","error");

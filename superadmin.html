@@ -304,6 +304,43 @@ textarea{resize:vertical;min-height:90px}
       </div>
     </div>
 
+    <div class="section">
+  <div class="section-title">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    Payment Verification Queue
+  </div>
+  <div class="card">
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group">
+        <label>Filter</label>
+        <select id="pr-status-filter" onchange="loadPaymentRequests()">
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+    </div>
+    <div id="pr-list"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1z"/></svg>
+    Payment Settings
+  </div>
+  <div class="card">
+    <div class="announce-form">
+      <div class="form-group"><label>Business Name</label><input type="text" id="pc-business-name"/></div>
+      <div class="form-group"><label>Payment Number</label><input type="text" id="pc-payment-number" placeholder="07XXXXXXXX"/></div>
+      <div class="form-group"><label>Supported Networks (comma separated)</label><input type="text" id="pc-networks" placeholder="M-Pesa,Airtel Money,Mixx,HaloPesa"/></div>
+      <button class="btn btn-purple" onclick="savePaymentConfig()">Save Payment Settings</button>
+    </div>
+  </div>
+</div>
+
     <!-- Send Announcement -->
     <div class="section">
       <div class="section-title">
@@ -423,7 +460,62 @@ document.addEventListener("keydown", e=>{
 
 // ── LOAD ALL ───────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadSchools(), loadAnnouncements()]);
+  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig()]);
+}
+
+// —————————PAYMENTS OVERVIEW——————————————————————————————————
+async function loadPaymentRequests(){
+  const status = document.getElementById("pr-status-filter").value;
+  const data = await saApi("/payment_requests?status="+status);
+  const list = document.getElementById("pr-list");
+  if(!data.ok || !data.requests.length){ list.innerHTML = `<div class="empty">No requests.</div>`; return; }
+  list.innerHTML = data.requests.map(r=>`
+    <div class="notice-item">
+      <div class="notice-meta">
+        <span class="notice-title">${esc(r.school_name)} — ${esc(r.plan)} (${r.claimed_amount} TZS)</span>
+        <span class="notice-date">${r.submitted_at ? r.submitted_at.slice(0,16) : ""}</span>
+      </div>
+      <div class="notice-body">
+        Txn ID: <strong>${esc(r.transaction_id)}</strong> · Phone: ${esc(r.phone_used)} · Paid: ${esc(r.payment_date)}
+        ${r.note ? "<br>Note: "+esc(r.note) : ""}
+        ${r.decision_note ? "<br>Decision note: "+esc(r.decision_note) : ""}
+      </div>
+      <span class="notice-target">Status: ${esc(r.status)}</span>
+      ${r.status==="pending" ? `
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveRequest(${r.id})">Approve</button>
+          <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectRequest(${r.id})">Reject</button>
+        </div>` : ""}
+    </div>`).join("");
+}
+async function approveRequest(id){
+  if(!confirm("Approve this payment and activate the subscription?")) return;
+  const data = await saApi("/payment_requests/"+id+"/approve","POST",{});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("Approved and activated","success"); loadPaymentRequests(); loadSchools();
+}
+async function rejectRequest(id){
+  const note = prompt("Reason for rejecting this payment (shown to the school):");
+  if(note===null) return;
+  if(!note.trim()){ toast("A reason is required","error"); return; }
+  const data = await saApi("/payment_requests/"+id+"/reject","POST",{note});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("Rejected","info"); loadPaymentRequests();
+}
+async function loadPaymentConfig(){
+  const data = await saApi("/payment_config");
+  if(!data.ok) return;
+  document.getElementById("pc-business-name").value = data.business_name || "";
+  document.getElementById("pc-payment-number").value = data.payment_number || "";
+  document.getElementById("pc-networks").value = (data.networks||[]).join(",");
+}
+async function savePaymentConfig(){
+  const business_name = document.getElementById("pc-business-name").value.trim();
+  const payment_number = document.getElementById("pc-payment-number").value.trim();
+  const networks = document.getElementById("pc-networks").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const data = await saApi("/payment_config","POST",{business_name,payment_number,networks});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("Payment settings saved","success");
 }
 
 // ── SCHOOLS OVERVIEW ────────────────────────────────────────

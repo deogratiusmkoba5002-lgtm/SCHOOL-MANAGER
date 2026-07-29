@@ -41,10 +41,40 @@ function renderDashSchoolHeader(){
   }
 }
 
+async function loadSubscriptionTicket(){
+  if(!currentUser || currentUser.role!=="admin") return;
+  const s = await api("/subscription/status");
+  const card = document.getElementById("dash-sub-ticket-card");
+  const body = document.getElementById("dash-sub-ticket-body");
+  if(!card || !body || !s.ok || s.exempt){ if(card) card.style.display="none"; return; }
+  card.style.display="block";
+  if(s.pending_request){
+    body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="badge badge-orange">🟡 Pending Verification</span>
+      <span style="color:var(--muted);font-size:.85rem">Plan: ${cap(s.pending_request.plan)}</span>
+    </div>`;
+    return;
+  }
+  if(!s.active){
+    body.innerHTML = `<div style="color:var(--red);font-weight:600">🔒 No active subscription</div>
+      <button class="btn btn-blue btn-sm" style="margin-top:8px" onclick="goToSubscriptionPage()">Subscribe Now</button>`;
+    return;
+  }
+  const daysLeft = Math.ceil((new Date(s.expires_at) - new Date()) / 86400000);
+  body.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-weight:700;color:var(--navy)">${cap(s.plan||"")} Plan</div>
+      <div style="font-size:.82rem;color:var(--muted)">Expires ${new Date(s.expires_at).toLocaleDateString()} (${daysLeft} day${daysLeft===1?"":"s"} left)</div>
+    </div>
+    <span class="badge ${daysLeft<=7?'badge-red':'badge-green'}">${daysLeft<=7?'Renew soon':'Active'}</span>
+  </div>`;
+}
+
 async function loadDashboard(){
   renderDashSchoolHeader();
   loadPlatformNotices();
   loadClassAnalyticsCard();
+  loadSubscriptionTicket();
   const studs = await api("/students");
   const stats = document.getElementById("dash-stats");
   const byClass = {};

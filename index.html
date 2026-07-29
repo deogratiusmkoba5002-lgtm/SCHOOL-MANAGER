@@ -9,6 +9,11 @@
 </head>
 <body>
 <div id="toast-container"></div>
+<button id = "sub-expiry-badge" onclick = "goToSubscriptionPage()"
+  style = "display:none; position:fixed; top:14px; right:14px; z-index:200; background:var(--red); color:white; border:none; border-radius:20px; padding:8px 16px; font-size:.8rem;
+    font-weight:700; box-shadow:0 4px 14px rgba(244,67,54,.4); cursor:pointer; align-items:center; gap:6px;">
+    ⚠️ <span id = "sub-expiry-text"></span>
+</button>
 
 <!-- ══════════════ LOGIN PAGE ══════════════ -->
 <div id="login-page">
@@ -339,7 +344,14 @@
         <span id="dash-school-badge" class="badge badge-blue" style="margin-top:8px;display:none"></span>
       </div>
       <div class="stats-grid" id="dash-stats"></div>
-        
+
+      <div class="section-card" id="dash-sub-ticket-card" style="display:none;margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4z"/></svg>
+          Subscription
+        </div>
+        <div id="dash-sub-ticket-body"></div>
+      </div>  
         <div class="section-card" id="dash-class-analytics-card" style="display:none;margin-bottom:20px">
           <div class="section-card-title">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.41 3.41 17.83l6-6 4 4 6.29-6.29L22 12V6z"/></svg>
