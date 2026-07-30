@@ -74,10 +74,10 @@ function renderParentSingleResults(out, d, assess, assessLabel){
   const streamPos = d.stream_position!=null ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>` : "";
   const divisionCell = d.division ? `<div class="summary-cell"><div class="val">${d.division}</div><div class="lbl">Division</div></div>` : "";
   const pointsCell = d.division_points!=null ? `<div class="summary-cell"><div class="val">${d.division_points}</div><div class="lbl">Points</div></div>` : "";
-  const sorted = [...d.results].filter(r=>{ const score = assess==="exam" ? r.exam : r.ca[assess]; return score!==null && score!==undefined; })
+  const sorted = [...d.results].filter(r=>{ const score = r.score; return score!==null && score!==undefined; })
     .sort((a,b)=>{ const pa = typeof a.position==="number" ? a.position : 9999; const pb = typeof b.position==="number" ? b.position : 9999; return pa - pb; });
   const rows = sorted.map(r=>{
-    const score = assess==="exam" ? r.exam : r.ca[assess];
+    const score = r.score;
     const isFail= score!==null && score!==undefined && score<50;
     return `<tr>
       <td style="font-weight:500;text-transform:capitalize">${r.subject}</td>
@@ -261,18 +261,22 @@ async function loadAnalyticsData(){
   const dataPoints = [];
   for(const term of sortedTerms){
     const assessments = [];
-    for(let i=1;i<=term.ca_count;i++) assessments.push(`CA${i}`);
-    assessments.push("exam");
-    for(const assess of assessments){
+    for(let i=1;i<=term.ca_count;i++) assessments.push({key:`CA${i}`, label:`${term.label} CA${i}`});
+    assessments.push({key:"exam", label:`${term.label} Exam`});
+    // Tests weren't being fetched at all here, so any term whose only
+    // published assessment was a test silently dropped off the graph.
+    const tests = await api(`/tests?term_id=${term.id}`);
+    (tests||[]).forEach(t=> assessments.push({key:`test:${t.id}`, label:`${term.label} ${t.label}`}));
+    for(const a of assessments){
+      const assess = a.key;
       const d = await api(`/parent/results?student_id=${sid}&term_id=${term.id}&assess=${assess}`);
       if(!d.ok || !d.results || !d.results.length) continue;
       const subjectScores = {};
-      d.results.forEach(r=>{ const score = assess==="exam" ? r.exam : r.ca[assess]; if(score!==null && score!==undefined) subjectScores[r.subject] = score; });
+      d.results.forEach(r=>{ const score = r.score; if(score!==null && score!==undefined) subjectScores[r.subject] = score; });
       if(!Object.keys(subjectScores).length) continue;
       const scores = Object.values(subjectScores);
-      const avg = scores.reduce((a,b)=>a+b,0)/scores.length;
-      const label = assess==="exam" ? `${term.label} Exam` : `${term.label} ${assess}`;
-      dataPoints.push({ label, assess, term, subjectScores, avg: Math.round(avg*10)/10, class_position:d.class_position, class_total:d.class_total, stream_position:d.stream_position, stream_total:d.stream_total });
+      const avg = scores.reduce((x,y)=>x+y,0)/scores.length;
+      dataPoints.push({ label:a.label, assess, term, subjectScores, avg: Math.round(avg*10)/10, class_position:d.class_position, class_total:d.class_total, stream_position:d.stream_position, stream_total:d.stream_total });
     }
   }
   analyticsData = dataPoints.length > 5 ? dataPoints.slice(-5) : dataPoints;
