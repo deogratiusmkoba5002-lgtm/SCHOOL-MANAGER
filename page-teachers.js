@@ -135,11 +135,23 @@ async function rebuildMarksTypeSelect(){
   for(let i=1;i<=ca_count;i++){ const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;typeSel.appendChild(o); }
   const ex=document.createElement("option");ex.value="exam";ex.textContent="Exam";typeSel.appendChild(ex);
   if(config.active_term){
-    const tests = await api(`/tests?term_id=${config.active_term.id}`);
+    const clsSel = document.getElementById("marks-class");
+    let classIdParam = "";
+    if(clsSel && clsSel.value){
+      const {class_id} = parseClassStream(clsSel.value);
+      if(class_id) classIdParam = `&class_id=${class_id}`;
+    }
+    const tests = await api(`/tests?term_id=${config.active_term.id}${classIdParam}`);
     (tests||[]).forEach(t=>{ const o=document.createElement("option"); o.value=`test:${t.id}`; o.textContent=t.label; typeSel.appendChild(o); });
   }
 }
-function setupMarks(){populateMarksSelects();}
+function setupMarks(){
+  populateMarksSelects();
+  // Refresh which tests show up as the class changes — tests can be scoped
+  // to specific classes, so the dropdown needs to reflect the current pick.
+  const clsSel = document.getElementById("marks-class");
+  if(clsSel) clsSel.onchange = rebuildMarksTypeSelect;
+}
 
 let marksStudents=[], marksSubject="", marksClass=null, marksStream=null, marksType="";
 let autoSaveTimers={};

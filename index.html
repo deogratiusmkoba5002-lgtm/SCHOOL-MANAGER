@@ -33,9 +33,7 @@
     <div class="field">
       <label>School Registration Code</label>
       <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization" oninput="fetchBrandingByRegCode(this.value)"/>
-      <div style="text-align:right;margin-top:5px">
-        <a href="javascript:void(0)" onclick="recoverRegCode()" style="font-size:.78rem;color:var(--blue);text-decoration:none">Forgot your registration code?</a>
-      </div>
+
     </div>
     <div class="field">
       <label>Username</label>
@@ -641,7 +639,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label class="form-label">Student ID</label>
-            <input type="number" class="form-input" id="report-student-id" placeholder="Enter student ID"/>
+            <input type="text" class="form-input" id="report-student-id" placeholder="e.g. 00030/0009"/>
           </div>
           <div class="form-group" style="display:flex;align-items:flex-end">
             <button class="btn btn-blue" id="report-view-btn" style="width:100%">
@@ -693,6 +691,22 @@
           </div>
         </div>
       </div>
+      <!-- Tests (current term) -->
+      <div class="section-card" style="margin-bottom:20px">
+        <div class="section-card-title">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          Tests (Current Term)
+        </div>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
+          Tests are quick assessments (e.g. a weekly test) that do <strong>not</strong> count toward the term final and never appear on report cards. You can choose which classes participate, and optionally publish a test so parents can see it in "View Results" — with position, average, division and points — just like a CA or Exam.
+        </p>
+        <button class="btn btn-blue btn-sm" onclick="openAddTestModal()" style="margin-bottom:14px">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          Add Test
+        </button>
+        <div id="tests-list"></div>
+      </div>
+
       <!-- Terms list -->
       <div class="table-card">
         <div class="table-toolbar">
@@ -713,6 +727,39 @@
         <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
         <h2 class="page-title">Score Sheets</h2>
         <p class="page-sub">Class-wide score sheets and PDF exports</p>
+      </div>
+      <div class="section-card" style="margin-bottom:16px">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Sheet Type</label>
+            <select class="form-select" id="sheet-type-sel" onchange="onSheetTypeChange()">
+              <option value="marks">Marks Score Sheet</option>
+              <option value="grade">Grade Score Sheet</option>
+            </select>
+          </div>
+        </div>
+        <div id="grade-sheet-options" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--pale)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Examination Level</label>
+              <select class="form-select" id="gsheet-level">
+                <option value="o_level">O-Level (NECTA CSEE)</option>
+                <option value="a_level">A-Level (ACSEE)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Grades Used for Division</label>
+              <select class="form-select" id="gsheet-source">
+                <option value="school">My School's Grades</option>
+                <option value="necta">NECTA Fixed Grades</option>
+              </select>
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Non-Credit Subjects <span style="font-weight:400;text-transform:none">(excluded from division &amp; points)</span></label>
+              <select class="form-select" id="gsheet-noncredit" multiple style="height:90px"></select>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="tabs" id="sheets-tabs">
         <div class="tab active" data-tab="ca">CA Score Sheet</div>
@@ -837,7 +884,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Student ID</label>
-              <input type="number" class="form-input" id="past-student-id" placeholder="Enter student ID"/>
+              <input type="text" class="form-input" id="past-student-id" placeholder="00030/0009"/>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end">
               <button class="btn btn-blue" id="past-view-btn" style="width:100%">View Report</button>
@@ -930,6 +977,11 @@
             <select id="gs-principal-subjects" multiple style="height:130px">
             </select>
             <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Only these subjects count toward the A-Level division and points — others are still recorded but ignored in division math.</p>
+          </div>
+          <div class="field">
+            <label>Non-Credit Subjects <span class="opt">(excluded from division &amp; points calculation)</span></label>
+            <select id="gs-noncredit-subjects" multiple style="height:110px"></select>
+            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Scores are still recorded and shown, but these subjects never count toward the division or points.</p>
           </div>
           <button class="btn btn-blue" id="gs-save-btn" onclick="saveGradingSystem()">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
@@ -1183,6 +1235,28 @@
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeModal('modal-add-stream')">Cancel</button>
       <button class="btn btn-blue" id="confirm-add-stream">Add Stream</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Test Modal -->
+<div class="modal-backdrop" id="modal-add-test" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Add Test</div>
+    <div class="form-group">
+      <label class="form-label">Test Label</label>
+      <input type="text" class="form-input" id="new-test-label" placeholder="e.g. Weekly Test 1"/>
+    </div>
+    <div class="form-group" style="margin-top:16px">
+      <label class="form-label" style="text-transform:none;letter-spacing:0;font-size:.88rem;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="new-test-all-classes" checked onchange="toggleTestClassPicker()"/> All Classes
+      </label>
+    </div>
+    <div id="test-class-picker" style="display:none;max-height:220px;overflow-y:auto;margin-top:10px;padding:10px;background:var(--pale);border-radius:8px"></div>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:10px">Only teachers and students in the selected classes will see this test — in marks entry, analytics, score sheets and (if published) the parent portal.</p>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-add-test')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-add-test">Add Test</button>
     </div>
   </div>
 </div>

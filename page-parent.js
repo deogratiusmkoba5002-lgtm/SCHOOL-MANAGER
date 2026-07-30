@@ -57,7 +57,9 @@ document.getElementById("parent-view-rc-btn").addEventListener("click", async()=
 });
 document.getElementById("parent-view-res-btn").addEventListener("click", async()=>{
   const term_id = document.getElementById("parent-res-term-sel").value;
-  const assess  = document.getElementById("parent-res-assess-sel").value;
+  const assessSel = document.getElementById("parent-res-assess-sel");
+  const assess  = assessSel.value;
+  const assessLabel = assessSel.options[assessSel.selectedIndex] ? assessSel.options[assessSel.selectedIndex].textContent : assess;
   if(!term_id||!assess){toast("Select term and assessment","error");return;}
   const sid = currentUser.student_id;
   if(!sid){toast("No student linked to this account","error");return;}
@@ -65,11 +67,13 @@ document.getElementById("parent-view-res-btn").addEventListener("click", async()
   out.innerHTML=`<div class="spinner"></div>`;
   const d = await api(`/parent/results?student_id=${sid}&term_id=${term_id}&assess=${assess}`);
   if(!d.ok){ out.innerHTML=`<div class="section-card"><p style="color:var(--red);text-align:center;padding:20px">${d.error}</p></div>`; return; }
-  renderParentSingleResults(out, d, assess);
+  renderParentSingleResults(out, d, assess, assessLabel);
 });
-function renderParentSingleResults(out, d, assess){
-  const assessLabel = assess==="exam" ? "Final Exam" : assess;
+function renderParentSingleResults(out, d, assess, assessLabel){
+  assessLabel = assessLabel || (assess==="exam" ? "Final Exam" : assess);
   const streamPos = d.stream_position!=null ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>` : "";
+  const divisionCell = d.division ? `<div class="summary-cell"><div class="val">${d.division}</div><div class="lbl">Division</div></div>` : "";
+  const pointsCell = d.division_points!=null ? `<div class="summary-cell"><div class="val">${d.division_points}</div><div class="lbl">Points</div></div>` : "";
   const sorted = [...d.results].filter(r=>{ const score = assess==="exam" ? r.exam : r.ca[assess]; return score!==null && score!==undefined; })
     .sort((a,b)=>{ const pa = typeof a.position==="number" ? a.position : 9999; const pb = typeof b.position==="number" ? b.position : 9999; return pa - pb; });
   const rows = sorted.map(r=>{
@@ -92,6 +96,8 @@ function renderParentSingleResults(out, d, assess){
       <div class="summary-cell"><div class="val">${get_grade_js(d.average)}</div><div class="lbl">Grade</div></div>
       <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">Class Pos</div></div>
       ${streamPos}
+      ${divisionCell}
+      ${pointsCell}
     </div>
     <div class="table-wrap">
       <table><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Position</th></tr></thead>

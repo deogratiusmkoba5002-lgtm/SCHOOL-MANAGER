@@ -140,6 +140,13 @@ async function loadGradingSystemCard(){
       return `<option value="${escHtml(sub.name)}" ${selected?"selected":""}>${cap(sub.name)}</option>`;
     }).join("");
   }
+  const noncreditSel = document.getElementById("gs-noncredit-subjects");
+  if(noncreditSel){
+    noncreditSel.innerHTML = configSubjects.map(sub=>{
+      const selected = (s.non_credit_subjects||[]).includes((sub.name||"").toLowerCase().trim());
+      return `<option value="${escHtml(sub.name)}" ${selected?"selected":""}>${cap(sub.name)}</option>`;
+    }).join("");
+  }
   onGradingLevelChange();
 }
 
@@ -161,10 +168,12 @@ async function saveGradingSystem(){
       return;
     }
   }
+  const noncreditSel = document.getElementById("gs-noncredit-subjects");
+  const non_credit_subjects = noncreditSel ? [...noncreditSel.selectedOptions].map(o=>o.value.toLowerCase().trim()) : [];
   const btn = document.getElementById("gs-save-btn");
   if(btn) btn.disabled = true;
   try{
-    const r = await api("/config/grading_system","POST",{grading_system,division_source,principal_subjects});
+    const r = await api("/config/grading_system","POST",{grading_system,division_source,principal_subjects,non_credit_subjects});
     if(r.ok) toast("Grading system saved!","success");
     else toast(r.error||"Failed to save grading system","error");
   } finally {

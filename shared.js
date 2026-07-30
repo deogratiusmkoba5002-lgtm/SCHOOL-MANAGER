@@ -186,27 +186,7 @@ function fetchBrandingByRegCode(regCode){
   } catch(e){}
 })();
 
-async function recoverRegCode(){
-  const u = document.getElementById("login-user").value.trim();
-  const p = document.getElementById("login-pass").value;
-  const errEl = document.getElementById("login-error");
-  errEl.style.display="none";
-  if(!u || !p){
-    errEl.textContent = "Enter your username and password above first, then click this link.";
-    errEl.style.display="block";
-    return;
-  }
-  const res = await api("/find_reg_code","POST",{username:u,password:p});
-  if(res.ok){
-    const regEl = document.getElementById("login-regcode");
-    if(regEl) regEl.value = res.reg_code;
-    fetchBrandingByRegCode(res.reg_code);
-    toast(`Found it — your school's registration code is "${res.reg_code}". It's been filled in above.`,"success");
-  } else {
-    errEl.textContent = res.error || "Could not find your registration code.";
-    errEl.style.display="block";
-  }
-}
+
 
 async function doLogin(){
   const regEl = document.getElementById("login-regcode");
@@ -357,6 +337,14 @@ function buildNav(){
     el.addEventListener("click",()=>showPage(item.id));
     nav.appendChild(el);
   });
+  // On phones, the sidebar footer's Logout button can end up out of easy
+  // reach — mirror it into the nav list itself; CSS shows/hides whichever
+  // copy fits the screen size.
+  const logoutItem=document.createElement("div");
+  logoutItem.className="nav-item nav-item-logout-mobile";
+  logoutItem.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg><span>Logout</span>`;
+  logoutItem.addEventListener("click",()=>{ document.getElementById("logout-btn").click(); });
+  nav.appendChild(logoutItem);
 }
 
 // ── PAGE ROUTING ─────────────────────────────────────────────

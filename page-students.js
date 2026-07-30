@@ -49,13 +49,13 @@ function renderStudents(list){
   tb.innerHTML=list.map(s=>`
     <tr>
       <td><input type="checkbox" class="student-row-check" data-id="${s.id}" ${selectedStudentIds.has(s.id)?"checked":""} onchange="toggleStudentSelect(${s.id},this)"></td>
-      <td style="color:var(--muted);font-size:.8rem">${s.id}</td>
+      <td style="color:var(--muted);font-size:.8rem" title="Internal ID: ${s.id}">${s.display_id || s.id}</td>
       <td style="font-weight:600">${s.name}</td>
       <td><span class="badge badge-blue">${s.class_name}</span></td>
       <td>${s.stream_name ? `<span class="badge badge-grey">${s.stream_name}</span>` : '<span style="color:var(--muted);font-size:.8rem">—</span>'}</td>
       <td>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id})">${reportSVG()} Report</button>
+          <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id},'${(s.display_id||s.id)}')">${reportSVG()} Report</button>
           <button class="btn btn-sm btn-red btn-icon" onclick="deleteStudent(${s.id},'${s.name}')">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
           </button>
@@ -236,8 +236,8 @@ async function deleteStudent(id,name){
   if(r.ok){ toast("Student removed","success"); }
   else { toast(r.error||"Failed","error"); loadStudents(); }
 }
-function quickReport(sid){
-  document.getElementById("report-student-id").value=sid;
+function quickReport(sid, displayId){
+  document.getElementById("report-student-id").value = displayId || sid;
   showPage("reports");
   viewReport(sid);
 }

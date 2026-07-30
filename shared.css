@@ -405,3 +405,9 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 .config-subsection{margin-bottom:26px}
 .config-subsection:last-child{margin-bottom:0}
 .config-subsection-title{font-weight:700;color:var(--navy);margin-bottom:12px;font-size:.95rem}
+
+.nav-item-logout-mobile{display:none}
+@media(max-width:768px){
+  .sidebar-footer{display:none}
+  .nav-item-logout-mobile{display:flex}
+}

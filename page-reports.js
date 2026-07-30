@@ -1,7 +1,20 @@
 // ── REPORT CARDS ─────────────────────────────────────────────
-document.getElementById("report-view-btn").addEventListener("click",()=>{
-  const sid=parseInt(document.getElementById("report-student-id").value);
-  if(!sid){toast("Enter a student ID","error");return;}
+async function resolveStudentIdInput(raw){
+  raw = (raw||"").trim();
+  if(!raw) return null;
+  if(raw.includes("/")){
+    const no = parseInt(raw.split("/")[1], 10);
+    if(isNaN(no)){ toast("Invalid student ID format — use SCHOOLID/STUDENTNO e.g. 00030/0001","error"); return null; }
+    const r = await api(`/students/resolve_display_id?no=${no}`);
+    if(!r.ok){ toast(r.error||"Student not found","error"); return null; }
+    return r.id;
+  }
+  const n = parseInt(raw,10);
+  return isNaN(n) ? null : n;
+}
+document.getElementById("report-view-btn").addEventListener("click", async()=>{
+  const sid = await resolveStudentIdInput(document.getElementById("report-student-id").value);
+  if(!sid){toast("Enter a valid student ID","error");return;}
   viewReport(sid);
 });
 async function viewReport(sid){
@@ -107,6 +120,37 @@ async function saveRemark(sid, type, textareaId){
 const SUBJECT_ABBR = {"historia ya tanzania na maadili":"HTM","mathematics":"MATH","physics":"PHY","chemistry":"CHEM","biology":"BIO","geography":"GEO","history":"HIST","civics":"CIV","english":"ENG","literature":"LIT","kiswahili":"KIS","bible knowledge":"BK","book keeping":"BKP","commerce":"COM","business studies":"BS"};
 function subAbbr(s){ return SUBJECT_ABBR[s.toLowerCase()] || s.substring(0,5).toUpperCase(); }
 
+function isGradeSheetMode(){
+  const sel = document.getElementById("sheet-type-sel");
+  return sel && sel.value==="grade";
+}
+function gradeParamsObj(){
+  if(!isGradeSheetMode()) return {};
+  const level = document.getElementById("gsheet-level").value;
+  const source = document.getElementById("gsheet-source").value;
+  const noncredit = [...document.getElementById("gsheet-noncredit").selectedOptions].map(o=>o.value).join(",");
+  return {sheet_type:"grade", grading_system:level, division_source:source, noncredit};
+}
+function gradeQueryString(){
+  const p = gradeParamsObj();
+  return Object.entries(p).map(([k,v])=>`&${k}=${encodeURIComponent(v)}`).join("");
+}
+async function onSheetTypeChange(){
+  const grade = isGradeSheetMode();
+  document.getElementById("grade-sheet-options").style.display = grade ? "block" : "none";
+  if(grade) await loadGradeSheetOptions();
+}
+async function loadGradeSheetOptions(){
+  const s = await api("/config/grading_system");
+  document.getElementById("gsheet-level").value = s.grading_system || "o_level";
+  document.getElementById("gsheet-source").value = s.division_source || "school";
+  const sel = document.getElementById("gsheet-noncredit");
+  sel.innerHTML = (config.allowed_subjects||[]).map(sub=>{
+    const selected = (s.non_credit_subjects||[]).includes(sub.toLowerCase().trim());
+    return `<option value="${sub}" ${selected?"selected":""}>${cap(sub)}</option>`;
+  }).join("");
+}
+
 function setupSheets(){
   const buildSheetSel=(sel)=>{
     if(currentUser.is_class_teacher && currentUser.class_id){
@@ -125,6 +169,11 @@ function setupSheets(){
   asSel.innerHTML="";
   const ca_count = config.ca_count || 2;
   for(let i=1;i<=ca_count;i++){ const o=document.createElement("option");o.value=`CA${i}`;o.textContent=`CA ${i}`;asSel.appendChild(o); }
+  if(config.active_term){
+    api(`/tests?term_id=${config.active_term.id}`).then(tests=>{
+      (tests||[]).forEach(t=>{ const o=document.createElement("option"); o.value=`test:${t.id}`; o.textContent=`${t.label} (Test)`; asSel.appendChild(o); });
+    });
+  }
   document.querySelectorAll("#sheets-tabs .tab").forEach(t=>{
     t.addEventListener("click",()=>{
       document.querySelectorAll("#sheets-tabs .tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
@@ -136,47 +185,68 @@ function setupSheets(){
 }
 document.getElementById("ca-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("ca-sheet-class").value);
-  const ca=document.getElementById("ca-sheet-assess").value;
+  const assessSel=document.getElementById("ca-sheet-assess");
+  const ca=assessSel.value;
+  const label = assessSel.options[assessSel.selectedIndex] ? assessSel.options[assessSel.selectedIndex].textContent : ca;
   const sp=stream_id?`&stream_id=${stream_id}`:"";
-  const d=await api(`/scoresheet?mode=ca&class_id=${class_id}${sp}&ca_name=${ca}`);
-  renderScoreSheet(document.getElementById("ca-sheet-output"),d,ca);
+  const gp=gradeQueryString();
+  let d;
+  if(ca.startsWith("test:")){
+    const testId = ca.split(":")[1];
+    d = await api(`/scoresheet?mode=test&class_id=${class_id}${sp}&test_id=${testId}${gp}`);
+  } else {
+    d = await api(`/scoresheet?mode=ca&class_id=${class_id}${sp}&ca_name=${ca}${gp}`);
+  }
+  renderScoreSheet(document.getElementById("ca-sheet-output"),d,label);
 });
 document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:cc,stream_id:cs}=parseClassStream(document.getElementById("ca-sheet-class").value);
   const ca=document.getElementById("ca-sheet-assess").value;
-  const params=new URLSearchParams({class_id:cc, ca_name:ca});
+  const grade = isGradeSheetMode();
+  const params=new URLSearchParams({class_id:cc, ca_name:ca, mode:"ca"});
   if(cs) params.set("stream_id",cs);
   if(_schoolId) params.set("school_id",_schoolId);
-  if(requireSub()){window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");}
+  if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
+  if(requireSub()){window.open(url,"_blank");}
 });
 document.getElementById("term-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("term-sheet-class").value);
   const sp=stream_id?`&stream_id=${stream_id}`:"";
-  const d=await api(`/scoresheet?mode=terminal&class_id=${class_id}${sp}`);
+  const gp=gradeQueryString();
+  const d=await api(`/scoresheet?mode=terminal&class_id=${class_id}${sp}${gp}`);
   renderScoreSheet(document.getElementById("term-sheet-output"),d,"Terminal");
 });
 document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id:tc,stream_id:ts}=parseClassStream(document.getElementById("term-sheet-class").value);
-  const params=new URLSearchParams({class_id:tc});
+  const grade = isGradeSheetMode();
+  const params=new URLSearchParams({class_id:tc, mode:"terminal"});
   if(ts) params.set("stream_id",ts);
   if(_schoolId) params.set("school_id",_schoolId);
-  if(requireSub()){window.open(`${API}/pdf/terminal_sheet?${params.toString()}`,"_blank");}
+  if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/terminal_sheet?${params.toString()}`;
+  if(requireSub()){window.open(url,"_blank");}
 });
 document.getElementById("exam-sheet-view-btn").addEventListener("click", async()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
   const sp=stream_id?`&stream_id=${stream_id}`:"";
-  const d=await api(`/scoresheet?mode=exam&class_id=${class_id}${sp}`);
+  const gp=gradeQueryString();
+  const d=await api(`/scoresheet?mode=exam&class_id=${class_id}${sp}${gp}`);
   renderScoreSheet(document.getElementById("exam-sheet-output"),d,"Exam");
 });
 document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   const {class_id,stream_id}=parseClassStream(document.getElementById("exam-sheet-class").value);
-  const params=new URLSearchParams({class_id, ca_name:"exam"});
+  const grade = isGradeSheetMode();
+  const params=new URLSearchParams({class_id, ca_name:"exam", mode:"exam"});
   if(stream_id) params.set("stream_id",stream_id);
   if(_schoolId) params.set("school_id",_schoolId);
-  if(requireSub()){window.open(`${API}/pdf/ca_sheet?${params.toString()}`,"_blank");}
+  if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
+  if(requireSub()){window.open(url,"_blank");}
 });
 function renderScoreSheet(container, d, label){
   if(!d.results||!d.results.length){ container.innerHTML=`<div class="empty-state">${emptySVG()}<p>No data found</p></div>`;return; }
+  if(d.sheet_type==="grade"){ renderGradeSheet(container, d, label); return; }
   const subs = d.subjects;
   const hdr  = `<tr><th>#</th><th>Student</th>${subs.map(s=>`<th title="${s}">${subAbbr(s)}</th>`).join("")}<th>Total</th><th>Avg</th><th>Pos</th><th>Grd</th></tr>`;
   const rows = d.results.map((r,i)=>{
@@ -186,6 +256,17 @@ function renderScoreSheet(container, d, label){
   }).join("");
   container.innerHTML=`<div class="table-card"><div class="table-toolbar"><span class="table-toolbar-title">${label} – ${d.results.length} students</span></div><div class="table-wrap"><table class="scoresheet-table"><thead>${hdr}</thead><tbody>${rows}</tbody></table></div></div>`;
 }
+function renderGradeSheet(container, d, label){
+  const subs = d.subjects;
+  const hdr  = `<tr><th>#</th><th>Student</th>${subs.map(s=>`<th title="${s}">${subAbbr(s)}</th>`).join("")}<th>Points</th><th>Division</th></tr>`;
+  const rows = d.results.map((r,i)=>{
+    const cells=subs.map(s=>{ const g=r.grades[s]; const fail=g==="F"; return `<td style="${fail?"color:var(--red);font-weight:600":""}">${g||"-"}</td>`; }).join("");
+    return `<tr><td style="color:var(--muted)">${i+1}</td><td style="font-weight:600">${r.name}</td>${cells}<td style="font-weight:600">${r.points!=null?r.points:"-"}</td><td style="font-weight:700;color:var(--blue)">${r.division||"-"}</td></tr>`;
+  }).join("");
+  container.innerHTML=`<div class="table-card"><div class="table-toolbar"><span class="table-toolbar-title">${label} (Grades) – ${d.results.length} students</span></div><div class="table-wrap"><table class="scoresheet-table"><thead>${hdr}</thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+// ── RANKINGS ─────────────────────────────────────────────────
 
 // ── RANKINGS ─────────────────────────────────────────────────
 function setupRankings(){
@@ -243,25 +324,62 @@ async function loadTerms(){
 }
 
 async function loadTestsForActiveTerm(){
-  if(!config.active_term) return;
-  const tests = await api(`/tests?term_id=${config.active_term.id}`);
-  document.getElementById("tests-list").innerHTML = tests.length ? tests.map(t=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--pale)">
-      <span>${escHtml(t.label)}</span>
+  const container = document.getElementById("tests-list");
+  if(!container) return;
+  if(!config.active_term){ container.innerHTML = `<p style="color:var(--muted);font-size:.85rem">No active term.</p>`; return; }
+  const [tests, pubData] = await Promise.all([
+    api(`/tests?term_id=${config.active_term.id}`),
+    api(`/results/assessments?term_id=${config.active_term.id}`)
+  ]);
+  const pubMap = {};
+  if(pubData && pubData.ok) pubData.assessments.forEach(a=>{ pubMap[a.assess_key] = a.published; });
+  container.innerHTML = tests.length ? tests.map(t=>{
+    const scope = t.all_classes ? "All Classes" : ((t.class_ids||[]).map(cid=>{const c=getClassById(cid);return c?c.class_name:cid;}).join(", ") || "No classes selected");
+    const published = pubMap[`test:${t.id}`];
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--pale);gap:8px;flex-wrap:wrap">
+      <div>
+        <span style="font-weight:600">${escHtml(t.label)}</span>
+        <span class="badge badge-blue" style="margin-left:6px">${escHtml(scope)}</span>
+        <span class="badge ${published?'badge-green':'badge-grey'}" style="margin-left:6px">${published?'Published to parents':'Not published'}</span>
+      </div>
       <button class="btn btn-sm btn-red" onclick="deleteTest(${t.id})">Delete</button>
-    </div>`).join("") : `<p style="color:var(--muted);font-size:.85rem">No tests yet this term.</p>`;
+    </div>`;
+  }).join("") : `<p style="color:var(--muted);font-size:.85rem">No tests yet this term.</p>`;
 }
-async function addTest(){
-  const label = prompt("Test label (e.g. Weekly Test 1):");
-  if(!label || !label.trim()) return;
-  const r = await api("/tests","POST",{term_id:config.active_term.id, label:label.trim()});
-  if(r.ok){ toast("Test added","success"); loadTestsForActiveTerm(); }
+function openAddTestModal(){
+  if(!config.active_term){ toast("Open an active term first","error"); return; }
+  document.getElementById("new-test-label").value="";
+  document.getElementById("new-test-all-classes").checked=true;
+  const picker = document.getElementById("test-class-picker");
+  picker.style.display="none";
+  picker.innerHTML = (allClasses||[]).map(c=>
+    `<label style="display:block;padding:5px 0;font-size:.88rem"><input type="checkbox" class="test-class-check" value="${c.id}"> ${escHtml(c.class_name)}</label>`
+  ).join("") || `<p style="color:var(--muted);font-size:.82rem">No classes yet.</p>`;
+  openModal("modal-add-test");
+}
+function toggleTestClassPicker(){
+  const all = document.getElementById("new-test-all-classes").checked;
+  document.getElementById("test-class-picker").style.display = all ? "none" : "block";
+}
+document.getElementById("confirm-add-test").addEventListener("click", async()=>{
+  const label = document.getElementById("new-test-label").value.trim();
+  if(!label){ toast("Enter a test label","error"); return; }
+  const allClassesChecked = document.getElementById("new-test-all-classes").checked;
+  let class_ids = [];
+  if(!allClassesChecked){
+    class_ids = [...document.querySelectorAll(".test-class-check:checked")].map(c=>parseInt(c.value));
+    if(!class_ids.length){ toast("Select at least one class, or choose All Classes","error"); return; }
+  }
+  const r = await api("/tests","POST",{term_id:config.active_term.id, label, class_ids});
+  if(r.ok){ toast("Test added!","success"); closeModal("modal-add-test"); loadTestsForActiveTerm(); }
   else toast(r.error||"Failed","error");
-}
+});
 async function deleteTest(id){
-  if(!confirm("Delete this test and all its scores?")) return;
+  if(!confirm("Delete this test and all its scores? This can't be undone.")) return;
   const r = await api(`/tests/${id}`,"DELETE");
   if(r.ok){ toast("Deleted","success"); loadTestsForActiveTerm(); }
+  else toast(r.error||"Failed","error");
 }
 
 // Admin can edit an open term's label/CA count/weights any time — plans
@@ -366,9 +484,9 @@ document.getElementById("past-marks-btn").addEventListener("click", async()=>{
 });
 document.getElementById("past-view-btn").addEventListener("click", async()=>{
   const term_id = document.getElementById("past-term-sel2").value;
-  const sid     = parseInt(document.getElementById("past-student-id").value);
   if(!term_id){toast("Select a term","error");return;}
-  if(!sid){toast("Enter a student ID","error");return;}
+  const sid = await resolveStudentIdInput(document.getElementById("past-student-id").value);
+  if(!sid){toast("Enter a valid student ID","error");return;}
   if(currentUser.is_class_teacher){
     const studs = await api("/students");
     const s = studs.find(x=>x.id===sid);
