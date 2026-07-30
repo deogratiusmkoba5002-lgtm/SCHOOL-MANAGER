@@ -42,9 +42,9 @@ _FALLBACK_ABBR = {
     "bible knowledge":"BK","book keeping":"BKP","commerce":"COM","business studies":"BS",
 }
 _FALLBACK_GRADES = [
-    {"min_score":80,"max_score":100,"grade":"A"},{"min_score":70,"max_score":79,"grade":"B"},
-    {"min_score":60,"max_score":69,"grade":"C"},{"min_score":50,"max_score":59,"grade":"D"},
-    {"min_score":0,"max_score":49,"grade":"F"},
+    {"min_score":80,"max_score":100,"grade":"A","points":1},{"min_score":70,"max_score":79,"grade":"B","points":2},
+    {"min_score":60,"max_score":69,"grade":"C","points":3},{"min_score":50,"max_score":59,"grade":"D","points":4},
+    {"min_score":0,"max_score":49,"grade":"F","points":5},
 ]
 
 # ── SUBSCRIPTIONS (Manual Mobile Money Verification) ───────────
@@ -231,9 +231,15 @@ def get_subject_map(school_id):
 def get_grade_rules(school_id):
     try:
         con = get_db(); cur = con.cursor()
-        cur.execute("SELECT min_score,max_score,grade FROM grade_config WHERE school_id=%s ORDER BY min_score DESC", (school_id,))
+        cur.execute("SELECT min_score,max_score,grade,points FROM grade_config WHERE school_id=%s ORDER BY min_score DESC", (school_id,))
         rows = cur.fetchall(); cur.close(); con.close()
-        if rows: return [{"min_score":r[0],"max_score":r[1],"grade":r[2]} for r in rows]
+        if rows:
+            # Grades saved before "points" existed (or left blank by the admin) get a
+            # sensible default assigned automatically: best grade = 1 point, next = 2,
+            # etc. (same convention NECTA uses) — so division/points never silently
+            # fail just because a school never typed points in.
+            return [{"min_score":r[0],"max_score":r[1],"grade":r[2],
+                     "points": r[3] if r[3] is not None else (i+1)} for i,r in enumerate(rows)]
     except: pass
     return list(_FALLBACK_GRADES)
 
@@ -1424,24 +1430,51 @@ def compute_division_from_finals(school_id, finals, grading_system=None, divisio
     """finals: {subject: final_score_or_None}. Returns (total_points, division_label).
     grading_system/division_source/noncredit_override let a caller (e.g. a one-off
     grade score sheet) compute division under different settings than what's saved
-    in Config, without touching the school's saved settings."""
+    in Config, without touching the school's saved settings.
+
+    A-level uses only the student's BEST 3 credited subjects (matches how the
+    NECTA division bands are scaled). O-level uses the best 7. If a student
+    doesn't have enough credited subjects with marks, "INC" (incomplete) is
+    returned instead of silently showing blank. If the grade configuration
+    itself is missing points for a matched grade, "ERR" is returned instead
+    of silently showing blank, so the admin knows to check Grading System."""
     settings = get_school_grading_settings(school_id)
     level = grading_system or settings["grading_system"]
     div_source = division_source or settings["division_source"]
     rules = get_necta_grades(level) if div_source=="necta" else get_grade_rules(school_id)
     noncredit = set(noncredit_override) if noncredit_override is not None else set(get_noncredit_subjects(school_id))
-    use_subjects = get_principal_subjects(school_id) if level=="a_level" else list(finals.keys())
-    if level=="a_level" and not use_subjects:
-        use_subjects = list(finals.keys())  # fallback if admin hasn't set principals yet
+
+    if level == "a_level":
+        use_subjects = get_principal_subjects(school_id)
+        if not use_subjects:
+            use_subjects = list(finals.keys())  # fallback if admin hasn't set principals yet
+        min_required = 3
+    else:
+        use_subjects = list(finals.keys())
+        min_required = 5
+
     use_subjects = [s for s in use_subjects if s not in noncredit]
-    pairs = [(s, grade_and_points_for_score(rules, finals.get(s))[1]) for s in use_subjects]
-    if level=="o_level":
-        scored = sorted([p for p in pairs if p[1] is not None], key=lambda x:x[1])
-        pairs = scored[:7]
-        if len(pairs) < 5: return None, None  # must pass/attempt 5+ subjects
-    valid = [p for _,p in pairs if p is not None]
-    if not valid: return None, None
-    total = sum(valid)
+
+    scored_pairs = []
+    grade_config_error = False
+    for s in use_subjects:
+        score = finals.get(s)
+        if score is None: continue
+        _, points = grade_and_points_for_score(rules, score)
+        if points is None:
+            grade_config_error = True
+            continue
+        scored_pairs.append((s, points))
+
+    if grade_config_error:
+        return "ERR", "ERR"
+    if len(scored_pairs) < min_required:
+        return "INC", "INC"
+
+    scored_pairs.sort(key=lambda x: x[1])
+    best_n = scored_pairs[:3] if level == "a_level" else scored_pairs[:7]
+    total = sum(p for _, p in best_n)
+
     for d in get_necta_divisions(level):
         if d["min_points"] <= total <= d["max_points"]:
             return total, d["division"]
@@ -1601,10 +1634,22 @@ def api_add_student():
 
 def _gen_parent_creds(school_id, student_name, phone_number, student_id):
     username = student_name.strip().lower().replace(" ","_")
-    # Two different phone numbers can coincidentally share the same last 4
-    # digits. Appending the student's own (unique) ID keeps every temp
-    # password unique even in that coincidence.
-    temp_pw  = f"{phone_number.strip()[-4:]}-{student_id}"
+    last4 = phone_number.strip()[-4:]
+    # Normally the password is just the last 4 digits of the parent's phone.
+    # Only append "-{student_id}" when another student already shares this
+    # exact username with a DIFFERENT phone number whose last 4 digits happen
+    # to collide with this one.
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id = s.id
+                   WHERE u.username=%s AND u.school_id=%s AND u.role='parent'""",
+                (username, school_id))
+    existing_phones = [r[0] or "" for r in cur.fetchall()]
+    cur.close(); con.close()
+    needs_suffix = any(
+        ph.strip() != phone_number.strip() and ph.strip()[-4:] == last4
+        for ph in existing_phones
+    )
+    temp_pw = f"{last4}-{student_id}" if needs_suffix else last4
     return username, temp_pw
 
 @app.route("/api/students/resolve_display_id", methods=["GET"])
@@ -2330,9 +2375,18 @@ def api_publish_assessments():
 def api_parent_terms():
     sid=school_id_from_header()
     con=get_db(); cur=con.cursor()
-    cur.execute("""SELECT t.id,t.label,t.ca_count,t.ca_weight,t.exam_weight,t.status
-                   FROM terms t JOIN results_published rp ON rp.term_id=t.id AND rp.school_id=t.school_id
-                   WHERE t.school_id=%s AND rp.published=1 ORDER BY t.id ASC""",(sid,))
+    # A term shows up here if EITHER the legacy whole-term publish switch is
+    # on, OR at least one individual assessment has been published via the
+    # newer per-assessment publisher — previously only the legacy flag was
+    # checked, so terms published assessment-by-assessment (the normal flow)
+    # never appeared for parents.
+    cur.execute("""SELECT DISTINCT t.id,t.label,t.ca_count,t.ca_weight,t.exam_weight,t.status
+                   FROM terms t
+                   WHERE t.school_id=%s AND (
+                       EXISTS (SELECT 1 FROM results_published rp WHERE rp.school_id=t.school_id AND rp.term_id=t.id AND rp.published=1)
+                       OR EXISTS (SELECT 1 FROM published_assessments pa WHERE pa.school_id=t.school_id AND pa.term_id=t.id AND pa.published=1)
+                   )
+                   ORDER BY t.id ASC""",(sid,))
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/parent/results", methods=["GET"])
@@ -2351,10 +2405,6 @@ def api_parent_results():
         cur.execute("SELECT published FROM results_published WHERE school_id=%s AND term_id=%s",(sid,term_id))
         row=cur.fetchone(); cur.close(); con.close()
         if not row or not row[0]: return jsonify({"ok":False,"error":"Results not yet published"}),403
-    con=get_db(); cur=con.cursor()
-    cur.execute("SELECT published FROM results_published WHERE school_id=%s AND term_id=%s",(sid,term_id))
-    row=cur.fetchone(); cur.close(); con.close()
-    if not row or not row[0]: return jsonify({"ok":False,"error":"Results not yet published"}),403
     stid=int(student_id); term=get_term_by_id(sid,term_id)
     con=get_db(); cur=con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
@@ -3471,6 +3521,15 @@ def api_import_students():
     cur.execute("SELECT COALESCE(MAX(school_student_no),0) FROM students WHERE school_id=%s", (school_id,))
     next_student_no = cur.fetchone()[0] + 1
 
+    # Track which phone numbers already use each parent username, so we only
+    # append "-{student_id}" when two DIFFERENT phone numbers sharing a
+    # username would otherwise collide on the same last-4 password.
+    cur.execute("""SELECT u.username, s.phone_number FROM users u JOIN students s ON u.student_id=s.id
+                   WHERE u.school_id=%s AND u.role='parent'""", (school_id,))
+    username_phone_map = {}
+    for uname, ph in cur.fetchall():
+        username_phone_map.setdefault(uname, []).append(ph or "")
+
     for i, row in enumerate(rows):
         row_num      = i + 2
         name, class_name, stream_name, parent_phone = _extract_fields(row)
@@ -3504,11 +3563,18 @@ def api_import_students():
             student_id   = cur.fetchone()[0]
             next_student_no += 1
             username_base= name.strip().lower().replace(" ","_")
-            temp_pw = f"{parent_phone.strip()[-4:]}-{student_id}"
-            
+            last4 = parent_phone.strip()[-4:]
+            existing_phones_for_username = username_phone_map.get(username_base, [])
+            needs_suffix = any(
+                ph.strip() != parent_phone.strip() and ph.strip()[-4:] == last4
+                for ph in existing_phones_for_username
+            )
+            temp_pw = f"{last4}-{student_id}" if needs_suffix else last4
+
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
                         (username_base,hash_password_fast(temp_pw),school_id,student_id))
             login_created = cur.rowcount > 0
+            username_phone_map.setdefault(username_base, []).append(parent_phone.strip())
             cur.execute("RELEASE SAVEPOINT sp_student")
             inserted += 1
             existing_students.add(dup_key)

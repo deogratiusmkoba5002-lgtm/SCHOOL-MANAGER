@@ -272,6 +272,8 @@ async function handleConfigLogoSelect(e){
 // ── CLASSES & STREAMS (each action saves immediately) ────────
 async function configLoadClasses(){
   configClasses = await api("/classes");
+  allClasses = configClasses; // keep the global class list in sync so admin analytics, marks
+                               // entry, and rankings immediately reflect classes/streams changed here
   renderConfigClasses();
 }
 function renderConfigClasses(){

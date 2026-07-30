@@ -123,12 +123,24 @@ function renderOverviewAnalytics(prefix, d){
 // ── ADMIN ANALYTICS ────────────────────────────────────────────
 async function loadAdminAnalytics(){
   const classSel = document.getElementById("admin-an-class-sel");
-  if(classSel.options.length<=1){
-    classSel.innerHTML = `<option value="">Overall School</option>` +
-      allClasses.map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
+  const streamSel = document.getElementById("admin-an-stream-sel");
+  const prevVal = classSel.value;
+  // Always rebuild the options — allClasses may have changed (new class added
+  // in Config) since the last time this page was opened.
+  classSel.innerHTML = `<option value="">Overall School</option>` +
+    allClasses.map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
+  if([...classSel.options].some(o=>o.value===prevVal)) classSel.value = prevVal;
+  if(!classSel._boundChange){
     classSel.addEventListener("change", onAdminAnalyticsClassChange);
+    classSel._boundChange = true;
   }
-  await fetchAndRenderAdminAnalytics();
+  if(!streamSel._boundChange){
+    // Previously nothing listened for stream changes, so picking a stream
+    // never refreshed the graph/cards at all.
+    streamSel.addEventListener("change", fetchAndRenderAdminAnalytics);
+    streamSel._boundChange = true;
+  }
+  onAdminAnalyticsClassChange();
 }
 function onAdminAnalyticsClassChange(){
   const classId = document.getElementById("admin-an-class-sel").value;
