@@ -1136,6 +1136,38 @@
   </div>
 </div>
 
+<!-- Edit Student Modal -->
+<div class="modal-backdrop" id="modal-edit-student" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Edit Student</div>
+    <div class="form-grid single">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" class="form-input" id="edit-student-name" placeholder="Student full name"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Class</label>
+        <select class="form-select" id="edit-student-class" onchange="onEditStudentClassChange()"></select>
+      </div>
+      <div class="form-group" id="edit-student-stream-group" style="display:none">
+        <label class="form-label">Stream (optional)</label>
+        <select class="form-select" id="edit-student-stream">
+          <option value="">— No stream / Overall —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Parent / Guardian Phone Number</label>
+        <input type="tel" class="form-input" id="edit-student-phone" placeholder="Leave blank to keep current phone"/>
+        <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Changing name or phone will regenerate the parent's login — but only if they haven't logged in for the first time yet.</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-edit-student')">Cancel</button>
+      <button class="btn btn-blue" id="confirm-edit-student">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ MODALS ══════════════ -->
 
 <!-- Force Password Change Modal -->

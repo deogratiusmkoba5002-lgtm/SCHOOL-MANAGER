@@ -55,12 +55,16 @@ function renderStudents(list){
     <tr>
       <td><input type="checkbox" class="student-row-check" data-id="${s.id}" ${selectedStudentIds.has(s.id)?"checked":""} onchange="toggleStudentSelect(${s.id},this)"></td>
       <td style="color:var(--muted);font-size:.8rem" title="Internal ID: ${s.id}">${s.display_id || s.id}</td>
-      <td style="font-weight:600">${s.name}</td>
+      <td style="font-weight:600">
+        ${s.name}
+        ${s.flag_reason ? `<span title="${escHtml(s.flag_reason)}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-left:6px;vertical-align:middle;cursor:help"></span>` : ""}
+      </td>
       <td><span class="badge badge-blue">${s.class_name}</span></td>
       <td>${s.stream_name ? `<span class="badge badge-grey">${s.stream_name}</span>` : '<span style="color:var(--muted);font-size:.8rem">—</span>'}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id},'${(s.display_id||s.id)}')">${reportSVG()} Report</button>
+          <button class="btn btn-sm btn-outline" onclick="openEditStudent(${s.id})">${editSVG()} Edit</button>
           <button class="btn btn-sm btn-red btn-icon" onclick="deleteStudent(${s.id},'${s.name}')">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
           </button>
@@ -504,3 +508,49 @@ async function confirmImport(){
   } catch(e){ toast("Import failed","error"); }
   finally { btn.textContent="Confirm Import"; btn.disabled=false; }
 }
+
+// ── EDIT STUDENT ─────────────────────────────────────────────
+let _editStudentId = null;
+function openEditStudent(id){
+  const s = allStudents.find(x=>x.id===id);
+  if(!s){ toast("Student not found in current list","error"); return; }
+  _editStudentId = id;
+  const sel = document.getElementById("edit-student-class");
+  sel.innerHTML = allClasses.map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
+  sel.value = s.class_id;
+  onEditStudentClassChange();
+  const streamSel = document.getElementById("edit-student-stream");
+  if(s.stream_id && [...streamSel.options].some(o=>o.value==s.stream_id)) streamSel.value = s.stream_id;
+  document.getElementById("edit-student-name").value = s.name;
+  document.getElementById("edit-student-phone").value = "";
+  document.getElementById("edit-student-phone").placeholder = s.flag_reason ? "No phone on file — add one" : "Leave blank to keep current phone";
+  openModal("modal-edit-student");
+}
+function onEditStudentClassChange(){
+  const class_id = parseInt(document.getElementById("edit-student-class").value);
+  const c = getClassById(class_id);
+  const grp = document.getElementById("edit-student-stream-group");
+  const streamSel = document.getElementById("edit-student-stream");
+  if(c && c.streams.length > 0){
+    streamSel.innerHTML = `<option value="">— No stream / Overall —</option>` +
+      c.streams.map(s=>`<option value="${s.id}">${s.stream_name}</option>`).join("");
+    grp.style.display="block";
+  } else { streamSel.innerHTML=""; grp.style.display="none"; }
+}
+document.getElementById("confirm-edit-student").addEventListener("click", async()=>{
+  const name = document.getElementById("edit-student-name").value.trim();
+  const class_id = parseInt(document.getElementById("edit-student-class").value);
+  const stream_id = document.getElementById("edit-student-stream").value || null;
+  const phoneRaw = document.getElementById("edit-student-phone").value.trim();
+  if(!name){ toast("Enter a student name","error"); return; }
+  const payload = {name, class_id, stream_id: stream_id?parseInt(stream_id):null};
+  if(phoneRaw) payload.phone_number = phoneRaw;
+  const r = await api(`/students/${_editStudentId}`,"PATCH",payload);
+  if(r.ok){
+    closeModal("modal-edit-student");
+    toast("Student updated!","success");
+    if(r.new_username){ openCredentialsModal(name, r.new_username, r.new_password); }
+    else if(r.note){ toast(r.note,"info"); }
+    loadStudents();
+  } else toast(r.error||"Failed","error");
+});

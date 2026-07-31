@@ -1041,6 +1041,7 @@ def init_db():
         "ALTER TABLE school_subjects ADD COLUMN IF NOT EXISTS is_noncredit INTEGER DEFAULT 0",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS school_student_no INTEGER",
         "ALTER TABLE term_tests ADD COLUMN IF NOT EXISTS all_classes INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS flag_reason TEXT DEFAULT NULL",
     ]
     
     for m in migrations:
@@ -1664,7 +1665,7 @@ def api_delete_stream(stream_id):
 def api_students():
     sid = g.school_id
     con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no
+    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no,s.flag_reason
                    FROM students s JOIN classes c ON s.class_id=c.id
                    LEFT JOIN streams st ON s.stream_id=st.id
                    WHERE s.school_id=%s ORDER BY c.class_name,st.stream_name,s.name""",(sid,))
@@ -1774,6 +1775,97 @@ def api_delete_student(student_id):
     cur.execute("DELETE FROM users WHERE school_id=%s AND student_id=%s AND role='parent'",(sid,student_id))
     cur.execute("DELETE FROM students WHERE id=%s AND school_id=%s",(student_id,sid))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
+
+@app.route("/api/students/<int:student_id>", methods=["PATCH"])
+@require_auth
+@require_role("admin")
+def api_update_student(student_id):
+    """Edits name/class/stream/phone. If the change touches name or phone AND
+    the parent hasn't logged in yet (must_change_password=1), regenerate their
+    username/password to match — no point mailing someone credentials for a
+    kid whose name just changed. If the parent already logged in, we leave
+    their credentials alone; changing a login someone's already using is how
+    you get a very confused parent and a support ticket."""
+    sid = g.school_id; d = request.json or {}
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT name,class_id,stream_id,phone_number FROM students WHERE id=%s AND school_id=%s",(student_id,sid))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Student not found"}),404
+    old_name, old_class_id, old_stream_id, old_phone = row
+
+    name = (d.get("name") if d.get("name") is not None else old_name).strip()
+    try:
+        class_id = int(d.get("class_id", old_class_id))
+    except (TypeError, ValueError):
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid class"}),400
+    sd = d.get("stream_id", old_stream_id)
+    stream_id = int(sd) if sd else None
+    phone = (d.get("phone_number") if d.get("phone_number") is not None else (old_phone or "")).strip()
+
+    if not name:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Name required"}),400
+    cur.execute("SELECT id FROM classes WHERE id=%s AND school_id=%s",(class_id,sid))
+    if not cur.fetchone():
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid class"}),400
+
+    cur.execute("""SELECT id FROM students WHERE school_id=%s AND LOWER(TRIM(name))=%s AND class_id=%s
+                   AND COALESCE(stream_id,0)=%s AND phone_number=%s AND id!=%s""",
+                (sid, name.lower(), class_id, stream_id or 0, phone, student_id))
+    if cur.fetchone():
+        cur.close(); con.close()
+        return jsonify({"ok":False,"error":"Another student with this name, class, stream and phone already exists"}),409
+
+    name_changed  = name.lower() != (old_name or "").strip().lower()
+    phone_changed = phone != (old_phone or "").strip()
+
+    cur.execute("""SELECT username, must_change_password FROM users
+                   WHERE school_id=%s AND student_id=%s AND role='parent'""",(sid, student_id))
+    parent_row = cur.fetchone()
+
+    new_username = new_password = cred_note = None
+
+    if parent_row and (name_changed or phone_changed):
+        old_username, must_change = parent_row
+        if must_change == 1 and phone:
+            gen_username = name.lower().replace(" ","_")
+            last4 = phone[-4:]
+            cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
+                           WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
+                        (gen_username, sid, student_id))
+            other_phones = [r[0] or "" for r in cur.fetchall()]
+            needs_suffix = any(ph.strip()!=phone and ph.strip()[-4:]==last4 for ph in other_phones)
+            new_password = f"{last4}-{student_id}" if needs_suffix else last4
+            new_username = gen_username
+            try:
+                cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1
+                               WHERE username=%s AND school_id=%s AND student_id=%s""",
+                            (new_username, hash_password(new_password), old_username, sid, student_id))
+            except psycopg2.errors.UniqueViolation:
+                con.rollback(); cur.close(); con.close()
+                return jsonify({"ok":False,"error":f"Can't regenerate login — username '{new_username}' is already taken"}),409
+            cred_note = "Parent hadn't logged in yet — credentials were regenerated to match."
+        else:
+            cred_note = "Name/phone updated. Parent already logged in once, so their existing login was left untouched."
+    elif not parent_row and phone:
+        gen_username, temp_pw = _gen_parent_creds(sid, name, phone, student_id)
+        try:
+            cur.execute("""INSERT INTO users(username,password,role,school_id,must_change_password,student_id)
+                           VALUES(%s,%s,'parent',%s,1,%s)""",
+                        (gen_username, hash_password(temp_pw), sid, student_id))
+            new_username, new_password = gen_username, temp_pw
+            cred_note = "Phone was missing before — a parent login was just created."
+        except psycopg2.errors.UniqueViolation:
+            con.rollback(); cur.close(); con.close()
+            return jsonify({"ok":False,"error":f"Can't create login — username '{gen_username}' already taken"}),409
+
+    flag_reason = "Missing parent phone — no parent login was created" if not phone else None
+
+    cur.execute("""UPDATE students SET name=%s, class_id=%s, stream_id=%s, phone_number=%s, flag_reason=%s
+                   WHERE id=%s AND school_id=%s""",
+                (name, class_id, stream_id, phone or None, flag_reason, student_id, sid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True,"new_username":new_username,"new_password":new_password,"note":cred_note})
 
 
 # ── TEACHERS ──────────────────────────────────────────────────
@@ -3764,7 +3856,9 @@ def api_import_students():
             student_id = cur.fetchone()[0]
             next_student_no += 1
             if not phone_clean:
-                flagged.append({"row":row_num,"name":name,"reason":"Missing parent phone — no parent login was created"})
+                reason = "Missing parent phone — no parent login was created"
+                flagged.append({"row":row_num,"name":name,"reason":reason})
+                cur.execute("UPDATE students SET flag_reason=%s WHERE id=%s",(reason,student_id))
                 cur.execute("RELEASE SAVEPOINT sp_student")
                 inserted += 1; existing_students.add(dup_key)
                 if inserted % 200 == 0: con.commit()
@@ -3784,8 +3878,9 @@ def api_import_students():
                 credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
                                     "parent_phone":phone_clean,"username":username_base,"password":temp_pw})
             else:
-                flagged.append({"row":row_num,"name":name,
-                                "reason":f"Login username '{username_base}' already taken by another student with the same name"})
+                reason = f"Login username '{username_base}' already taken by another student with the same name"
+                flagged.append({"row":row_num,"name":name,"reason":reason})
+                cur.execute("UPDATE students SET flag_reason=%s WHERE id=%s",(reason,student_id))
             if inserted % 200 == 0: con.commit()
         except Exception as e:
             cur.execute("ROLLBACK TO SAVEPOINT sp_student")
