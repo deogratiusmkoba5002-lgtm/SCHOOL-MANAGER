@@ -20,6 +20,56 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from functools import wraps
+from flask import g
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY env var is required. Generate one with "
+                        "`python -c \"import secrets;print(secrets.token_hex(32))\"` and set it.")
+_serializer = URLSafeTimedSerializer(SECRET_KEY, salt="schoolmanager-session")
+SESSION_MAX_AGE = 12 * 3600  # 12h — matches a normal school work day
+
+def issue_token(username, school_id, role, student_id=None, is_class_teacher=False, class_id=None, stream_id=None):
+    return _serializer.dumps({
+        "username": username, "school_id": school_id, "role": role,
+        "student_id": student_id, "is_class_teacher": is_class_teacher,
+        "class_id": class_id, "stream_id": stream_id,
+    })
+
+def require_auth(f):
+    """Verifies the Bearer token and sets g.username / g.school_id / g.role etc.
+    school_id now comes ONLY from the signed token — never from a header the
+    client can freely change."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth.startswith("Bearer ") else request.args.get("token")
+        if not token:
+            return jsonify({"ok": False, "error": "Authentication required"}), 401
+        try:
+            data = _serializer.loads(token, max_age=SESSION_MAX_AGE)
+        except SignatureExpired:
+            return jsonify({"ok": False, "error": "Session expired, please log in again"}), 401
+        except BadSignature:
+            return jsonify({"ok": False, "error": "Invalid session"}), 401
+        g.username = data["username"]; g.school_id = data["school_id"]; g.role = data["role"]
+        g.student_id = data.get("student_id"); g.is_class_teacher = data.get("is_class_teacher", False)
+        g.class_id = data.get("class_id"); g.stream_id = data.get("stream_id")
+        return f(*args, **kwargs)
+    return wrapper
+
+def require_role(*roles):
+    def deco(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if g.role not in roles:
+                return jsonify({"ok": False, "error": "Forbidden"}), 403
+            return f(*args, **kwargs)
+        return wrapper
+    return deco
+
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 DATABASE_URL  = os.environ.get("DATABASE_URL", "")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "storage", "uploads")
@@ -570,6 +620,7 @@ def _compute_subject_series(school_id, class_id, stream_id, subject):
     return points, name_map
 
 @app.route("/api/tests", methods=["GET"])
+@require_auth
 def api_get_tests():
     sid = school_id_from_header(); term_id = request.args.get("term_id")
     class_id = request.args.get("class_id")
@@ -587,6 +638,8 @@ def api_get_tests():
     return jsonify(tests)
 
 @app.route("/api/tests", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_create_test():
     sid = school_id_from_header(); d = request.json or {}
     term_id = d.get("term_id"); label = (d.get("label") or "").strip()
@@ -604,8 +657,9 @@ def api_create_test():
     return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/tests/<int:tid>", methods=["DELETE"])
+@require_auth
 def api_delete_test(tid):
-    sid = school_id_from_header()
+    sid = g.school_id
     con=get_db(); cur=con.cursor()
     cur.execute("DELETE FROM test_scores WHERE school_id=%s AND test_id=%s",(sid,tid))
     cur.execute("DELETE FROM published_assessments WHERE school_id=%s AND assess_key=%s",(sid,f"test:{tid}"))
@@ -615,17 +669,15 @@ def api_delete_test(tid):
     return jsonify({"ok":True})
 
 @app.route("/api/marks/test", methods=["POST"])
+@require_auth
 def api_enter_test():
-    sid = school_id_from_header(); d = request.json
-    username=d.get("username",""); subject=d.get("subject","").lower().strip()
+    sid = g.school_id; d = request.json
+    username = g.username
+    subject=d.get("subject","").lower().strip()
     class_id=int(d.get("class_id")); stream_id=d.get("stream_id") or None
     student_id=int(d.get("student_id")); test_id=int(d.get("test_id")); score=float(d.get("score"))
     if not (0<=score<=100): return jsonify({"ok":False,"error":"Score must be 0-100"}),400
-    con=get_db(); cur=con.cursor()
-    cur.execute("SELECT role FROM users WHERE username=%s AND school_id=%s",(username,sid))
-    u=cur.fetchone(); cur.close(); con.close()
-    if not u: return jsonify({"ok":False,"error":"User not found"}),403
-    if u[0]=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
+    if g.role=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
         return jsonify({"ok":False,"error":"Access denied"}),403
     con=get_db(); cur=con.cursor()
     cur.execute("SELECT term_id, all_classes FROM term_tests WHERE id=%s AND school_id=%s",(test_id,sid))
@@ -1285,7 +1337,9 @@ def api_login():
     user = dict(zip(cols, row))
     if not verify_password(p, user["password"]):
         return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
-    return jsonify({"ok":True,"user":{
+    token = issue_token(user["username"], school_id, user["role"], user.get("student_id"),
+                         bool(user.get("is_class_teacher", 0)), user.get("class_id"), user.get("stream_id"))
+    return jsonify({"ok":True,"token":token,"user":{
         "username":             user["username"],
         "role":                 user["role"],
         "school_id":            school_id,
@@ -1334,10 +1388,11 @@ def api_setup_admin():
     return jsonify({"ok":True,"school_id":1})
 
 @app.route("/api/change_password", methods=["POST"])
+@require_auth
 def api_change_password():
     d = request.json
-    username  = d.get("username","").strip()
-    school_id = d.get("school_id") or school_id_from_header()
+    username  = g.username       # can only ever change YOUR OWN password now
+    school_id = g.school_id
     old_pw    = d.get("old_password","")
     new_pw    = d.get("new_password","").strip()
     if len(new_pw) < 6: return jsonify({"ok":False,"error":"Password must be at least 6 characters"}), 400
@@ -1358,8 +1413,9 @@ def serve_logo(filename):
 
 # ── SUBJECTS / GRADES ─────────────────────────────────────────
 @app.route("/api/subjects", methods=["GET"])
+@require_auth
 def api_get_subjects():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id,name,abbreviation,sort_order FROM school_subjects WHERE school_id=%s ORDER BY sort_order,name",(sid,))
     rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
@@ -1367,8 +1423,10 @@ def api_get_subjects():
     return jsonify([{"id":i,"name":n,"abbreviation":_FALLBACK_ABBR.get(n,n[:4].upper()),"sort_order":i} for i,n in enumerate(_FALLBACK_SUBJECTS)])
 
 @app.route("/api/subjects", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_save_subjects():
-    sid = school_id_from_header(); subjects = request.json.get("subjects",[])
+    sid = g.school_id; subjects = request.json.get("subjects",[])
     con = get_db(); cur = con.cursor()
     cur.execute("DELETE FROM school_subjects WHERE school_id=%s",(sid,))
     for i,s in enumerate(subjects):
@@ -1379,8 +1437,9 @@ def api_save_subjects():
     return jsonify({"ok":True})
 
 @app.route("/api/grades", methods=["GET"])
+@require_auth
 def api_get_grades():
-    return jsonify(get_grade_rules(school_id_from_header()))
+    return jsonify(get_grade_rules(g.school_id))
 
 def get_school_grading_settings(school_id):
     con=get_db(); cur=con.cursor()
@@ -1481,8 +1540,10 @@ def compute_division_from_finals(school_id, finals, grading_system=None, divisio
     return total, "0"
 
 @app.route("/api/grades", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_save_grades():
-    sid = school_id_from_header(); grades = request.json.get("grades",[])
+    sid = g.school_id; grades = request.json.get("grades",[])
     con = get_db(); cur = con.cursor()
     cur.execute("DELETE FROM grade_config WHERE school_id=%s",(sid,))
     for i,g in enumerate(grades):
@@ -1492,16 +1553,19 @@ def api_save_grades():
     return jsonify({"ok":True})
 
 @app.route("/api/config/grading_system", methods=["GET"])
+@require_auth
 def api_get_grading_system():
-    sid = school_id_from_header()
+    sid = g.school_id
     s = get_school_grading_settings(sid)
     s["principal_subjects"] = get_principal_subjects(sid)
     s["non_credit_subjects"] = get_noncredit_subjects(sid)
     return jsonify(s)
 
 @app.route("/api/config/grading_system", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_set_grading_system():
-    sid = school_id_from_header(); d = request.json or {}
+    sid = g.school_id; d = request.json or {}
     grading_system = d.get("grading_system")
     division_source = d.get("division_source")
     if grading_system not in ("o_level","a_level"):
@@ -1530,8 +1594,9 @@ def api_set_grading_system():
 
 # ── CLASSES ───────────────────────────────────────────────────
 @app.route("/api/classes", methods=["GET"])
+@require_auth
 def api_get_classes():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY class_name",(sid,))
     classes = to_dicts(cur.fetchall(), cur); result = []
@@ -1541,8 +1606,10 @@ def api_get_classes():
     cur.close(); con.close(); return jsonify(result)
 
 @app.route("/api/classes", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_add_class():
-    sid = school_id_from_header(); name = request.json.get("class_name","").strip()
+    sid = g.school_id; name = request.json.get("class_name","").strip()
     if not name: return jsonify({"ok":False,"error":"Class name required"}),400
     con = get_db(); cur = con.cursor()
     try:
@@ -1553,8 +1620,10 @@ def api_add_class():
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/classes/<int:cid>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
 def api_delete_class(cid):
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s AND class_id=%s",(sid,cid))
     if cur.fetchone()[0]>0:
@@ -1564,8 +1633,10 @@ def api_delete_class(cid):
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/classes/<int:cid>/streams", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_add_stream(cid):
-    sid = school_id_from_header(); name = request.json.get("stream_name","").strip()
+    sid = g.school_id; name = request.json.get("stream_name","").strip()
     if not name: return jsonify({"ok":False,"error":"Stream name required"}),400
     con = get_db(); cur = con.cursor()
     try:
@@ -1576,8 +1647,10 @@ def api_add_stream(cid):
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/streams/<int:stream_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
 def api_delete_stream(stream_id):
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s AND stream_id=%s",(sid,stream_id))
     if cur.fetchone()[0]>0:
@@ -1587,8 +1660,9 @@ def api_delete_stream(stream_id):
 
 # ── STUDENTS ──────────────────────────────────────────────────
 @app.route("/api/students", methods=["GET"])
+@require_auth
 def api_students():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no
                    FROM students s JOIN classes c ON s.class_id=c.id
@@ -1599,8 +1673,10 @@ def api_students():
     return jsonify(rows)
 
 @app.route("/api/students", methods=["POST"])
+@require_auth
+@require_role("admin","teacher")
 def api_add_student():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     name=d.get("name","").strip(); class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
     phone=d.get("phone_number","").strip()
     if not name or not class_id: return jsonify({"ok":False,"error":"Name and class required"}),400
@@ -1653,8 +1729,9 @@ def _gen_parent_creds(school_id, student_name, phone_number, student_id):
     return username, temp_pw
 
 @app.route("/api/students/resolve_display_id", methods=["GET"])
+@require_auth
 def api_resolve_display_id():
-    sid = school_id_from_header()
+    sid = g.school_id
     no = request.args.get("no")
     if not no: return jsonify({"ok":False,"error":"Missing student number"}),400
     try: no = int(no)
@@ -1666,8 +1743,9 @@ def api_resolve_display_id():
     return jsonify({"ok":True,"id":row[0]})
 
 @app.route("/api/students/bulk_delete", methods=["POST"])
+@require_auth
 def api_bulk_delete_students():
-    sid = school_id_from_header(); ids = request.json.get("ids", [])
+    sid = g.school_id; ids = request.json.get("ids", [])
     try: ids = [int(i) for i in ids]
     except (TypeError, ValueError): return jsonify({"ok":False,"error":"Invalid student IDs"}),400
     if not ids: return jsonify({"ok":False,"error":"No students selected"}),400
@@ -1685,8 +1763,9 @@ def api_bulk_delete_students():
     return jsonify({"ok":True,"deleted":len(valid_ids)})
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
+@require_auth
 def api_delete_student(student_id):
-    sid = school_id_from_header()
+    sid = g.school_id;
     con = get_db(); cur = con.cursor()
     cur.execute("DELETE FROM announcement_reads WHERE student_id=%s",(student_id,))
     cur.execute("DELETE FROM remarks WHERE school_id=%s AND student_id=%s",(sid,student_id))
@@ -1699,8 +1778,9 @@ def api_delete_student(student_id):
 
 # ── TEACHERS ──────────────────────────────────────────────────
 @app.route("/api/teachers", methods=["GET"])
+@require_auth
 def api_get_teachers():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT u.username,u.is_class_teacher,u.class_id,u.stream_id,u.must_change_password,
                           c.class_name,st.stream_name
@@ -1718,8 +1798,10 @@ def api_get_teachers():
     cur.close(); con.close(); return jsonify(result)
 
 @app.route("/api/teachers", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_create_teacher():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     username=d.get("username","").strip(); password=d.get("password","")
     if not username or not password: return jsonify({"ok":False,"error":"Username and password required"}),400
     con = get_db(); cur = con.cursor()
@@ -1733,16 +1815,20 @@ def api_create_teacher():
     cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/teachers/<username>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
 def api_delete_teacher(username):
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("DELETE FROM subject_assignments WHERE school_id=%s AND username=%s",(sid,username))
     cur.execute("DELETE FROM users WHERE username=%s AND role='teacher' AND school_id=%s",(username,sid))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/teachers/<username>/class_teacher", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_set_class_teacher(username):
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     is_ct=bool(d.get("is_class_teacher",False)); class_id=d.get("class_id") or None; stream_id=d.get("stream_id") or None
     if is_ct and not class_id: return jsonify({"ok":False,"error":"Class required"}),400
     con = get_db(); cur = con.cursor()
@@ -1751,8 +1837,10 @@ def api_set_class_teacher(username):
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/assign_teacher", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_assign_teacher():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     username=d.get("username",""); subject=d.get("subject","").lower().strip()
     class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
     con = get_db(); cur = con.cursor()
@@ -1765,8 +1853,10 @@ def api_assign_teacher():
     cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/unassign_teacher", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_unassign_teacher():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     username=d.get("username",""); subject=d.get("subject","").lower()
     class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
     con = get_db(); cur = con.cursor()
@@ -1780,20 +1870,24 @@ def api_unassign_teacher():
 
 # ── TERMS ──────────────────────────────────────────────────────
 @app.route("/api/terms", methods=["GET"])
+@require_auth
 def api_get_terms():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT * FROM terms WHERE school_id=%s ORDER BY id DESC",(sid,))
     rows = to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/terms/active", methods=["GET"])
+@require_auth
 def api_active_term():
-    sid = school_id_from_header(); t = get_active_term(sid)
+    sid = g.school_id; t = get_active_term(sid)
     return jsonify({"ok":bool(t),"term":t})
 
 @app.route("/api/terms", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_create_term():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     label=d.get("label","").strip(); ca_count=int(d.get("ca_count",2))
     ca_weight=int(d.get("ca_weight",30)); ex_weight=int(d.get("exam_weight",70))
     if not label: return jsonify({"ok":False,"error":"Term label required"}),400
@@ -1806,8 +1900,10 @@ def api_create_term():
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/terms/<int:tid>", methods=["PATCH"])
+@require_auth
+@require_role("admin")
 def api_update_term(tid):
-    sid = school_id_from_header(); d = request.json or {}
+    sid = g.school_id; d = request.json or {}
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT status FROM terms WHERE id=%s AND school_id=%s",(tid,sid))
     row = cur.fetchone()
@@ -1847,8 +1943,10 @@ def api_update_term(tid):
     return jsonify({"ok":True})
 
 @app.route("/api/terms/<int:tid>/close", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_close_term(tid):
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT status FROM terms WHERE id=%s AND school_id=%s",(tid,sid))
     row = cur.fetchone()
@@ -1859,17 +1957,15 @@ def api_close_term(tid):
 
 # ── MARKS ─────────────────────────────────────────────────────
 @app.route("/api/marks/ca", methods=["POST"])
+@require_auth
 def api_enter_ca():
-    sid = school_id_from_header(); d = request.json
-    username=d.get("username",""); subject=d.get("subject","").lower().strip()
+    sid = g.school_id; d = request.json
+    username = g.username  # no longer trusts the body
+    subject=d.get("subject","").lower().strip()
     class_id=int(d.get("class_id")); stream_id=d.get("stream_id") or None
     student_id=int(d.get("student_id")); ca_name=d.get("ca_name",""); score=float(d.get("score"))
     if not (0<=score<=100): return jsonify({"ok":False,"error":"Score must be 0-100"}),400
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT role FROM users WHERE username=%s AND school_id=%s",(username,sid))
-    u = cur.fetchone(); cur.close(); con.close()
-    if not u: return jsonify({"ok":False,"error":"User not found"}),403
-    if u[0]=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
+    if g.role=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
         return jsonify({"ok":False,"error":"Access denied"}),403
     term = get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No active term"}),400
@@ -1882,17 +1978,15 @@ def api_enter_ca():
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/marks/exam", methods=["POST"])
+@require_auth
 def api_enter_exam():
-    sid = school_id_from_header(); d = request.json
-    username=d.get("username",""); subject=d.get("subject","").lower().strip()
+    sid = g.school_id; d = request.json
+    username = g.username
+    subject=d.get("subject","").lower().strip()
     class_id=int(d.get("class_id")); stream_id=d.get("stream_id") or None
     student_id=int(d.get("student_id")); score=float(d.get("score"))
     if not (0<=score<=100): return jsonify({"ok":False,"error":"Score must be 0-100"}),400
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT role FROM users WHERE username=%s AND school_id=%s",(username,sid))
-    u = cur.fetchone(); cur.close(); con.close()
-    if not u: return jsonify({"ok":False,"error":"User not found"}),403
-    if u[0]=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
+    if g.role=="teacher" and not teacher_can_access(sid,username,subject,class_id,stream_id):
         return jsonify({"ok":False,"error":"Access denied"}),403
     term = get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No active term"}),400
@@ -1904,11 +1998,11 @@ def api_enter_exam():
                 (sid,student_id,subject,score,username,term["id"]))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
-
 # ── CONFIG ─────────────────────────────────────────────────────
 @app.route("/api/config", methods=["GET"])
+@require_auth
 def api_config():
-    sid = school_id_from_header(); term = get_active_term(sid)
+    sid = g.school_id; term = get_active_term(sid)
     subjects = get_subjects(sid); subj_map = get_subject_map(sid)
     info = {k: get_config_val(sid,k,"") for k in ["school_name","phone","email","admin_phone","motto","logo_path"]}
     return jsonify({"allowed_subjects":subjects,"subject_abbr":subj_map,"active_term":term,
@@ -1916,22 +2010,28 @@ def api_config():
                     "school_info":info,"grade_rules":get_grade_rules(sid)})
 
 @app.route("/api/config/school_name", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_set_school_name():
-    sid = school_id_from_header(); name = request.json.get("school_name","").strip()
+    sid = g.school_id; name = request.json.get("school_name","").strip()
     if not name: return jsonify({"ok":False,"error":"Name cannot be empty"}),400
     set_config_val(sid,"school_name",name); return jsonify({"ok":True})
 
 @app.route("/api/config/reg_code", methods=["GET"])
+@require_auth
+@require_role("admin")
 def api_get_reg_code():
-    sid = school_id_from_header()
+    sid = g.school_id()
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT reg_code FROM schools WHERE id=%s", (sid,))
     row = cur.fetchone(); cur.close(); con.close()
     return jsonify({"reg_code": row[0] if row else ""})
 
 @app.route("/api/config/reg_code", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_set_reg_code():
-    sid = school_id_from_header()
+    sid = g.school_id
     new_code = ((request.json or {}).get("reg_code") or "").strip()
     if not valid_reg_code(new_code):
         return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
@@ -1945,8 +2045,10 @@ def api_set_reg_code():
     return jsonify({"ok":True,"reg_code":new_code})
 
 @app.route("/api/config/school_info", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_set_school_info():
-    sid = school_id_from_header(); d = request.json
+    sid = g.school_id; d = request.json
     for key in ["school_name","phone","email","admin_phone","motto"]:
         val = d.get(key)
         if val is not None: set_config_val(sid, key, val.strip())
@@ -1954,8 +2056,10 @@ def api_set_school_info():
 
 # ── REPORT CARD ───────────────────────────────────────────────
 @app.route("/api/report/<int:student_id>", methods=["GET"])
+@require_auth
+@require_role("parent","admin","class_teacher")
 def api_report(student_id):
-    sid = school_id_from_header(); subjects = get_subjects(sid)
+    sid = g.school_id; subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no
@@ -2015,9 +2119,10 @@ def api_report(student_id):
 
 # ── REMARKS ───────────────────────────────────────────────────
 @app.route("/api/remarks", methods=["POST"])
+@require_auth
 def api_remarks():
-    sid = school_id_from_header(); d = request.json
-    username=d.get("username",""); role=d.get("role",""); is_ct=d.get("is_class_teacher",False)
+    sid = g.school_id; d = request.json
+    username = g.username; role = g.role; is_ct=d.get("is_class_teacher",False)
     student_id=int(d.get("student_id")); remark=d.get("remark","").strip()
     term = get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No active term"}),400
@@ -2042,8 +2147,9 @@ def api_remarks():
 
 # ── RANKINGS ──────────────────────────────────────────────────
 @app.route("/api/ranking/subject", methods=["GET"])
+@require_auth
 def api_subject_ranking():
-    sid=school_id_from_header(); subject=request.args.get("subject","").lower()
+    sid=g.school_id; subject=request.args.get("subject","").lower()
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
     assess=request.args.get("assess","exam"); term_id=request.args.get("term_id")
     if not term_id:
@@ -2074,8 +2180,9 @@ def api_subject_ranking():
 # ── ANALYTICS ROUTES ───────────────────────────────────────────
 @app.route("/api/analytics/overview", methods=["GET"])
 @subscription_required
+@require_auth
 def api_analytics_overview():
-    sid = school_id_from_header()
+    sid = g.school_id
     username  = request.args.get("username", "")
     role      = request.args.get("role", "")
     class_id  = request.args.get("class_id") or None
@@ -2112,8 +2219,9 @@ def api_analytics_overview():
 
 @app.route("/api/analytics/subject", methods=["GET"])
 @subscription_required
+@require_auth
 def api_analytics_subject():
-    sid       = school_id_from_header()
+    sid       = g.school_id
     username  = request.args.get("username", "")
     role      = request.args.get("role", "")
     subject   = request.args.get("subject", "").lower().strip()
@@ -2132,8 +2240,10 @@ def api_analytics_subject():
 
 @app.route("/api/analytics/dashboard_classes", methods=["GET"])
 @subscription_required
+@require_auth
+@require_role("admin")
 def api_analytics_dashboard_classes():
-    sid = school_id_from_header()
+    sid = g.school_id
     subjects = get_subjects(sid)
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id,class_name FROM classes WHERE school_id=%s ORDER BY class_name", (sid,))
@@ -2151,8 +2261,9 @@ def api_analytics_dashboard_classes():
 
 # ── SCORE SHEETS ──────────────────────────────────────────────
 @app.route("/api/scoresheet", methods=["GET"])
+@require_auth
 def api_scoresheet():
-    sid=school_id_from_header(); subjects=get_subjects(sid)
+    sid=g.school_id; subjects=get_subjects(sid)
     mode=request.args.get("mode","ca"); class_id=request.args.get("class_id")
     stream_id=request.args.get("stream_id") or None; ca_name=request.args.get("ca_name","CA1")
     term_id=request.args.get("term_id")
@@ -2257,8 +2368,9 @@ def api_scoresheet():
 
 # ── ANNOUNCEMENTS ─────────────────────────────────────────────
 @app.route("/api/announcements", methods=["GET"])
+@require_auth
 def api_get_announcements():
-    sid=school_id_from_header(); student_id=request.args.get("student_id")
+    sid=g.school_id; student_id=request.args.get("student_id")
     con=get_db(); cur=con.cursor()
     if student_id:
         stid=int(student_id)
@@ -2279,8 +2391,10 @@ def api_get_announcements():
 
 @app.route("/api/announcements", methods=["POST"])
 @subscription_required
+@require_auth
+@require_role("admin")
 def api_post_announcement():
-    sid=school_id_from_header(); d=request.json
+    sid=g.school_id; d=request.json
     title=d.get("title","").strip(); body=d.get("body","").strip()
     posted_by=d.get("posted_by",""); target_classes=(d.get("target_classes") or "all").strip() or "all"
     if not title or not body: return jsonify({"ok":False,"error":"Title and body required"}),400
@@ -2291,13 +2405,16 @@ def api_post_announcement():
     return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/announcements/<int:aid>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
 def api_delete_announcement(aid):
-    sid=school_id_from_header()
+    sid=g.school_id
     con=get_db(); cur=con.cursor()
     cur.execute("DELETE FROM announcements WHERE id=%s AND school_id=%s",(aid,sid))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/announcements/<int:aid>/read", methods=["POST"])
+@require_auth
 def api_mark_announcement_read(aid):
     student_id=request.json.get("student_id")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
@@ -2307,8 +2424,9 @@ def api_mark_announcement_read(aid):
 
 # ── RESULTS PUBLISHING ────────────────────────────────────────
 @app.route("/api/results/status", methods=["GET"])
+@require_auth
 def api_results_status():
-    sid=school_id_from_header(); term_id=request.args.get("term_id")
+    sid=g.school_id; term_id=request.args.get("term_id")
     if not term_id:
         term=get_active_term(sid)
         if not term: return jsonify({"published":False,"term":None,"term_id":None})
@@ -2320,8 +2438,9 @@ def api_results_status():
     return jsonify({"published":bool(row[0]) if row else False,"term":get_term_by_id(sid,term_id),"term_id":term_id})
 
 @app.route("/api/results/toggle", methods=["POST"])
+@require_auth
 def api_toggle_results():
-    sid=school_id_from_header(); d=request.json
+    sid=g.school_id; d=request.json
     term_id=d.get("term_id"); publish=bool(d.get("publish",True))
     if publish and not is_subscribed(sid):
         return jsonify({"ok": False, "error": "subscription_required",
@@ -2334,8 +2453,9 @@ def api_toggle_results():
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True,"published":publish})
 
 @app.route("/api/results/assessments", methods=["GET"])
+@require_auth
 def api_list_assessments_for_publish():
-    sid = school_id_from_header(); term_id = request.args.get("term_id")
+    sid = g.school_id; term_id = request.args.get("term_id")
     if not term_id:
         term = get_active_term(sid)
         if not term: return jsonify({"ok":True,"assessments":[]})
@@ -2356,8 +2476,9 @@ def api_list_assessments_for_publish():
     return jsonify({"ok":True,"term_id":term_id,"assessments":result})
 
 @app.route("/api/results/publish_assessments", methods=["POST"])
+@require_auth
 def api_publish_assessments():
-    sid = school_id_from_header(); d = request.json or {}
+    sid = g.school_id; d = request.json or {}
     term_id = d.get("term_id"); keys = d.get("assess_keys") or []; publish = bool(d.get("publish", True))
     if publish and not is_subscribed(sid):
         return jsonify({"ok":False,"error":"subscription_required","message":"Publishing results requires an active subscription."}),402
@@ -2372,8 +2493,9 @@ def api_publish_assessments():
 
 # ── PARENT PORTAL ─────────────────────────────────────────────
 @app.route("/api/parent/terms", methods=["GET"])
+@require_auth
 def api_parent_terms():
-    sid=school_id_from_header()
+    sid=g.school_id
     con=get_db(); cur=con.cursor()
     # A term shows up here if EITHER the legacy whole-term publish switch is
     # on, OR at least one individual assessment has been published via the
@@ -2390,8 +2512,10 @@ def api_parent_terms():
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/parent/results", methods=["GET"])
+@require_auth
+@require_role("parent")
 def api_parent_results():
-    sid=school_id_from_header(); subjects=get_subjects(sid)
+    sid=g.school_id; subjects=get_subjects(sid)
     student_id=request.args.get("student_id"); term_id=request.args.get("term_id"); assess=request.args.get("assess")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
     if assess:
@@ -2506,8 +2630,9 @@ def api_parent_results():
 
 # ── PLATFORM ANNOUNCEMENTS (school-side) ──────────────────────
 @app.route("/api/platform_announcements", methods=["GET"])
+@require_auth
 def api_platform_announcements():
-    sid=school_id_from_header()
+    sid=g.school_id
     con=get_db(); cur=con.cursor()
     cur.execute("""SELECT pa.id,pa.title,pa.body,CAST(pa.posted_at AS TEXT) as posted_at,
                           CASE WHEN par.school_id IS NOT NULL THEN 1 ELSE 0 END AS is_read
@@ -2518,15 +2643,18 @@ def api_platform_announcements():
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/platform_announcements/<int:aid>/read", methods=["POST"])
+@require_auth
 def api_platform_announcement_read(aid):
-    sid=school_id_from_header()
+    sid=g.school_id
     con=get_db(); cur=con.cursor()
     cur.execute("INSERT INTO platform_announcement_reads(announcement_id,school_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(aid,sid))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 @app.route("/api/subscription/status", methods=["GET"])
+@require_auth
+@require_role("admin")
 def api_subscription_status():
-    sid = school_id_from_header()
+    sid = g.school_id
     _expire_stale_payment_requests(sid)
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT subscription_exempt, subscription_status, subscription_plan, subscription_expires_at FROM schools WHERE id=%s", (sid,))
@@ -2563,8 +2691,10 @@ def api_subscription_status():
                      "pending_request": pending_request,
                      "last_decision": last_decision})
 @app.route("/api/subscription/select_free", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_select_free_plan():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("""UPDATE schools SET subscription_status='active', subscription_plan='free',
                    subscription_expires_at=%s WHERE id=%s""",
@@ -2573,8 +2703,10 @@ def api_select_free_plan():
     return jsonify({"ok": True})
 
 @app.route("/api/subscription/request", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_submit_payment_request():
-    sid = school_id_from_header()
+    sid = g.school_id
     _expire_stale_payment_requests(sid)
     d = request.json or {}
     plan = d.get("plan", "")
@@ -2620,8 +2752,10 @@ def api_submit_payment_request():
     return jsonify({"ok": True, "id": new_id})
 
 @app.route("/api/subscription/request/cancel", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_cancel_payment_request():
-    sid = school_id_from_header()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM payment_requests WHERE school_id=%s AND status='pending' ORDER BY id DESC LIMIT 1", (sid,))
     row = cur.fetchone()
@@ -2734,8 +2868,9 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
 
 @app.route("/api/pdf/report/<int:sid>", methods=["GET"])
 @subscription_required
+@require_auth
 def pdf_report(sid):
-    school_id=school_id_from_header(); subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
+    school_id=g.school_id; subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
     term_id=request.args.get("term_id")
     con=get_db(); cur=con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
@@ -2833,8 +2968,9 @@ def pdf_report(sid):
 
 @app.route("/api/pdf/ca_sheet", methods=["GET"])
 @subscription_required
+@require_auth
 def pdf_ca_sheet():
-    school_id=school_id_from_header(); subjects=get_subjects(school_id)
+    school_id=g.school_id; subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
     ca_name=request.args.get("ca_name","CA1"); term_id=request.args.get("term_id")
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
@@ -2865,8 +3001,9 @@ def pdf_ca_sheet():
 
 @app.route("/api/pdf/grade_sheet", methods=["GET"])
 @subscription_required
+@require_auth
 def pdf_grade_sheet():
-    school_id=school_id_from_header(); subjects=get_subjects(school_id)
+    school_id=g.school_id; subjects=get_subjects(school_id)
     mode=request.args.get("mode","ca")
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
     ca_name=request.args.get("ca_name","CA1"); term_id=request.args.get("term_id")
@@ -2951,8 +3088,9 @@ def pdf_grade_sheet():
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
 @subscription_required
+@require_auth
 def pdf_terminal_sheet():
-    school_id=school_id_from_header(); subjects=get_subjects(school_id)
+    school_id=g.school_id; subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None; term_id=request.args.get("term_id")
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
     if not term: return jsonify({"error":"No term"}),400
@@ -3187,8 +3325,10 @@ def serve_logo_static(filename):
     return send_from_directory(os.path.join(UPLOAD_FOLDER,"logos"),filename)
 
 @app.route("/api/config/logo", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_upload_logo():
-    school_id = school_id_from_header()
+    school_id = g.school_id
     if "logo" not in request.files:
         return jsonify({"ok":False,"error":"No logo file uploaded"}), 400
     f = request.files["logo"]
@@ -3324,10 +3464,49 @@ def _build_class_map(school_id):
             cmap[ckey]["_streams"][skey] = (cid, sid)
     return cmap
 
+_NUM_WORDS = {"one":"1","two":"2","three":"3","four":"4","five":"5","six":"6",
+              "seven":"7","eight":"8","nine":"9","ten":"10","i":"1","ii":"2","iii":"3","iv":"4","v":"5"}
+
+def _normalize_class_key(s):
+    """Loose match key: lowercase, strip punctuation, collapse spaces, and turn
+    spelled-out numbers ('form one') into digits ('form 1') so 'Form 1' and
+    'FORM ONE' compare equal without the admin retyping anything."""
+    if not s: return ""
+    s = re.sub(r'[^a-z0-9\s]', ' ', str(s).strip().lower())
+    s = re.sub(r'\s+', ' ', s).strip()
+    return ' '.join(_NUM_WORDS.get(w, w) for w in s.split(' '))
+
+def _resolve_class_stream(class_name, stream_name, cmap, mapping=None):
+    """Resolve raw text from an import file to (class_id, stream_id, error).
+    Tries an admin-supplied mapping first, then a loose normalized match,
+    else returns an error string explaining what needs matching."""
+    mapping = mapping or {"classes": {}, "streams": {}}
+    resolved_class = (mapping["classes"].get(class_name.strip()) or class_name).strip()
+    ckey = resolved_class.lower()
+    if ckey not in cmap:
+        norm = _normalize_class_key(resolved_class)
+        ckey = next((k for k in cmap if _normalize_class_key(k) == norm), ckey)
+    if ckey not in cmap:
+        return None, None, f"Class '{class_name}' not found — match it in the mapping step"
+    class_id = cmap[ckey]["_id"]; stream_id = None
+    if stream_name:
+        streams = cmap[ckey]["_streams"]
+        resolved_stream = (mapping["streams"].get(f"{class_name.strip()}::{stream_name.strip()}") or stream_name).strip()
+        skey = resolved_stream.lower()
+        if skey not in streams:
+            norm = _normalize_class_key(resolved_stream)
+            skey = next((k for k in streams if _normalize_class_key(k) == norm), skey)
+        if skey not in streams:
+            return class_id, None, f"Stream '{stream_name}' not found in '{resolved_class}' — match it in the mapping step"
+        class_id, stream_id = streams[skey]
+    return class_id, stream_id, None
+
 @app.route("/api/students/import/template", methods=["GET"])
+@require_auth
+@require_role("admin")
 def api_import_template():
     """Download a pre-filled Excel template."""
-    school_id = school_id_from_header()
+    school_id = g.school_id
     if not OPENPYXL_AVAILABLE:
         # Fallback: return CSV template
         csv_content = "name,class_name,stream_name,parent_phone\nJuma Hassan,Form 1,A,0712345678\nFatuma Ally,Form 1,B,0754987654\n"
@@ -3418,9 +3597,10 @@ def api_import_template():
                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 @app.route("/api/students/import/preview", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_import_preview():
-    """Parse file, return first 10 rows for preview without inserting."""
-    school_id = school_id_from_header()
+    school_id = g.school_id
     if "file" not in request.files:
         return jsonify({"ok":False,"error":"No file uploaded"}), 400
     f = request.files["file"]
@@ -3430,20 +3610,35 @@ def api_import_preview():
         return jsonify({"ok":False,"error":str(e)}), 400
     if not rows:
         return jsonify({"ok":False,"error":"File is empty or has no data rows"}), 400
+
     cmap = _build_class_map(school_id)
-    preview = []; warnings = []
-    for i, row in enumerate(rows[:10]):
+    unmatched_classes = {}
+    unmatched_streams = {}
+    preview = []
+    for i, row in enumerate(rows):
         name, class_name, stream_name, parent_phone = _extract_fields(row)
-        errs = []
-        if not name:        errs.append("Missing name")
-        if not class_name:  errs.append("Missing class")
-        if not parent_phone:errs.append("Missing phone")
-        ckey = class_name.lower()
-        if class_name and ckey not in cmap: errs.append(f"Class '{class_name}' not found")
-        preview.append({"row":i+2,"name":name,"class_name":class_name,"stream_name":stream_name,
-                        "parent_phone":parent_phone,"errors":errs})
+        cid = sid = err = None
+        if class_name:
+            cid, sid, err = _resolve_class_stream(class_name, stream_name, cmap)
+            if cid is None:
+                unmatched_classes[class_name.strip().lower()] = class_name.strip()
+            elif stream_name and sid is None and err:
+                unmatched_streams[f"{class_name.strip()}::{stream_name.strip()}".lower()] = \
+                    {"class_raw": class_name.strip(), "stream_raw": stream_name.strip()}
+        if i < 10:
+            issues = []
+            if not name: issues.append("Missing name")
+            if not class_name: issues.append("Missing class")
+            elif cid is None: issues.append(f"Class '{class_name}' needs matching")
+            elif stream_name and sid is None: issues.append(f"Stream '{stream_name}' needs matching")
+            if not parent_phone: issues.append("Missing phone — will still import, no parent login created")
+            preview.append({"row":i+2,"name":name,"class_name":class_name,"stream_name":stream_name,
+                            "parent_phone":parent_phone,"issues":issues})
+
     return jsonify({"ok":True,"total_rows":len(rows),"preview":preview,
-                    "columns_detected":list(rows[0].keys()) if rows else []})
+                    "columns_detected":list(rows[0].keys()) if rows else [],
+                    "unmatched_classes": list(unmatched_classes.values()),
+                    "unmatched_streams": list(unmatched_streams.values())})
 
 def _write_credentials_xlsx(rows, path):
     """Write a workbook of parent username/one-time-password pairs for a completed import."""
@@ -3480,6 +3675,8 @@ def _write_credentials_xlsx(rows, path):
 
 
 @app.route("/api/students/import/credentials/<path:filename>")
+@require_auth
+@require_role("admin")
 def download_import_credentials(filename):
     """Serve a previously generated parent-credentials workbook for download."""
     filename = secure_filename(filename)
@@ -3492,9 +3689,11 @@ def download_import_credentials(filename):
 
 
 @app.route("/api/students/import", methods=["POST"])
+@require_auth
+@require_role("admin")
 def api_import_students():
     """Full import: parse, validate, bulk insert."""
-    school_id = school_id_from_header()
+    school_id = g.school_id
     if "file" not in request.files:
         return jsonify({"ok":False,"error":"No file uploaded"}), 400
     f = request.files["file"]
@@ -3530,68 +3729,64 @@ def api_import_students():
     for uname, ph in cur.fetchall():
         username_phone_map.setdefault(uname, []).append(ph or "")
 
+    mapping_raw = request.form.get("mapping", "{}")
+    try:
+        mapping = json.loads(mapping_raw) if mapping_raw else {}
+    except Exception:
+        mapping = {}
+    mapping.setdefault("classes", {}); mapping.setdefault("streams", {})
+    flagged = []  # imported OK but missing a non-essential field — shown as a red dot in the UI
+
     for i, row in enumerate(rows):
-        row_num      = i + 2
+        row_num = i + 2
         name, class_name, stream_name, parent_phone = _extract_fields(row)
-        if not name or not class_name or not parent_phone:
-            skipped.append({"row":row_num,"reason":f"Missing: {'name' if not name else ''} {'class' if not class_name else ''} {'phone' if not parent_phone else ''}".strip(),"data":str(list(row.values())[:4])})
+        if not name:
+            skipped.append({"row":row_num,"reason":"Missing name — can't import a student with no name","data":str(list(row.values())[:4])})
             continue
-        ckey = class_name.strip().lower()
-        if ckey not in cmap:
-            skipped.append({"row":row_num,"reason":f"Class '{class_name}' not found — check spelling matches exactly","data":name})
+        if not class_name:
+            skipped.append({"row":row_num,"reason":"Missing class","data":name})
             continue
-        class_id  = cmap[ckey]["_id"]
-        stream_id = None
-        if stream_name:
-            skey = stream_name.strip().lower()
-            if skey in cmap[ckey]["_streams"]:
-                class_id, stream_id = cmap[ckey]["_streams"][skey]
-            else:
-                skipped.append({"row":row_num,"reason":f"Stream '{stream_name}' not found in '{class_name}'","data":name})
-                continue
-        dup_key = (name.strip().lower(), class_id, stream_id or 0, parent_phone.strip())
+        class_id, stream_id, resolve_err = _resolve_class_stream(class_name, stream_name, cmap, mapping)
+        if resolve_err:
+            skipped.append({"row":row_num,"reason":resolve_err,"data":name})
+            continue
+        phone_clean = (parent_phone or "").strip()
+        dup_key = (name.strip().lower(), class_id, stream_id or 0, phone_clean)
         if dup_key in existing_students:
             skipped.append({"row":row_num,"reason":"Duplicate — same name, class, stream & phone already exist","data":name})
             duplicates += 1
             continue
         try:
-            # Use savepoint so one failure doesn't abort the whole transaction
             cur.execute("SAVEPOINT sp_student")
             cur.execute("""INSERT INTO students(school_id,name,class_id,stream_id,phone_number,school_student_no)
                            VALUES(%s,%s,%s,%s,%s,%s) RETURNING id""",
-                        (school_id, name, class_id, stream_id, parent_phone.strip(), next_student_no))
-            student_id   = cur.fetchone()[0]
+                        (school_id, name, class_id, stream_id, phone_clean or None, next_student_no))
+            student_id = cur.fetchone()[0]
             next_student_no += 1
-            username_base= name.strip().lower().replace(" ","_")
-            last4 = parent_phone.strip()[-4:]
+            if not phone_clean:
+                flagged.append({"row":row_num,"name":name,"reason":"Missing parent phone — no parent login was created"})
+                cur.execute("RELEASE SAVEPOINT sp_student")
+                inserted += 1; existing_students.add(dup_key)
+                if inserted % 200 == 0: con.commit()
+                continue
+            username_base = name.strip().lower().replace(" ","_")
+            last4 = phone_clean[-4:]
             existing_phones_for_username = username_phone_map.get(username_base, [])
-            needs_suffix = any(
-                ph.strip() != parent_phone.strip() and ph.strip()[-4:] == last4
-                for ph in existing_phones_for_username
-            )
+            needs_suffix = any(ph.strip() != phone_clean and ph.strip()[-4:] == last4 for ph in existing_phones_for_username)
             temp_pw = f"{last4}-{student_id}" if needs_suffix else last4
-
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
                         (username_base,hash_password_fast(temp_pw),school_id,student_id))
             login_created = cur.rowcount > 0
-            username_phone_map.setdefault(username_base, []).append(parent_phone.strip())
+            username_phone_map.setdefault(username_base, []).append(phone_clean)
             cur.execute("RELEASE SAVEPOINT sp_student")
-            inserted += 1
-            existing_students.add(dup_key)
+            inserted += 1; existing_students.add(dup_key)
             if login_created:
                 credentials.append({"row":row_num,"name":name,"class_name":class_name,"stream_name":stream_name,
-                                    "parent_phone":parent_phone.strip(),"username":username_base,"password":temp_pw})
+                                    "parent_phone":phone_clean,"username":username_base,"password":temp_pw})
             else:
-                # Student record was created, but another student already has this exact
-                # username (same name). Report it honestly instead of listing a login
-                # that doesn't actually exist.
-                skipped.append({"row":row_num,
-                                "reason":f"Student added, but login username '{username_base}' is already taken "
-                                         f"by another student with the same name — no new login created",
-                                "data":name})
-            # Commit every 200 students to avoid giant transactions
-            if inserted % 200 == 0:
-                con.commit()
+                flagged.append({"row":row_num,"name":name,
+                                "reason":f"Login username '{username_base}' already taken by another student with the same name"})
+            if inserted % 200 == 0: con.commit()
         except Exception as e:
             cur.execute("ROLLBACK TO SAVEPOINT sp_student")
             errors.append({"row":row_num,"error":str(e),"data":name})
@@ -3605,6 +3800,7 @@ def api_import_students():
 
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),"duplicates":duplicates,
                     "skipped_details":skipped[:20],"error_details":errors[:20],
+                    "flagged_details":flagged[:50],
                     "credentials_file":credentials_file,"credentials_count":len(credentials)})
 
 

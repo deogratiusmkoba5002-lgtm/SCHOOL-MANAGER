@@ -111,7 +111,7 @@ function renderReportCard(out, d, readOnly){
 }
 async function saveRemark(sid, type, textareaId){
   const remark = document.getElementById(textareaId).value.trim();
-  const r = await api("/remarks","POST",{username:currentUser.username,role:currentUser.role,is_class_teacher:currentUser.is_class_teacher,student_id:sid,remark});
+  const r = await api("/remarks","POST",{is_class_teacher:currentUser.is_class_teacher,student_id:sid,remark});
   if(r.ok) toast("Remark saved!","success");
   else toast(r.error||"Failed","error");
 }

@@ -2,6 +2,11 @@
 let allStudents=[];
 let selectedStudentIds = new Set();
 let studentFilter = { class_id:"", stream_id:"" };
+let _importUnmatchedClasses = [];
+let _importUnmatchedStreams = [];
+let _importMapping = {classes:{}, streams:{}};
+let _importPreviewData = null;
+
 
 async function loadStudents(){
   const tb = document.getElementById("students-tbody");
@@ -309,6 +314,7 @@ async function deleteStream(id, name){
 // ── STUDENT IMPORT ────────────────────────────────────────────
 function openImportModal(){
   document.getElementById("import-step-upload").style.display="block";
+  document.getElementById("import-step-mapping").style.display="none";
   document.getElementById("import-step-preview").style.display="none";
   document.getElementById("import-file-input").value="";
   document.getElementById("import-preview-body").innerHTML="";
@@ -317,6 +323,8 @@ function openImportModal(){
   document.getElementById("import-back-btn").style.display="inline-flex";
   document.getElementById("import-confirm-btn").style.display="inline-flex";
   document.getElementById("import-done-btn").style.display="none";
+  _importUnmatchedClasses = []; _importUnmatchedStreams = [];
+  _importMapping = {classes:{}, streams:{}}; _importPreviewData = null;
   openModal("modal-import-students");
 }
 
@@ -352,25 +360,81 @@ async function previewImport(){
     });
     const data = await res.json();
     if(!data.ok){ toast(data.error,"error"); return; }
-    document.getElementById("import-step-upload").style.display="none";
-    document.getElementById("import-step-preview").style.display="block";
-    const tbody = document.getElementById("import-preview-body");
-    tbody.innerHTML = data.preview.map(r => `
-      <tr style="${r.errors.length?"background:#FFF3F3":""}">
-        <td style="color:var(--muted);font-size:.78rem">${r.row}</td>
-        <td style="font-weight:600">${r.name||"<span style=color:var(--red)>—</span>"}</td>
-        <td>${r.class_name||"—"}</td>
-        <td>${r.stream_name||"—"}</td>
-        <td style="font-size:.82rem">${r.parent_phone||"—"}</td>
-        <td>${r.errors.length
-          ? "<span style=color:var(--red);font-size:.78rem>⚠ "+r.errors.join(", ")+"</span>"
-          : "<span style=color:var(--green)>✓</span>"}</td>
-      </tr>`).join("");
-    const warn = data.preview.filter(r=>r.errors.length).length;
-    document.getElementById("import-total-label").textContent =
-      data.total_rows+" total rows — showing first 10. "+(warn ? warn+" have issues." : "All looking good!");
+    _importUnmatchedClasses = data.unmatched_classes || [];
+    _importUnmatchedStreams = data.unmatched_streams || [];
+    _importMapping = {classes:{}, streams:{}};
+    _importPreviewData = data;
+    if(_importUnmatchedClasses.length || _importUnmatchedStreams.length) renderImportMappingStep();
+    else renderImportPreviewTable(data);
   } catch(e){ toast("Preview failed: "+e,"error"); }
   finally { btn.textContent="Preview File →"; btn.disabled=false; }
+}
+
+function renderImportPreviewTable(data){
+  document.getElementById("import-step-upload").style.display="none";
+  document.getElementById("import-step-mapping").style.display="none";
+  document.getElementById("import-step-preview").style.display="block";
+  const tbody = document.getElementById("import-preview-body");
+  tbody.innerHTML = data.preview.map(r => `
+    <tr style="${r.issues.length?"background:#FFF3F3":""}">
+      <td style="color:var(--muted);font-size:.78rem">${r.row}</td>
+      <td style="font-weight:600">${r.name||"<span style=color:var(--red)>—</span>"}</td>
+      <td>${r.class_name||"—"}</td>
+      <td>${r.stream_name||"—"}</td>
+      <td style="font-size:.82rem">${r.parent_phone||"—"}</td>
+      <td>${r.issues.length
+        ? "<span style=color:var(--orange);font-size:.78rem title='"+escHtml(r.issues.join('; '))+"'>⚠ "+r.issues.join(", ")+"</span>"
+        : "<span style=color:var(--green)>✓</span>"}</td>
+    </tr>`).join("");
+  const warn = data.preview.filter(r=>r.issues.length).length;
+  document.getElementById("import-total-label").textContent =
+    data.total_rows+" total rows — showing first 10. "+(warn ? warn+" have notes (hover ⚠)." : "All looking good!");
+}
+
+function renderImportMappingStep(){
+  document.getElementById("import-step-upload").style.display="none";
+  document.getElementById("import-step-preview").style.display="none";
+  const step = document.getElementById("import-step-mapping");
+  step.style.display="block";
+  const classOptions = (allClasses||[]).map(c=>`<option value="${escHtml(c.class_name)}">${escHtml(c.class_name)}</option>`).join("");
+  const classHtml = _importUnmatchedClasses.map(raw=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--pale)">
+      <div style="flex:1;font-size:.85rem"><strong>${escHtml(raw)}</strong> <span style="color:var(--muted)">(from Excel)</span></div>
+      <span style="color:var(--muted)">→</span>
+      <select class="form-select" style="flex:1" onchange="_importMapping.classes['${escHtml(raw).replace(/'/g,"\\'")}']=this.value">
+        <option value="">— Select matching class —</option>${classOptions}
+      </select>
+    </div>`).join("");
+  const streamHtml = _importUnmatchedStreams.map(s=>{
+    const cls = (allClasses||[]).find(c=>c.class_name.toLowerCase()===s.class_raw.toLowerCase()
+                  || (_importMapping.classes[s.class_raw] && c.class_name===_importMapping.classes[s.class_raw]));
+    const streamOptions = cls ? cls.streams.map(st=>`<option value="${escHtml(st.stream_name)}">${escHtml(st.stream_name)}</option>`).join("") : "";
+    const key = `${s.class_raw}::${s.stream_raw}`;
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--pale)">
+      <div style="flex:1;font-size:.85rem"><strong>${escHtml(s.stream_raw)}</strong> <span style="color:var(--muted)">(${escHtml(s.class_raw)}, from Excel)</span></div>
+      <span style="color:var(--muted)">→</span>
+      <select class="form-select" style="flex:1" onchange="_importMapping.streams['${escHtml(key).replace(/'/g,"\\'")}']=this.value">
+        <option value="">— Select matching stream —</option>${streamOptions}
+      </select>
+    </div>`;
+  }).join("");
+  step.innerHTML = `
+    <div style="background:#FFF8E1;border-left:3px solid #FFD600;border-radius:8px;padding:12px;font-size:.83rem;color:#5D4037;margin-bottom:16px">
+      ⚠ Some class/stream names in your file don't exactly match your system's classes and streams. Match each one below — no need to edit the Excel file.
+    </div>
+    ${_importUnmatchedClasses.length ? `<div style="font-weight:700;color:var(--navy);margin-bottom:6px">Classes</div>${classHtml}` : ""}
+    ${_importUnmatchedStreams.length ? `<div style="font-weight:700;color:var(--navy);margin:16px 0 6px">Streams</div>${streamHtml}` : ""}
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+      <button class="btn btn-outline" onclick="document.getElementById('import-step-mapping').style.display='none';document.getElementById('import-step-upload').style.display='block'">← Back</button>
+      <button class="btn btn-blue" onclick="applyImportMappingAndContinue()">Continue →</button>
+    </div>`;
+}
+
+function applyImportMappingAndContinue(){
+  const missing = _importUnmatchedClasses.filter(raw=>!_importMapping.classes[raw]);
+  if(missing.length){ toast("Match every class before continuing","error"); return; }
+  renderImportPreviewTable(_importPreviewData);
 }
 
 async function downloadImportCredentials(url){
@@ -392,6 +456,7 @@ async function confirmImport(){
   btn.textContent="Importing..."; btn.disabled=true;
   const formData = new FormData();
   formData.append("file", fileInput.files[0]);
+  formData.append("mapping", JSON.stringify(_importMapping));
   try {
     const res = await fetch("/api/students/import", {
       method:"POST", body:formData,
@@ -423,6 +488,10 @@ async function confirmImport(){
       +(data.error_details && data.error_details.length
         ? "<div style=font-weight:600;font-size:.82rem;color:var(--red);margin:8px 0 4px>Errors (showing first 20 of "+data.errors+"):</div>"
           +data.error_details.map(e=>"<div style=font-size:.78rem;color:#c00;padding:3px 0;border-bottom:1px solid #FEE>Row "+e.row+": "+e.error+" — "+e.data+"</div>").join("")
+        : "")
+      +(data.flagged_details && data.flagged_details.length
+        ? "<div style=font-weight:600;font-size:.82rem;color:var(--orange);margin:8px 0 4px>⚠ Imported with notes ("+data.flagged_details.length+"):</div>"
+          +data.flagged_details.map(f=>"<div style=font-size:.78rem;color:#E65100;padding:3px 0;border-bottom:1px solid #FFF3E0>Row "+f.row+" — "+f.name+": "+f.reason+"</div>").join("")
         : "");
     toast(data.inserted+" students imported!","success");
     loadStudents();
