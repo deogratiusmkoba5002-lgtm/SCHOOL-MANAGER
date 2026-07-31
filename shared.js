@@ -65,6 +65,12 @@ function closeModal(id){document.getElementById(id).style.display="none"}
 function openModal(id){document.getElementById(id).style.display="flex"}
 let _schoolId = null;
 let _authToken = null;
+function _authHeaders(extra){
+  const h = {...(extra||{})};
+  if(_schoolId) h["X-School-ID"] = String(_schoolId);
+  if(_authToken) h["Authorization"] = "Bearer " + _authToken;
+  return h;
+}
 
 async function api(path, method="GET", body=null){
   const headers = {"Content-Type":"application/json"};

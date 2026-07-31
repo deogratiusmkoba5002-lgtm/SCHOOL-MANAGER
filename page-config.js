@@ -250,7 +250,7 @@ async function handleConfigLogoSelect(e){
   try{
     const res = await fetch("/api/config/logo", {
       method:"POST", body:formData,
-      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+      headers: _authHeaders()
     });
     const data = await res.json();
     if(!data.ok){ toast(data.error||"Upload failed","error"); return; }

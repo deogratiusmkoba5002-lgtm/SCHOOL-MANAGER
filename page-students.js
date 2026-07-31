@@ -333,7 +333,7 @@ async function downloadTemplate(){
   btn.textContent="Downloading..."; btn.disabled=true;
   try {
     const res = await fetch("/api/students/import/template", {
-      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+      headers: _authHeaders()
     });
     const blob = await res.blob();
     const cd = res.headers.get("content-disposition")||"";
@@ -356,7 +356,7 @@ async function previewImport(){
   try {
     const res = await fetch("/api/students/import/preview", {
       method:"POST", body:formData,
-      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+      headers: _authHeaders()
     });
     const data = await res.json();
     if(!data.ok){ toast(data.error,"error"); return; }
@@ -439,7 +439,7 @@ function applyImportMappingAndContinue(){
 
 async function downloadImportCredentials(url){
   try {
-    const res = await fetch(url, { headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {} });
+    const res = await fetch(url, { headers: _authHeaders() });
     if(!res.ok){ toast("Download failed","error"); return; }
     const blob = await res.blob();
     const dlUrl = URL.createObjectURL(blob);
@@ -460,7 +460,7 @@ async function confirmImport(){
   try {
     const res = await fetch("/api/students/import", {
       method:"POST", body:formData,
-      headers: _schoolId ? {"X-School-ID": String(_schoolId)} : {}
+      headers: _authHeaders()
     });
     const data = await res.json();
     if(!data.ok){ toast(data.error,"error"); return; }
