@@ -14,12 +14,12 @@ async function loadPlatformNotices(){
     list.innerHTML = notices.map(n => `
       <div style="padding:12px 0;border-bottom:1px solid #EDE7F6;${n.is_read?'opacity:.7':''}" id="pn-${n.id}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
-          <div style="font-weight:600;font-size:.93rem;color:#4A148C">${n.title}
+          <div style="font-weight:600;font-size:.93rem;color:#4A148C">${escHtml(n.title)}
             ${!n.is_read ? '<span style="background:#7B1FA2;color:#fff;border-radius:4px;padding:1px 7px;font-size:.7rem;margin-left:6px">NEW</span>' : ''}
           </div>
           <div style="font-size:.76rem;color:#9E9E9E">${n.posted_at ? n.posted_at.slice(0,16) : ''}</div>
         </div>
-        <div style="margin-top:6px;font-size:.87rem;color:#37474F;white-space:pre-wrap">${n.body}</div>
+        <div style="margin-top:6px;font-size:.87rem;color:#37474F;white-space:pre-wrap">${escHtml(n.body)}</div>
         ${!n.is_read ? `<button onclick="markPlatformNoticeRead(${n.id})" style="margin-top:8px;background:none;border:1px solid #7B1FA2;color:#7B1FA2;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer">Mark as read</button>` : ''}
       </div>`).join("");
   } catch(e){}

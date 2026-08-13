@@ -67,12 +67,12 @@ function renderReportCard(out, d, readOnly){
     ${remarkTemplateHTML("remark-ct-"+sid)}
     <textarea id="remark-ct-${sid}" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit" placeholder="Write class teacher remark…">${d.class_teacher_remark||""}</textarea>
     <button class="btn btn-green btn-sm" style="margin-top:8px;width:100%" onclick="saveRemark(${sid},'class_teacher','remark-ct-${sid}')">💾 Save Class Teacher Remark</button>` :
-    `<div style="font-size:.9rem;color:${d.class_teacher_remark?'var(--text)':'var(--muted)'}">${d.class_teacher_remark||"—"}</div>`;
+    `<div style="font-size:.9rem;color:${d.class_teacher_remark?'var(--text)':'var(--muted)'}">${d.class_teacher_remark?escHtml(d.class_teacher_remark):"—"}</div>`;
   const headBox = canEditHead ? `
     ${remarkTemplateHTML("remark-head-"+sid)}
     <textarea id="remark-head-${sid}" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;resize:vertical;font-family:inherit" placeholder="Write head of school remark…">${d.head_remark||""}</textarea>
     <button class="btn btn-green btn-sm" style="margin-top:8px;width:100%" onclick="saveRemark(${sid},'head','remark-head-${sid}')">💾 Save Head of School Remark</button>` :
-    `<div style="font-size:.9rem;color:${d.head_remark?'var(--text)':'var(--muted)'}">${d.head_remark||"—"}</div>`;
+    `<div style="font-size:.9rem;color:${d.head_remark?'var(--text)':'var(--muted)'}">${d.head_remark?escHtml(d.head_remark):"—"}</div>`;
   out.innerHTML=`
   <div class="report-card">
     <div class="report-header-grid">

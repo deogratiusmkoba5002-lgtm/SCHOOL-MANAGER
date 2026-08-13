@@ -132,9 +132,9 @@ async function loadParentsPage(){
       <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
-            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${a.title}</div>
-            <div style="font-size:.82rem;color:var(--muted);margin-bottom:6px">To: <strong>${a.target_classes==="all"?"All Classes":a.target_classes}</strong> &nbsp;·&nbsp; ${a.posted_at ? a.posted_at.substring(0,16).replace("T"," ") : ""}</div>
-            <div style="font-size:.88rem;color:var(--text)">${a.body}</div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">${escHtml(a.title)}</div>
+            <div style="font-size:.82rem;color:var(--muted);margin-bottom:6px">To: <strong>${a.target_classes==="all"?"All Classes":escHtml(a.target_classes)}</strong> &nbsp;·&nbsp; ${a.posted_at ? a.posted_at.substring(0,16).replace("T"," ") : ""}</div>
+            <div style="font-size:.88rem;color:var(--text)">${escHtml(a.body)}</div> 
           </div>
           <button class="btn btn-sm btn-red btn-icon" onclick="deleteAnnouncement(${a.id})" style="flex-shrink:0">
             <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -220,9 +220,9 @@ async function loadParentAnnouncements(){
     <div style="background:var(--card);border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid ${a.is_read?"var(--border)":"var(--blue)"}">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         ${!a.is_read?`<span style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0"></span>`:""}
-        <div style="font-weight:700;color:var(--navy);font-size:.95rem">${a.title}</div>
+        <div style="font-weight:700;color:var(--navy);font-size:.95rem">${escHtml(a.title)}</div>
       </div>
-      <div style="font-size:.88rem;color:var(--text);margin-bottom:8px">${a.body}</div>
+      <div style="font-size:.88rem;color:var(--text);margin-bottom:8px">${escHtml(a.body)}</div>
       <div style="font-size:.75rem;color:var(--muted)">${a.posted_at?a.posted_at.substring(0,16).replace("T"," "):""}</div>
     </div>`).join("");
   updateAnnouncementDot(0);

@@ -30,12 +30,14 @@ if not SECRET_KEY:
                         "`python -c \"import secrets;print(secrets.token_hex(32))\"` and set it.")
 _serializer = URLSafeTimedSerializer(SECRET_KEY, salt="schoolmanager-session")
 SESSION_MAX_AGE = 12 * 3600  # 12h — matches a normal school work day
+SA_SESSION_MAX_AGE = 12 * 3600 # superadmin sessions also expire after 12h
+_sa_serializer = URLSafeTimedSerializer(SECRET_KEY, salt="superadmin-session")
 
-def issue_token(username, school_id, role, student_id=None, is_class_teacher=False, class_id=None, stream_id=None):
+def issue_token(username, school_id, role, student_id=None, is_class_teacher=False, class_id=None, stream_id=None, token_version=0):
     return _serializer.dumps({
         "username": username, "school_id": school_id, "role": role,
         "student_id": student_id, "is_class_teacher": is_class_teacher,
-        "class_id": class_id, "stream_id": stream_id,
+        "class_id": class_id, "stream_id": stream_id, "token_version": token_version,
     })
 
 def require_auth(f):
@@ -57,6 +59,11 @@ def require_auth(f):
         g.username = data["username"]; g.school_id = data["school_id"]; g.role = data["role"]
         g.student_id = data.get("student_id"); g.is_class_teacher = data.get("is_class_teacher", False)
         g.class_id = data.get("class_id"); g.stream_id = data.get("stream_id")
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT token_version FROM users WHERE username=%s AND school_id=%s",(g.username, g.school_id))
+        row = cur.fetchone(); cur.close(); con.close()
+        if not row or (row[0] or 0) != data.get("token_version", 0):
+            return jsonify({"ok": False, "error": "Session expired, please log in again"}), 401
         return f(*args, **kwargs)
     return wrapper
 
@@ -138,7 +145,7 @@ def subscription_required(f):
     from functools import wraps
     @wraps(f)
     def wrapper(*args, **kwargs):
-        sid = school_id_from_header()
+        sid = g.school_id
         if not is_subscribed(sid):
             return jsonify({"ok": False, "error": "subscription_required",
                              "message": "This feature requires an active subscription."}), 402
@@ -224,6 +231,23 @@ def get_school_id_by_reg_code(reg_code):
     cur.execute("SELECT id FROM schools WHERE LOWER(reg_code)=LOWER(%s)", (reg_code.strip(),))
     row = cur.fetchone(); cur.close(); con.close()
     return row[0] if row else None
+
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_MINUTES = 15
+
+def _login_attempts_count(identifier):
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT COUNT(*) FROM login_attempts
+                   WHERE identifier=%s AND attempted_at > NOW() - (%s * INTERVAL '1minute')""",
+                (identifier, LOGIN_WINDOW_MINUTES))
+    n = cur.fetchone()[0]; cur.close(); con.close()
+    return n
+
+def _record_login_attempt(identifier):
+    con = get_db(); cur = con.cursor()
+    cur.execute("INSERT INTO login_attempts(identifier) VALUES(%s)", (identifier,))
+    cur.execute("DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '1 hour'")
+    con.commit(); cur.close(); con.close()
 
 def generate_unique_reg_code(base):
     """Auto-generate a unique reg_code from a school name, e.g. for schools
@@ -658,6 +682,7 @@ def api_create_test():
 
 @app.route("/api/tests/<int:tid>", methods=["DELETE"])
 @require_auth
+@require_role("admin")
 def api_delete_test(tid):
     sid = g.school_id
     con=get_db(); cur=con.cursor()
@@ -670,6 +695,7 @@ def api_delete_test(tid):
 
 @app.route("/api/marks/test", methods=["POST"])
 @require_auth
+@require_role("admin","teacher")
 def api_enter_test():
     sid = g.school_id; d = request.json
     username = g.username
@@ -972,7 +998,7 @@ def init_db():
         division TEXT NOT NULL,
         sort_order INTEGER DEFAULT 0
     );
-        CREATE TABLE IF NOT EXISTS term_tests (
+    CREATE TABLE IF NOT EXISTS term_tests (
         id         SERIAL PRIMARY KEY,
         school_id  INTEGER NOT NULL,
         term_id    INTEGER NOT NULL,
@@ -1002,6 +1028,18 @@ def init_db():
         assess_key TEXT NOT NULL,
         published  INTEGER DEFAULT 0,
         PRIMARY KEY(school_id, term_id, assess_key)
+    );
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id          SERIAL PRIMARY KEY,
+        identifier  TEXT NOT NULL,
+        attempted_at TIMESTAMP DEFAULT NOW() 
+    );
+    CREATE TABLE IF NOT EXISTS import_credential_batches (
+        id         SERIAL PRIMARY KEY,
+        school_id  INTEGER NOT NULL,
+        token      TEXT NOT NULL UNIQUE,
+        data       JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
     );
     """)
     
@@ -1042,6 +1080,7 @@ def init_db():
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS school_student_no INTEGER",
         "ALTER TABLE term_tests ADD COLUMN IF NOT EXISTS all_classes INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS flag_reason TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0",
     ]
     
     for m in migrations:
@@ -1146,6 +1185,7 @@ def init_db():
         # pending or already funded an approval, but frees it up again if a
         # request is rejected or cancelled — so a school that mistyped some
         # OTHER field can resubmit with the same (real) transaction ID.
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_identifier ON login_attempts(identifier, attempted_at)")
         cur.execute("SELECT 1 FROM pg_indexes WHERE indexname='idx_payment_requests_txn_ci'")
         if not cur.fetchone():
             cur.execute("""CREATE UNIQUE INDEX idx_payment_requests_txn_ci
@@ -1324,8 +1364,14 @@ def api_login():
     u, p = d.get("username","").strip(), d.get("password","")
     if not reg_code: return jsonify({"ok":False,"error":"Enter your school's registration code"}), 400
     if not u or not p: return jsonify({"ok":False,"error":"Enter username and password"}), 400
+
+    identifier = f"{request.remote_addr}:{reg_code.lower()}:{u.lower()}"
+    if _login_attempts_count(identifier) >= LOGIN_MAX_ATTEMPTS:
+        return jsonify({"ok":False,"error":"Too many login attempts. Please try again in a few minutes."}), 429
+
     school_id = get_school_id_by_reg_code(reg_code)
     if not school_id:
+        _record_login_attempt(identifier)
         return jsonify({"ok":False,"error":"School registration code not recognized"}), 401
     # The registration code pins the school unambiguously, so this lookup is
     # always scoped to exactly one school — a username/password that matches
@@ -1334,12 +1380,16 @@ def api_login():
     cur.execute("SELECT * FROM users WHERE username=%s AND school_id=%s", (u, school_id))
     row = cur.fetchone(); cols = [x[0] for x in cur.description] if cur.description else []
     cur.close(); con.close()
-    if not row: return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
+    if not row:
+        _record_login_attempt(identifier)
+        return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
     user = dict(zip(cols, row))
     if not verify_password(p, user["password"]):
+        _record_login_attempt(identifier)
         return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
     token = issue_token(user["username"], school_id, user["role"], user.get("student_id"),
-                         bool(user.get("is_class_teacher", 0)), user.get("class_id"), user.get("stream_id"))
+                         bool(user.get("is_class_teacher", 0)), user.get("class_id"), user.get("stream_id"),
+                         user.get("token_version") or 0)
     return jsonify({"ok":True,"token":token,"user":{
         "username":             user["username"],
         "role":                 user["role"],
@@ -1402,7 +1452,7 @@ def api_change_password():
     row = cur.fetchone()
     if not row or not verify_password(old_pw, row[0]):
         cur.close(); con.close(); return jsonify({"ok":False,"error":"Current password is incorrect"}), 401
-    cur.execute("UPDATE users SET password=%s,must_change_password=0 WHERE username=%s AND school_id=%s",
+    cur.execute("UPDATE users SET password=%s,must_change_password=0,token_version=COALESCE(token_version,0)+1 WHERE username=%s AND school_id=%s",
                 (hash_password(new_pw), username, school_id))
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
@@ -1745,6 +1795,7 @@ def api_resolve_display_id():
 
 @app.route("/api/students/bulk_delete", methods=["POST"])
 @require_auth
+@require_role("admin")
 def api_bulk_delete_students():
     sid = g.school_id; ids = request.json.get("ids", [])
     try: ids = [int(i) for i in ids]
@@ -1765,6 +1816,7 @@ def api_bulk_delete_students():
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
 @require_auth
+@require_role("admin")
 def api_delete_student(student_id):
     sid = g.school_id;
     con = get_db(); cur = con.cursor()
@@ -1780,12 +1832,8 @@ def api_delete_student(student_id):
 @require_auth
 @require_role("admin")
 def api_update_student(student_id):
-    """Edits name/class/stream/phone. If the change touches name or phone AND
-    the parent hasn't logged in yet (must_change_password=1), regenerate their
-    username/password to match — no point mailing someone credentials for a
-    kid whose name just changed. If the parent already logged in, we leave
-    their credentials alone; changing a login someone's already using is how
-    you get a very confused parent and a support ticket."""
+    """Edits name/class/stream/phone. If the change touches name or phone, regenerate their
+    username/password to match."""
     sid = g.school_id; d = request.json or {}
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT name,class_id,stream_id,phone_number FROM students WHERE id=%s AND school_id=%s",(student_id,sid))
@@ -1827,8 +1875,7 @@ def api_update_student(student_id):
 
     if parent_row and (name_changed or phone_changed):
         old_username, must_change = parent_row
-        if must_change == 1 and phone:
-            gen_username = name.lower().replace(" ","_")
+        if phone:
             last4 = phone[-4:]
             cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
                            WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
@@ -1839,14 +1886,14 @@ def api_update_student(student_id):
             new_username = gen_username
             try:
                 cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1
-                               WHERE username=%s AND school_id=%s AND student_id=%s""",
+                               WHERE username=%s AND school_id=%s AND student_id=%s, token_version=COALESCE(token_version,0)+1""",
                             (new_username, hash_password(new_password), old_username, sid, student_id))
             except psycopg2.errors.UniqueViolation:
                 con.rollback(); cur.close(); con.close()
                 return jsonify({"ok":False,"error":f"Can't regenerate login — username '{new_username}' is already taken"}),409
-            cred_note = "Parent hadn't logged in yet — credentials were regenerated to match."
+            cred_note = "Credentials were regenerated to match the updated name/phone. The parent must log in again with the new password — their child's historical reports and marks are unaffected."
         else:
-            cred_note = "Name/phone updated. Parent already logged in once, so their existing login was left untouched."
+            cred_note = "Name/phone updated, but no phone on file — could not regenerate a login."
     elif not parent_row and phone:
         gen_username, temp_pw = _gen_parent_creds(sid, name, phone, student_id)
         try:
@@ -1866,6 +1913,45 @@ def api_update_student(student_id):
                 (name, class_id, stream_id, phone or None, flag_reason, student_id, sid))
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True,"new_username":new_username,"new_password":new_password,"note":cred_note})
+
+@app.route("/api/students/<int:student_id>/reset_parent_credentials", methods=["POST"])
+@require_auth
+@require_role("admin")
+def api_reset_parent_credentials(student_id):
+    sid = g.school_id
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT name, phone_number FROM students WHERE id=%s AND school_id=%s",(student_id,sid))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Student not found"}),404
+    name, phone = row
+    if not phone:
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"No parent phone on file — add one first"}),400
+    cur.execute("SELECT username FROM users WHERE school_id=%s AND student_id=%s AND role='parent'",(sid,student_id))
+    parent_row = cur.fetchone()
+    gen_username = name.lower().replace(" ","_")
+    last4 = phone.strip()[-4:]
+    cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
+                   WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
+                (gen_username, sid, student_id))
+    other_phones = [r[0] or "" for r in cur.fetchall()]
+    needs_suffix = any(ph.strip()!=phone.strip() and ph.strip()[-4:]==last4 for ph in other_phones)
+    new_password = f"{last4}-{student_id}" if needs_suffix else last4
+    try:
+        if parent_row:
+            cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1
+                           WHERE school_id=%s AND student_id=%s AND role='parent', token_version=COALESCE(token_version,0)+1""",
+                        (gen_username, hash_password(new_password), sid, student_id))
+        else:
+            cur.execute("""INSERT INTO users(username,password,role,school_id,must_change_password,student_id)
+                           VALUES(%s,%s,'parent',%s,1,%s)""",
+                        (gen_username, hash_password(new_password), sid, student_id))
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close()
+        return jsonify({"ok":False,"error":f"Username '{gen_username}' is already taken by another parent"}),409
+    cur.close(); con.close()
+    return jsonify({"ok":True,"username":gen_username,"temp_password":new_password})    
 
 
 # ── TEACHERS ──────────────────────────────────────────────────
@@ -2050,6 +2136,7 @@ def api_close_term(tid):
 # ── MARKS ─────────────────────────────────────────────────────
 @app.route("/api/marks/ca", methods=["POST"])
 @require_auth
+@require_role("admin","teacher")
 def api_enter_ca():
     sid = g.school_id; d = request.json
     username = g.username  # no longer trusts the body
@@ -2071,6 +2158,7 @@ def api_enter_ca():
 
 @app.route("/api/marks/exam", methods=["POST"])
 @require_auth
+@require_role("admin","teacher")
 def api_enter_exam():
     sid = g.school_id; d = request.json
     username = g.username
@@ -2113,7 +2201,7 @@ def api_set_school_name():
 @require_auth
 @require_role("admin")
 def api_get_reg_code():
-    sid = g.school_id()
+    sid = g.school_id
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT reg_code FROM schools WHERE id=%s", (sid,))
     row = cur.fetchone(); cur.close(); con.close()
@@ -2151,7 +2239,10 @@ def api_set_school_info():
 @require_auth
 @require_role("parent","admin","class_teacher")
 def api_report(student_id):
-    sid = g.school_id; subjects = get_subjects(sid)
+    sid = g.school_id
+    if g.role == "parent" and g.student_id != student_id:
+        return jsonify({"ok":False,"error":"Access denied"}),403
+    subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no
@@ -2240,6 +2331,7 @@ def api_remarks():
 # ── RANKINGS ──────────────────────────────────────────────────
 @app.route("/api/ranking/subject", methods=["GET"])
 @require_auth
+@require_role("admin","teacher")
 def api_subject_ranking():
     sid=g.school_id; subject=request.args.get("subject","").lower()
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
@@ -2271,12 +2363,12 @@ def api_subject_ranking():
 
 # ── ANALYTICS ROUTES ───────────────────────────────────────────
 @app.route("/api/analytics/overview", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
 def api_analytics_overview():
     sid = g.school_id
-    username  = request.args.get("username", "")
-    role      = request.args.get("role", "")
+    username  = g.username
+    role      = g.role
     class_id  = request.args.get("class_id") or None
     stream_id = request.args.get("stream_id") or None
     class_id  = int(class_id) if class_id else None
@@ -2310,12 +2402,12 @@ def api_analytics_overview():
     return jsonify({"ok": True, **result})
 
 @app.route("/api/analytics/subject", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
 def api_analytics_subject():
     sid       = g.school_id
-    username  = request.args.get("username", "")
-    role      = request.args.get("role", "")
+    username  = g.username
+    role      = g.role
     subject   = request.args.get("subject", "").lower().strip()
     class_id  = request.args.get("class_id")
     stream_id = request.args.get("stream_id") or None
@@ -2331,8 +2423,8 @@ def api_analytics_subject():
     return jsonify({"ok": True, **result})
 
 @app.route("/api/analytics/dashboard_classes", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
 @require_role("admin")
 def api_analytics_dashboard_classes():
     sid = g.school_id
@@ -2354,6 +2446,7 @@ def api_analytics_dashboard_classes():
 # ── SCORE SHEETS ──────────────────────────────────────────────
 @app.route("/api/scoresheet", methods=["GET"])
 @require_auth
+@require_role("admin","teacher")
 def api_scoresheet():
     sid=g.school_id; subjects=get_subjects(sid)
     mode=request.args.get("mode","ca"); class_id=request.args.get("class_id")
@@ -2466,6 +2559,9 @@ def api_get_announcements():
     con=get_db(); cur=con.cursor()
     if student_id:
         stid=int(student_id)
+        if g.role == "parent" and g.student_id != stid:
+            cur.close(); con.close()
+            return jsonify({"ok":False,"error":"Access denied"}),403
         cur.execute("SELECT class_id FROM students WHERE id=%s AND school_id=%s",(stid,sid))
         row=cur.fetchone()
         if not row: cur.close(); con.close(); return jsonify([])
@@ -2482,8 +2578,8 @@ def api_get_announcements():
     rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
 
 @app.route("/api/announcements", methods=["POST"])
-@subscription_required
 @require_auth
+@subscription_required
 @require_role("admin")
 def api_post_announcement():
     sid=g.school_id; d=request.json
@@ -2510,6 +2606,8 @@ def api_delete_announcement(aid):
 def api_mark_announcement_read(aid):
     student_id=request.json.get("student_id")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
+    if g.role == "parent" and g.student_id != int(student_id):
+        return jsonify({"ok":False,"error":"Access denied"}),403
     con=get_db(); cur=con.cursor()
     cur.execute("INSERT INTO announcement_reads(announcement_id,student_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(aid,int(student_id)))
     con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
@@ -2531,6 +2629,7 @@ def api_results_status():
 
 @app.route("/api/results/toggle", methods=["POST"])
 @require_auth
+@require_role("admin")
 def api_toggle_results():
     sid=g.school_id; d=request.json
     term_id=d.get("term_id"); publish=bool(d.get("publish",True))
@@ -2569,6 +2668,7 @@ def api_list_assessments_for_publish():
 
 @app.route("/api/results/publish_assessments", methods=["POST"])
 @require_auth
+@require_role("admin")
 def api_publish_assessments():
     sid = g.school_id; d = request.json or {}
     term_id = d.get("term_id"); keys = d.get("assess_keys") or []; publish = bool(d.get("publish", True))
@@ -2610,6 +2710,8 @@ def api_parent_results():
     sid=g.school_id; subjects=get_subjects(sid)
     student_id=request.args.get("student_id"); term_id=request.args.get("term_id"); assess=request.args.get("assess")
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
+    if int(student_id) !=g.student_id:
+        return jsonify({"ok":False,"error":"Access denied"}),403 
     if assess:
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT published FROM published_assessments WHERE school_id=%s AND term_id=%s AND assess_key=%s",(sid,term_id,assess))
@@ -2959,10 +3061,14 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
     doc.build(story)
 
 @app.route("/api/pdf/report/<int:sid>", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
+@require_role("admin","teacher","parent")
 def pdf_report(sid):
-    school_id=g.school_id; subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
+    school_id=g.school_id
+    if g.role == "parent" and g.student_id != sid:
+        return  jsonify({"error":"Access denied"}),403
+    subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
     term_id=request.args.get("term_id")
     con=get_db(); cur=con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name
@@ -3059,8 +3165,9 @@ def pdf_report(sid):
                      mimetype="application/pdf")
 
 @app.route("/api/pdf/ca_sheet", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
+@require_role("admin","teacher")
 def pdf_ca_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
@@ -3092,8 +3199,9 @@ def pdf_ca_sheet():
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/grade_sheet", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
+@require_role("admin","teacher")
 def pdf_grade_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
     mode=request.args.get("mode","ca")
@@ -3179,8 +3287,9 @@ def pdf_grade_sheet():
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/terminal_sheet", methods=["GET"])
-@subscription_required
 @require_auth
+@subscription_required
+@require_role("admin","teacher")
 def pdf_terminal_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None; term_id=request.args.get("term_id")
@@ -3213,9 +3322,13 @@ def _sa_token():
 
 def _require_superadmin():
     token=_sa_token()
-    if not token or token not in _SA_SESSIONS:
+    if not token:
         return None,(jsonify({"ok":False,"error":"Superadmin authentication required"}),401)
-    return _SA_SESSIONS[token],None
+    try:
+        data = _sa_serializer.loads(token, max_age=SA_SESSION_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None,(jsonify({"ok":False,"error":"Superadmin authentication required"}),401)
+    return data["username"],None
 
 @app.route("/api/superadmin/login", methods=["POST"])
 def api_superadmin_login():
@@ -3225,13 +3338,11 @@ def api_superadmin_login():
     cur.execute("SELECT password FROM superadmins WHERE username=%s",(u,))
     row=cur.fetchone(); cur.close(); con.close()
     if not row or not verify_password(p,row[0]): return jsonify({"ok":False,"error":"Invalid credentials"}),401
-    token=secrets.token_hex(32); _SA_SESSIONS[token]=u
+    token=_sa_serializer.dumps({"username":u})
     return jsonify({"ok":True,"token":token,"username":u})
 
 @app.route("/api/superadmin/logout", methods=["POST"])
 def api_superadmin_logout():
-    token=_sa_token()
-    if token and token in _SA_SESSIONS: del _SA_SESSIONS[token]
     return jsonify({"ok":True})
 
 @app.route("/api/superadmin/schools", methods=["GET"])
@@ -3259,7 +3370,9 @@ def api_superadmin_schools():
                            "subscription_expires_at": sub_expires.isoformat() if sub_expires else None})
         cur.close(); con.close()
         return jsonify({"ok":True,"schools":result})
-    except Exception as e: return jsonify({"ok":False,"error":str(e)}),500
+    except Exception as e:
+        app.loger.error("Superadmin schools listing failed: %s", e)
+        return jsonify({"ok":False,"error":"Could not load schools list."}),500
 
 @app.route("/api/superadmin/announce", methods=["GET"])
 def api_superadmin_announce_list():
@@ -3766,16 +3879,20 @@ def _write_credentials_xlsx(rows, path):
     wb.save(path)
 
 
-@app.route("/api/students/import/credentials/<path:filename>")
+@app.route("/api/students/import/credentials/<token>")
 @require_auth
 @require_role("admin")
-def download_import_credentials(filename):
-    """Serve a previously generated parent-credentials workbook for download."""
-    filename = secure_filename(filename)
-    path = os.path.join(IMPORT_EXPORT_FOLDER, filename)
-    if not os.path.isfile(path):
+def download_import_credentials(token):
+    sid = g.school_id
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT data FROM import_credential_batches WHERE token=%s AND school_id=%s",(token, sid))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row:
         return jsonify({"ok": False, "error": "File not found or expired"}), 404
-    return send_file(path, as_attachment=True,
+    credentials = row[0]
+    fname = os.path.join(tempfile.gettempdir(), f"creds_{token}.xlsx")
+    _write_credentials_xlsx(credentials, fname)
+    return send_file(fname, as_attachment=True,
                       download_name="parent_login_credentials.xlsx",
                       mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -3795,7 +3912,8 @@ def api_import_students():
     except ValueError as e:
         return jsonify({"ok":False,"error":str(e)}),400
     except Exception as e:
-        return jsonify({"ok":False,"error":"Parse failed: "+str(e)+" | "+traceback.format_exc()}), 500
+        app.logger.error("Student import parse failed: %s", traceback.format_exc())
+        return jsonify({"ok":False,"error":"Could not parse the uploaded file. Please check the format and try again."}), 500
 
     if not rows:
         return jsonify({"ok":False,"error":"File is empty"}), 400
@@ -3889,9 +4007,12 @@ def api_import_students():
 
     credentials_file = None
     if credentials:
-        fname = f"import_creds_{school_id}_{secrets.token_hex(8)}.xlsx"
-        _write_credentials_xlsx(credentials, os.path.join(IMPORT_EXPORT_FOLDER, fname))
-        credentials_file = f"/api/students/import/credentials/{fname}"
+        token = secrets.token_hex(16)
+        con2 = get_db(); cur2 = con2.cursor()
+        cur2.execute("INSERT INTO import_credential_batches(school_id,token,data) VALUES(%s,%s,%s)",
+                     (school_id, token, json.dumps(credentials)))
+        con2.commit(); cur2.close(); con2.close()
+        credentials_file = f"/api/students/import/credentials/{token}"
 
     return jsonify({"ok":True,"inserted":inserted,"skipped":len(skipped),"errors":len(errors),"duplicates":duplicates,
                     "skipped_details":skipped[:20],"error_details":errors[:20],
