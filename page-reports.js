@@ -62,6 +62,7 @@ function renderReportCard(out, d, readOnly){
   const pdfParams = new URLSearchParams();
   if(term_id) pdfParams.set("term_id", term_id);
   if(_schoolId) pdfParams.set("school_id", _schoolId);
+  if(_authToken) pdfParams.set("token", _authToken);
   const pdfUrl    = `${API}/pdf/report/${sid}?${pdfParams.toString()}`;
   const ctBox = canEditCT ? `
     ${remarkTemplateHTML("remark-ct-"+sid)}
@@ -207,6 +208,7 @@ document.getElementById("ca-sheet-pdf-btn").addEventListener("click",()=>{
   if(cs) params.set("stream_id",cs);
   if(_schoolId) params.set("school_id",_schoolId);
   if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  if(_authToken) params.set("token",_authToken);   // ← ADD THIS LINE
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
   if(requireSub()){window.open(url,"_blank");}
 });
@@ -224,6 +226,7 @@ document.getElementById("term-sheet-pdf-btn").addEventListener("click",()=>{
   if(ts) params.set("stream_id",ts);
   if(_schoolId) params.set("school_id",_schoolId);
   if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  if(_authToken) params.set("token",_authToken);   // ← ADD THIS LINE
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/terminal_sheet?${params.toString()}`;
   if(requireSub()){window.open(url,"_blank");}
 });
@@ -241,6 +244,7 @@ document.getElementById("exam-sheet-pdf-btn").addEventListener("click",()=>{
   if(stream_id) params.set("stream_id",stream_id);
   if(_schoolId) params.set("school_id",_schoolId);
   if(grade) Object.entries(gradeParamsObj()).forEach(([k,v])=>params.set(k,v));
+  if(_authToken) params.set("token",_authToken);   // ← ADD THIS LINE
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
   if(requireSub()){window.open(url,"_blank");}
 });

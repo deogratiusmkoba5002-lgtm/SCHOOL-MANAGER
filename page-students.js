@@ -105,6 +105,35 @@ function updateBulkBar(){
     bar.style.display="none";
   }
 }
+function toggleBulkMenu(){
+  const menu = document.getElementById("student-bulk-menu");
+  const willOpen = menu.style.display === "none";
+  menu.style.display = willOpen ? "block" : "none";
+  if(willOpen) document.addEventListener("click", closeBulkMenuOnOutsideClick);
+  else document.removeEventListener("click", closeBulkMenuOnOutsideClick);
+}
+function closeBulkMenuOnOutsideClick(e){
+  const menu = document.getElementById("student-bulk-menu");
+  const btn  = document.getElementById("student-bulk-menu-btn");
+  if(menu && !menu.contains(e.target) && e.target!==btn && !btn.contains(e.target)){
+    menu.style.display="none";
+    document.removeEventListener("click", closeBulkMenuOnOutsideClick);
+  }
+}
+async function bulkDownloadReports(){
+  const ids = [...selectedStudentIds];
+  if(!ids.length) return;
+  if(!requireSub()) return;
+  toast(`Downloading ${ids.length} report(s)…`,"info");
+  for(let i=0;i<ids.length;i++){
+    const params = new URLSearchParams();
+    if(_schoolId) params.set("school_id", _schoolId);
+    if(_authToken) params.set("token", _authToken);
+    const url = `${API}/pdf/report/${ids[i]}?${params.toString()}`;
+    window.open(url, "_blank");
+    await new Promise(res=>setTimeout(res, 400)); // stagger so the browser doesn't block the popups
+  }
+}
 function clearStudentSelection(){
   selectedStudentIds.clear();
   renderStudents(getFilteredStudents());

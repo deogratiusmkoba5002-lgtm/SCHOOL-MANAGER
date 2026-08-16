@@ -72,8 +72,6 @@ document.getElementById("parent-view-res-btn").addEventListener("click", async()
 function renderParentSingleResults(out, d, assess, assessLabel){
   assessLabel = assessLabel || (assess==="exam" ? "Final Exam" : assess);
   const streamPos = d.stream_position!=null ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>` : "";
-  const divisionCell = d.division ? `<div class="summary-cell"><div class="val">${d.division}</div><div class="lbl">Division</div></div>` : "";
-  const pointsCell = d.division_points!=null ? `<div class="summary-cell"><div class="val">${d.division_points}</div><div class="lbl">Points</div></div>` : "";
   const sorted = [...d.results].filter(r=>{ const score = r.score; return score!==null && score!==undefined; })
     .sort((a,b)=>{ const pa = typeof a.position==="number" ? a.position : 9999; const pb = typeof b.position==="number" ? b.position : 9999; return pa - pb; });
   const rows = sorted.map(r=>{
@@ -95,9 +93,7 @@ function renderParentSingleResults(out, d, assess, assessLabel){
       <div class="summary-cell"><div class="val">${d.average.toFixed(1)}</div><div class="lbl">Average</div></div>
       <div class="summary-cell"><div class="val">${get_grade_js(d.average)}</div><div class="lbl">Grade</div></div>
       <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">Class Pos</div></div>
-      ${streamPos}
-      ${divisionCell}
-      ${pointsCell}
+      ${streamPos}   
     </div>
     <div class="table-wrap">
       <table><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Position</th></tr></thead>

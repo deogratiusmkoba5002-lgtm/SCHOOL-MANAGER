@@ -3511,7 +3511,7 @@ def api_sa_set_payment_config():
 # ── STATIC ─────────────────────────────────────────────────────
 _STATIC_FILES=["shared.css","shared.js","page-dashboard.js","page-students.js",
                "page-teachers.js","page-reports.js","page-parent.js","page-config.js",
-               "page-analytics.js"]
+               "page-analytics.js","DRDEMIC-LOGO.png"]
 
 @app.route("/")
 def index(): return send_from_directory(BASE_DIR,"index.html")
