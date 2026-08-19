@@ -583,6 +583,17 @@ def _score_for_assess(entry, assess):
         return (entry.get("tests") or {}).get(tid)
     return (entry.get("ca") or {}).get(assess)
 
+def _active_subjects_in_scores(subjects, scores_bulk):
+    """Returns the subset of `subjects` for which at least one student in
+    scores_bulk has any recorded score (CA, exam, or test) — used to drop
+    subject columns/rows a class doesn't actually take, so score sheets and
+    report cards don't show a wall of empty '-' for subjects never taught
+    to that class."""
+    active = set()
+    for student_data in scores_bulk.values():
+        active.update(student_data.keys())
+    return [s for s in subjects if s in active]
+
 def _compute_overall_series(school_id, class_id, stream_id, subjects):
     students = get_students_in_scope(school_id, class_id, stream_id) if class_id \
         else get_all_students_in_school(school_id)
@@ -2260,7 +2271,8 @@ def api_report(student_id):
 
     class_rows, class_rank_map, stream_rank_map, scores_bulk = get_class_report_data(
         sid, tid, class_id, stream_id, subjects, ca_w, ex_w)
-    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
+    active_subjects = _active_subjects_in_scores(subjects, scores_bulk)
+    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in active_subjects}
 
     c_entry = class_rank_map.get(student_id)
     c_pos   = c_entry["position"] if c_entry else "-"
@@ -2278,7 +2290,7 @@ def api_report(student_id):
     division_points, division = compute_division_from_finals(sid, finals_for_division)
 
     rows = []
-    for subject in subjects:
+    for subject in active_subjects:
         entry     = student_scores.get(subject, {})
         ca_map    = entry.get("ca", {})
         ca_scores = {f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
@@ -2514,6 +2526,11 @@ def api_scoresheet():
                 return round((ca_avg/100)*term["ca_weight"] + (exam/100)*term["exam_weight"],1)
         return None
 
+    # Drop subject columns nobody in this class/stream has a mark for, for
+    # this specific assessment — makes the sheet reflect what the class
+    # actually takes instead of a wall of "-" for unrelated subjects.
+    active_subjects = [subj for subj in subjects if any(score_for(s["id"], subj) is not None for s in studs)]
+
     if sheet_type=="grade":
         settings = get_school_grading_settings(sid)
         level = grading_system or settings["grading_system"]
@@ -2522,14 +2539,14 @@ def api_scoresheet():
         results=[]
         for s in studs:
             subj_scores={}; grades={}
-            for subject in subjects:
+            for subject in active_subjects:
                 score = score_for(s["id"], subject)
                 subj_scores[subject]=score
                 grades[subject],_ = grade_and_points_for_score(rules, score)
             points, division = compute_division_from_finals(sid, subj_scores, grading_system, division_source, noncredit_override)
             results.append({"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),
                             "grades":grades,"points":points,"division":division or "-"})
-        return jsonify({"subjects":subjects,"results":results,"sheet_type":"grade"})
+        return jsonify({"subjects":active_subjects,"results":results,"sheet_type":"grade"})
 
     grade_rules=get_grade_rules(sid)
     def grade_for(score):
@@ -2541,14 +2558,14 @@ def api_scoresheet():
     results=[]
     for s in studs:
         row={"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),"scores":{},"total":0,"count":0}
-        for subject in subjects:
+        for subject in active_subjects:
             score=score_for(s["id"], subject)
             row["scores"][subject]=score
             if score is not None: row["total"]+=score; row["count"]+=1
         row["average"]=round(row["total"]/row["count"],2) if row["count"] else 0
         row["grade"]=grade_for(row["average"]); results.append(row)
     _assign_positions(results,"average")
-    return jsonify({"subjects":subjects,"results":results,"sheet_type":"marks"})
+    return jsonify({"subjects":active_subjects,"results":results,"sheet_type":"marks"})
 
 
 # ── ANNOUNCEMENTS ─────────────────────────────────────────────
@@ -2740,8 +2757,10 @@ def api_parent_results():
 
     results=[]
     if assess:
+        active_subjects = [subj for subj in subjects
+                            if any(_score_for_assess(scores_bulk.get(cid, {}).get(subj), assess) is not None for cid in class_ids)]
         assess_rank_maps={}
-        for subject in subjects:
+        for subject in active_subjects:
             entry=student_scores.get(subject,{})
             ca_map=entry.get("ca",{})
             ca_scores={f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
@@ -2754,9 +2773,10 @@ def api_parent_results():
             results.append({"subject":subject,"ca":ca_scores,"exam":exam_val,"score":score,
                             "grade":get_grade(sid,score),"position":pos})
     else:
-        subject_rank_maps={subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
+        active_subjects = _active_subjects_in_scores(subjects, scores_bulk)
+        subject_rank_maps={subj: get_subject_rank_map(class_rows, subj) for subj in active_subjects}
         student_finals = class_rank_map.get(stid,{}).get("finals") or compute_student_finals(scores_bulk,stid,subjects,ca_w,ex_w)
-        for subject in subjects:
+        for subject in active_subjects:
             entry=student_scores.get(subject,{})
             ca_map=entry.get("ca",{})
             ca_scores={f"CA{i}": ca_map.get(f"CA{i}") for i in range(1,ca_count+1)}
@@ -3083,7 +3103,8 @@ def pdf_report(sid):
 
     class_rows, class_rank_map, stream_rank_map, scores_bulk = get_class_report_data(
         school_id, tid, class_id, stream_id, subjects, ca_w, ex_w)
-    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in subjects}
+    active_subjects = _active_subjects_in_scores(subjects, scores_bulk)
+    subject_rank_maps = {subj: get_subject_rank_map(class_rows, subj) for subj in active_subjects}
     c_entry=class_rank_map.get(sid)
     c_pos=c_entry["position"] if c_entry else "-"
     c_total=len(class_rows)
@@ -3116,7 +3137,7 @@ def pdf_report(sid):
     story+=[it,Spacer(1,0.4*cm)]
     hdr=["Subject"]+[f"CA{i}" for i in range(1,ca_count+1)]+["Exam","Final","Pos","Grd","Remark","Sign"]
     tdata=[hdr]; tot,cnt=0,0; fail_rows=[]
-    for subject in subjects:
+    for subject in active_subjects:
         entry=student_scores.get(subject,{})
         ca_map=entry.get("ca",{})
         row_data=[subject.title()]+[f"{ca_map.get(f'CA{i}'):.1f}" if ca_map.get(f"CA{i}") is not None else "-" for i in range(1,ca_count+1)]
@@ -3188,6 +3209,7 @@ def pdf_ca_sheet():
             tid_=int(ca_name.split(":",1)[1])
             return (entry.get("tests") or {}).get(tid_)
         return entry["ca"].get(ca_name)
+    active_subjects = [subj for subj in subjects if any(get_score(s["id"], subj) is not None for s in studs)]
     subtitle_label = ca_name.upper()
     if ca_name.startswith("test:"):
         con=get_db(); cur=con.cursor()
@@ -3195,7 +3217,7 @@ def pdf_ca_sheet():
         r=cur.fetchone(); cur.close(); con.close()
         subtitle_label = (r[0].upper() if r else "TEST")
     class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
-    _blue_sheet_pdf(school_id,fname,f"{subtitle_label} SCORE SHEET",studs,subjects,get_score,term,class_label=class_label)
+    _blue_sheet_pdf(school_id,fname,f"{subtitle_label} SCORE SHEET",studs,active_subjects,get_score,term,class_label=class_label)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @app.route("/api/pdf/grade_sheet", methods=["GET"])
@@ -3233,6 +3255,8 @@ def pdf_grade_sheet():
         if mode=="terminal": return _final_from_entry(entry,ca_w,ex_w)
         return None
 
+    active_subjects = [subj for subj in subjects if any(get_score(s["id"], subj) is not None for s in studs)]
+
     settings = get_school_grading_settings(school_id)
     level = grading_system or settings["grading_system"]
     div_source = division_source or settings["division_source"]
@@ -3250,18 +3274,18 @@ def pdf_grade_sheet():
 
     subj_map=get_subject_map(school_id)
     H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC"); WHITE=colors.white
-    page_size = landscape(A3) if len(subjects) > 10 else landscape(A4)
+    page_size = landscape(A3) if len(active_subjects) > 10 else landscape(A4)
     doc=SimpleDocTemplate(fname,pagesize=page_size,rightMargin=1.2*cm,leftMargin=1.2*cm,topMargin=1.2*cm,bottomMargin=1.2*cm)
     styles=getSampleStyleSheet(); story=[]
     story+=_school_header_story(school_id,styles,f"{title} — {class_label}" if class_label else title, term["label"])
 
     name_style = ParagraphStyle("NameCell", parent=styles["Normal"], fontSize=7.5, leading=8.5)
-    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in subjects]+["Points","Division"]
+    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in active_subjects]+["Points","Division"]
     tdata=[hdr]
     for ri,s in enumerate(studs,1):
         subj_scores={}
         row=[str(ri),Paragraph(_esc(s["name"]),name_style)]
-        for subj in subjects:
+        for subj in active_subjects:
             sc=get_score(s["id"],subj)
             subj_scores[subj]=sc
             grade,_ = grade_and_points_for_score(rules, sc)
@@ -3271,7 +3295,7 @@ def pdf_grade_sheet():
         tdata.append(row)
 
     sc_w=1.2*cm
-    cw=[0.8*cm,6.2*cm]+[sc_w]*len(subjects)+[1.5*cm,1.5*cm]
+    cw=[0.8*cm,6.2*cm]+[sc_w]*len(active_subjects)+[1.5*cm,1.5*cm]
     tbl=Table(tdata,colWidths=cw,repeatRows=1)
     ts=[("BACKGROUND",(0,0),(-1,0),H_BG),("TEXTCOLOR",(0,0),(-1,0),WHITE),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7),
@@ -3305,8 +3329,9 @@ def pdf_terminal_sheet():
     def get_score(stid,subj):
         f=_final_from_entry(scores_bulk.get(stid,{}).get(subj),ca_w,ex_w)
         return round(f,1) if f is not None else None
+    active_subjects = [subj for subj in subjects if any(get_score(s["id"], subj) is not None for s in studs)]
     class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
-    _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,subjects,get_score,term)
+    _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,active_subjects,get_score,term)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 
