@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>School Registration – School Manager</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<link rel="icon" type="image/png" href="DRDEMIC-LOGO.png">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -543,22 +544,6 @@ function toast(msg, type="info"){
 
 // ── Init check ────────────────────────────────────────────────
 async function init(){
-  try{
-    const res = await fetch(`${API}/registration/status`);
-    const d   = await res.json();
-    if(d.complete){
-      document.getElementById("reg-flow").style.display="none";
-      document.getElementById("already-done").style.display="block";
-      return;
-    }
-    if(!d.has_admin){
-      // No admin yet — redirect to setup
-      window.location.href="/setup";
-      return;
-    }
-  } catch(e){
-    toast("Cannot connect to server","error");
-  }
   // Pre-populate subjects with defaults
   subjects = [
     {name:"Mathematics",    abbreviation:"MATH"},
