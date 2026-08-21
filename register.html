@@ -396,6 +396,13 @@ input,select,textarea{font-family:inherit;outline:none}
           </div>
         </div>
 
+        <div class="reg-card" style="padding:20px 24px">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:.85rem;color:var(--text);cursor:pointer;line-height:1.5;margin:0">
+            <input type="checkbox" id="agree-terms" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer">
+            <span>I have read and agree to the <a href="/terms" target="_blank" style="color:var(--blue);font-weight:600">Terms &amp; Conditions</a> and <a href="/privacy" target="_blank" style="color:var(--blue);font-weight:600">Privacy Policy</a> of this system.</span>
+          </label>
+        </div>
+
         <div class="reg-nav">
           <div></div>
           <button class="btn-next" onclick="goToSection(2)">
@@ -615,6 +622,8 @@ function validateStep(n){
     const regCode = document.getElementById("school-reg-code").value.trim();
     if(!regCode){ toast("Choose a school registration code","error"); document.getElementById("school-reg-code").focus(); return false; }
     if(!/^[A-Za-z0-9_-]{3,32}$/.test(regCode)){ toast("Registration code must be 3–32 characters: letters, numbers, underscore or hyphen only","error"); document.getElementById("school-reg-code").focus(); return false; }
+    const agreeEl = document.getElementById("agree-terms");
+    if(!agreeEl.checked){ toast("You must agree to the Terms & Conditions and Privacy Policy to continue","error"); agreeEl.scrollIntoView({behavior:"smooth",block:"center"}); return false; }
   }
   if(n===2){
     const valid = classes.every(c=>c.name.trim());
@@ -797,6 +806,11 @@ async function submitRegistration(){
   for(let i=1;i<=4;i++){
     if(!validateStep(i)) { goToSection(i); return; }
   }
+  if(!document.getElementById("agree-terms").checked){
+    toast("You must agree to the Terms & Conditions and Privacy Policy","error");
+    goToSection(1);
+    return;
+  }
   if(!grades.length){ toast("Add at least one grade rule","error"); return; }
   for(const g of grades){
     if(!g.grade.trim() || g.grade.trim().length>3){ toast("Grade names must be 1–3 characters","error"); return; }
@@ -816,6 +830,7 @@ async function submitRegistration(){
     fd.append("admin_phone", document.getElementById("admin-phone").value.trim());
     fd.append("motto",       document.getElementById("school-motto").value.trim());
     fd.append("reg_code",    document.getElementById("school-reg-code").value.trim());
+    fd.append("agree_terms", document.getElementById("agree-terms").checked ? "1" : "0");
     fd.append("classes",     JSON.stringify(classes.filter(c=>c.name.trim())));
     fd.append("subjects",    JSON.stringify(subjects.filter(s=>s.name.trim())));
     fd.append("grades",      JSON.stringify(grades));

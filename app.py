@@ -1092,6 +1092,9 @@ def init_db():
         "ALTER TABLE term_tests ADD COLUMN IF NOT EXISTS all_classes INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS flag_reason TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS terms_accepted_by TEXT",
     ]
     
     for m in migrations:
@@ -1294,8 +1297,11 @@ def api_register_school():
     admin_phone  = data.get("admin_phone","").strip()
     motto        = data.get("motto","").strip()
     reg_code     = data.get("reg_code","").strip()
+    agree_terms  = data.get("agree_terms","").strip()
     if not school_name: return jsonify({"ok":False,"error":"School name required"}), 400
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
+    if agree_terms != "1":
+        return jsonify({"ok":False,"error":"You must agree to the Terms & Conditions and Privacy Policy"}), 400
     if reg_code:
         if not valid_reg_code(reg_code):
             return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
@@ -1324,7 +1330,8 @@ def api_register_school():
     if not grades_data:   return jsonify({"ok":False,"error":"At least one grade rule required"}), 400
     con = get_db(); cur = con.cursor()
     try:
-        cur.execute("INSERT INTO schools(school_name,reg_code) VALUES(%s,%s) RETURNING id", (school_name, reg_code))
+        cur.execute("""INSERT INTO schools(school_name,reg_code,terms_accepted_at,terms_accepted_by)
+                       VALUES(%s,%s,NOW(),%s) RETURNING id""", (school_name, reg_code, admin_user))
         school_id = cur.fetchone()[0]
         cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',%s)",
                     (admin_user, hash_password(admin_pass), school_id))
@@ -3549,6 +3556,12 @@ def register_page(): return send_from_directory(BASE_DIR,"register.html")
 
 @app.route("/superadmin")
 def superadmin_page(): return send_from_directory(BASE_DIR,"superadmin.html")
+
+@app.route("/privacy")
+def privacy_page(): return send_from_directory(BASE_DIR,"privacy.html")
+
+@app.route("/terms")
+def terms_page(): return send_from_directory(BASE_DIR,"terms.html")
 
 @app.route("/storage/uploads/logos/<filename>")
 def serve_logo_static(filename):
