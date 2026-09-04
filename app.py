@@ -8,6 +8,14 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
+from config import (
+    BASE_DIR, DATABASE_URL, UPLOAD_FOLDER, IMPORT_EXPORT_FOLDER,
+    ALLOWED_LOGO_EXT, _mime_for_ext,
+    _FALLBACK_SUBJECTS, _FALLBACK_ABBR, _FALLBACK_GRADES,
+    SUBSCRIPTION_PLANS, SECRET_KEY, SESSION_MAX_AGE, SA_SESSION_MAX_AGE,
+)
+from core.db import get_db, to_dict, to_dicts
+from core.security import hash_password, verify_password, hash_password_fast
 
 
 try:
@@ -20,14 +28,8 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from functools import wraps
-from flask import g
 
-SECRET_KEY = os.environ.get("SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY env var is required. Generate one with "
-                        "`python -c \"import secrets;print(secrets.token_hex(32))\"` and set it.")
+
 _serializer = URLSafeTimedSerializer(SECRET_KEY, salt="schoolmanager-session")
 SESSION_MAX_AGE = 12 * 3600  # 12h — matches a normal school work day
 SA_SESSION_MAX_AGE = 12 * 3600 # superadmin sessions also expire after 12h
@@ -77,45 +79,10 @@ def require_role(*roles):
         return wrapper
     return deco
 
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-DATABASE_URL  = os.environ.get("DATABASE_URL", "")
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "storage", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-IMPORT_EXPORT_FOLDER = os.path.join(BASE_DIR, "storage", "import_exports")
-os.makedirs(IMPORT_EXPORT_FOLDER, exist_ok=True)
-ALLOWED_LOGO_EXT = {"png","jpg","jpeg","gif","webp","svg"}
-def _mime_for_ext(ext):
-    return {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
-            "gif":"image/gif","webp":"image/webp","svg":"image/svg+xml"}.get(ext, "application/octet-stream")
-_FALLBACK_SUBJECTS = [
-    "mathematics","physics","chemistry","biology","geography","history","civics",
-    "english","literature","kiswahili","bible knowledge","book keeping","commerce",
-    "business studies","historia ya tanzania na maadili",
-]
-_FALLBACK_ABBR = {
-    "historia ya tanzania na maadili":"HTM","mathematics":"MATH","physics":"PHY",
-    "chemistry":"CHEM","biology":"BIO","geography":"GEO","history":"HIST",
-    "civics":"CIV","english":"ENG","literature":"LIT","kiswahili":"KIS",
-    "bible knowledge":"BK","book keeping":"BKP","commerce":"COM","business studies":"BS",
-}
-_FALLBACK_GRADES = [
-    {"min_score":80,"max_score":100,"grade":"A","points":1},{"min_score":70,"max_score":79,"grade":"B","points":2},
-    {"min_score":60,"max_score":69,"grade":"C","points":3},{"min_score":50,"max_score":59,"grade":"D","points":4},
-    {"min_score":0,"max_score":49,"grade":"F","points":5},
-]
+
 
 # ── SUBSCRIPTIONS (Manual Mobile Money Verification) ───────────
-SUBSCRIPTION_PLANS = {
-    "free":     {"amount": 0,      "days": 36500,
-                 "label": "Free — basic features, forever",
-                 "features": ["Marks entry", "On-screen viewing"]},
-    "standard": {"amount": 300000, "days": 182,
-                 "label": "Standard — 300,000 TZS / 6 months",
-                 "features": ["Everything in Free", "Analytics", "PDF downloads", "Announcements", "Results publishing"]},
-    "premium":  {"amount": 500000, "days": 365,
-                 "label": "Premium — 500,000 TZS / year",
-                 "features": ["Everything in Standard", "Priority support"]},
-}
+
 
 def is_subscribed(school_id):
     con = get_db(); cur = con.cursor()
@@ -163,40 +130,11 @@ def _platform_payment_config():
 
 
 
-# ── DB ────────────────────────────────────────────────────────
-def get_db():
-    con = psycopg2.connect(DATABASE_URL)
-    con.autocommit = False
-    return con
-
-def to_dict(row, cur):
-    if row is None: return None
-    return dict(zip([d[0] for d in cur.description], row))
-
-def to_dicts(rows, cur):
-    if not rows: return []
-    cols = [d[0] for d in cur.description]
-    return [dict(zip(cols, r)) for r in rows]
 
 # ── PASSWORD ──────────────────────────────────────────────────
-def hash_password(pw, iterations=260_000):
-    salt = secrets.token_hex(16)
-    dk   = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), iterations)
-    return f"{iterations}:{salt}:{dk.hex()}"
 
-def verify_password(pw, stored):
-    try:
-        parts = stored.split(":")
-        if len(parts) == 3:
-            iterations, salt, dk_hex = parts
-            iterations = int(iterations)
-        else:
-            # Legacy hashes (created before iteration count was stored) always used 260,000.
-            salt, dk_hex = parts
-            iterations = 260_000
-        dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), iterations)
-        return dk.hex() == dk_hex
-    except: return False
+
+
 
 # ── SCHOOL_ID HELPERS ─────────────────────────────────────────
 def school_id_from_header():
@@ -3541,9 +3479,7 @@ def api_sa_set_payment_config():
     return jsonify({"ok": True})
 
 # ── STATIC ─────────────────────────────────────────────────────
-_STATIC_FILES=["shared.css","shared.js","page-dashboard.js","page-students.js",
-               "page-teachers.js","page-reports.js","page-parent.js","page-config.js",
-               "page-analytics.js","DRDEMIC-LOGO.png"]
+_STATIC_FILES=["shared.css","DRDEMIC-LOGO.png"]
 
 @app.route("/")
 def index(): return send_from_directory(BASE_DIR,"index.html")
@@ -3608,6 +3544,11 @@ def serve_static(filename):
     if filename in _STATIC_FILES: return send_from_directory(BASE_DIR,filename)
     return ("Not found",404)
 
+@app.route("/js/<path:filename>")
+def serve_js(filename):
+    if not filename.endswith(".js"): return ("Not found",404)
+    return send_from_directory(os.path.join(BASE_DIR,"js"),filename)
+
 
 # ── STUDENT IMPORT (Excel/CSV) ─────────────────────────────────
 
@@ -3618,13 +3559,7 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
 
-def hash_password_fast(pw):
-    """Fast hash for temporary/bulk import passwords.
-    These are throwaway — users must change on first login anyway.
-    260,000 iterations x 4000 students = death. 100 iterations = fine.
-    Iteration count is stored in the hash itself, so verify_password()
-    still checks it correctly regardless of how it was hashed."""
-    return hash_password(pw, iterations=100)
+
 
 def _parse_import_file(file_obj, filename):
     """Parse uploaded Excel or CSV. Returns list of raw row dicts."""
