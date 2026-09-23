@@ -65,7 +65,19 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
+from routes.auth_routes import auth_bp
+from routes.registration_routes import registration_bp
+from routes.classes_routes import classes_bp
+from routes.teachers_routes import teachers_bp
+from routes.terms_routes import terms_bp
+from routes.static_routes import static_bp
 
+app.register_blueprint(auth_bp)
+app.register_blueprint(registration_bp)
+app.register_blueprint(classes_bp)
+app.register_blueprint(teachers_bp)
+app.register_blueprint(terms_bp)
+app.register_blueprint(static_bp)
 
 from core.auth import (
     issue_token, require_auth, require_role,
@@ -83,55 +95,7 @@ def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
     row = cur.fetchone(); cur.close(); con.close()
     return row is not None
 
-@app.route("/api/tests", methods=["GET"])
-@require_auth
-def api_get_tests():
-    sid = school_id_from_header(); term_id = request.args.get("term_id")
-    class_id = request.args.get("class_id")
-    class_id = int(class_id) if class_id else None
-    if not term_id:
-        term = get_active_term(sid)
-        if not term: return jsonify([])
-        term_id = term["id"]
-    else: term_id = int(term_id)
-    tests = get_term_tests(sid, term_id, class_id)
-    if class_id is None:
-        # Admin management view — include which classes each test applies to.
-        for t in tests:
-            t["class_ids"] = [] if t["all_classes"] else get_test_class_ids(t["id"])
-    return jsonify(tests)
 
-@app.route("/api/tests", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_create_test():
-    sid = school_id_from_header(); d = request.json or {}
-    term_id = d.get("term_id"); label = (d.get("label") or "").strip()
-    class_ids = d.get("class_ids") or []
-    if not term_id or not label: return jsonify({"ok":False,"error":"term_id and label required"}),400
-    all_classes = 0 if class_ids else 1
-    con=get_db(); cur=con.cursor()
-    cur.execute("INSERT INTO term_tests(school_id,term_id,label,all_classes) VALUES(%s,%s,%s,%s) RETURNING id",
-                (sid,int(term_id),label,all_classes))
-    new_id=cur.fetchone()[0]
-    for cid in class_ids:
-        try: cur.execute("INSERT INTO test_classes(test_id,class_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(new_id,int(cid)))
-        except (TypeError,ValueError): pass
-    con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True,"id":new_id})
-
-@app.route("/api/tests/<int:tid>", methods=["DELETE"])
-@require_auth
-@require_role("admin")
-def api_delete_test(tid):
-    sid = g.school_id
-    con=get_db(); cur=con.cursor()
-    cur.execute("DELETE FROM test_scores WHERE school_id=%s AND test_id=%s",(sid,tid))
-    cur.execute("DELETE FROM published_assessments WHERE school_id=%s AND assess_key=%s",(sid,f"test:{tid}"))
-    cur.execute("DELETE FROM test_classes WHERE test_id=%s",(tid,))
-    cur.execute("DELETE FROM term_tests WHERE id=%s AND school_id=%s",(tid,sid))
-    con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True})
 
 @app.route("/api/marks/test", methods=["POST"])
 @require_auth
@@ -627,202 +591,7 @@ def init_db():
 
 # ══════════════════════════════════════════════════════════════
 # API ROUTES
-# ══════════════════════════════════════════════════════════════
-
-# ── SCHOOL REGISTRATION ───────────────────────────────────────
-@app.route("/api/register/school", methods=["POST"])
-def api_register_school():
-    data         = request.form
-    school_name  = data.get("school_name","").strip()
-    admin_user   = data.get("admin_username","").strip()
-    admin_pass   = data.get("admin_password","").strip()
-    phone        = data.get("phone","").strip()
-    email        = data.get("email","").strip()
-    admin_phone  = data.get("admin_phone","").strip()
-    motto        = data.get("motto","").strip()
-    reg_code     = data.get("reg_code","").strip()
-    agree_terms  = data.get("agree_terms","").strip()
-    if not school_name: return jsonify({"ok":False,"error":"School name required"}), 400
-    if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
-    if agree_terms != "1":
-        return jsonify({"ok":False,"error":"You must agree to the Terms & Conditions and Privacy Policy"}), 400
-    if reg_code:
-        if not valid_reg_code(reg_code):
-            return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
-        if get_school_id_by_reg_code(reg_code):
-            return jsonify({"ok":False,"error":f"Registration code '{reg_code}' is already taken by another school. Please choose a different one."}), 409
-    else:
-        reg_code = generate_unique_reg_code(school_name)
-    logo_b64 = ""; logo_mime = ""
-    if "logo" in request.files:
-        f = request.files["logo"]
-        if f and f.filename:
-            ext = f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else ""
-            if ext not in ALLOWED_LOGO_EXT: return jsonify({"ok":False,"error":"Logo must be an image"}), 400
-            raw = f.read()
-            if len(raw) > 2*1024*1024:
-                return jsonify({"ok":False,"error":"Logo must be smaller than 2MB"}), 400
-            logo_mime = _mime_for_ext(ext)
-            logo_b64  = base64.b64encode(raw).decode("ascii")
-    try:
-        classes_data  = json.loads(data.get("classes","[]"))
-        subjects_data = json.loads(data.get("subjects","[]"))
-        grades_data   = json.loads(data.get("grades","[]"))
-    except Exception as e:
-        return jsonify({"ok":False,"error":f"Invalid JSON: {e}"}), 400
-    if not subjects_data: return jsonify({"ok":False,"error":"At least one subject required"}), 400
-    if not grades_data:   return jsonify({"ok":False,"error":"At least one grade rule required"}), 400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("""INSERT INTO schools(school_name,reg_code,terms_accepted_at,terms_accepted_by)
-                       VALUES(%s,%s,NOW(),%s) RETURNING id""", (school_name, reg_code, admin_user))
-        school_id = cur.fetchone()[0]
-        cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',%s)",
-                    (admin_user, hash_password(admin_pass), school_id))
-        logo_path = f"api/logo/{school_id}" if logo_b64 else ""
-        cfg = {"school_name":school_name,"phone":phone,"email":email,"admin_phone":admin_phone,
-               "motto":motto,"logo_path":logo_path,"registration_complete":"1"}
-        if logo_b64:
-            cfg["logo_data"] = logo_b64
-            cfg["logo_mime"] = logo_mime
-        for k,v in cfg.items():
-            cur.execute("INSERT INTO school_config(school_id,key,value) VALUES(%s,%s,%s) ON CONFLICT(school_id,key) DO UPDATE SET value=EXCLUDED.value",
-                        (school_id, k, v))
-        for i,s in enumerate(subjects_data):
-            name = s.get("name","").strip().lower(); ab = s.get("abbreviation","").strip().upper()
-            if name:
-                cur.execute("INSERT INTO school_subjects(school_id,name,abbreviation,sort_order) VALUES(%s,%s,%s,%s) ON CONFLICT(school_id,name) DO UPDATE SET abbreviation=EXCLUDED.abbreviation",
-                            (school_id, name, ab, i))
-        for i,g in enumerate(grades_data):
-            cur.execute("INSERT INTO grade_config(school_id,min_score,max_score,grade,sort_order) VALUES(%s,%s,%s,%s,%s)",
-                        (school_id, float(g["min_score"]), float(g["max_score"]), str(g["grade"]).strip(), i))
-        for cls in classes_data:
-            cname = cls.get("name","").strip()
-            if not cname: continue
-            cur.execute("INSERT INTO classes(school_id,class_name) VALUES(%s,%s) ON CONFLICT(school_id,class_name) DO NOTHING RETURNING id",
-                        (school_id, cname))
-            row = cur.fetchone()
-            if not row:
-                cur.execute("SELECT id FROM classes WHERE school_id=%s AND class_name=%s", (school_id, cname))
-                row = cur.fetchone()
-            cid = row[0]
-            for sname in cls.get("streams",[]):
-                sname = sname.strip()
-                if sname:
-                    cur.execute("INSERT INTO streams(school_id,class_id,stream_name) VALUES(%s,%s,%s) ON CONFLICT(class_id,stream_name) DO NOTHING",
-                                (school_id, cid, sname))
-        con.commit()
-    except Exception as e:
-        con.rollback(); cur.close(); con.close()
-        return jsonify({"ok":False,"error":str(e)}), 500
-    cur.close(); con.close()
-    return jsonify({"ok":True,"school_id":school_id})
-
-# ── AUTH ──────────────────────────────────────────────────────
-@app.route("/api/login", methods=["POST"])
-def api_login():
-    d = request.json or {}
-    reg_code = (d.get("reg_code") or "").strip()
-    u, p = d.get("username","").strip(), d.get("password","")
-    if not reg_code: return jsonify({"ok":False,"error":"Enter your school's registration code"}), 400
-    if not u or not p: return jsonify({"ok":False,"error":"Enter username and password"}), 400
-
-    identifier = f"{request.remote_addr}:{reg_code.lower()}:{u.lower()}"
-    if _login_attempts_count(identifier) >= LOGIN_MAX_ATTEMPTS:
-        return jsonify({"ok":False,"error":"Too many login attempts. Please try again in a few minutes."}), 429
-
-    school_id = get_school_id_by_reg_code(reg_code)
-    if not school_id:
-        _record_login_attempt(identifier)
-        return jsonify({"ok":False,"error":"School registration code not recognized"}), 401
-    # The registration code pins the school unambiguously, so this lookup is
-    # always scoped to exactly one school — a username/password that matches
-    # a *different* school can never authenticate here, by construction.
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT * FROM users WHERE username=%s AND school_id=%s", (u, school_id))
-    row = cur.fetchone(); cols = [x[0] for x in cur.description] if cur.description else []
-    cur.close(); con.close()
-    if not row:
-        _record_login_attempt(identifier)
-        return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
-    user = dict(zip(cols, row))
-    if not verify_password(p, user["password"]):
-        _record_login_attempt(identifier)
-        return jsonify({"ok":False,"error":"Invalid registration code, username or password"}), 401
-    token = issue_token(user["username"], school_id, user["role"], user.get("student_id"),
-                         bool(user.get("is_class_teacher", 0)), user.get("class_id"), user.get("stream_id"),
-                         user.get("token_version") or 0)
-    return jsonify({"ok":True,"token":token,"user":{
-        "username":             user["username"],
-        "role":                 user["role"],
-        "school_id":            school_id,
-        "is_class_teacher":     bool(user.get("is_class_teacher",0)),
-        "class_id":             user.get("class_id"),
-        "stream_id":            user.get("stream_id"),
-        "must_change_password": bool(user.get("must_change_password",0)),
-        "student_id":           user.get("student_id"),
-    },"registration_complete": is_registration_complete(school_id)})
-
-@app.route("/api/school/info", methods=["GET"])
-def api_school_info():
-    reg_code = request.args.get("reg_code")
-    if reg_code:
-        school_id = get_school_id_by_reg_code(reg_code)
-        if not school_id: return jsonify({})
-    else:
-        school_id = request.args.get("school_id",1,type=int)
-    keys = ["school_name","phone","email","admin_phone","motto","logo_path","registration_complete"]
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT key,value FROM school_config WHERE school_id=%s AND key=ANY(%s)", (school_id, keys))
-    rows = cur.fetchall(); cur.close(); con.close()
-    return jsonify({r[0]:r[1] for r in rows})
-
-
-
-@app.route("/api/setup_admin", methods=["POST"])
-def api_setup_admin():
-    d = request.json
-    secret = d.get("secret",""); username = d.get("username","").strip(); password = d.get("password","")
-    if not os.environ.get("ADMIN_SETUP_SECRET") or secret != os.environ.get("ADMIN_SETUP_SECRET"):
-        return jsonify({"ok":False,"error":"Invalid setup secret"}), 403
-    if not username or not password: return jsonify({"ok":False,"error":"Username and password required"}), 400
-    con = get_db(); cur = con.cursor()
-    cur.execute("INSERT INTO schools(id,school_name) VALUES(1,'Default School') ON CONFLICT DO NOTHING")
-    cur.execute("SELECT username FROM users WHERE role='admin' AND school_id=1")
-    if cur.fetchone():
-        cur.close(); con.close()
-        return jsonify({"ok":False,"error":"Admin already exists"}), 409
-    cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',1)",
-                (username, hash_password(password)))
-    for k,v in [("school_name","School Name"),("registration_complete","0"),("phone",""),
-                 ("email",""),("motto",""),("logo_path",""),("admin_phone","")]:
-        cur.execute("INSERT INTO school_config(school_id,key,value) VALUES(1,%s,%s) ON CONFLICT DO NOTHING",(k,v))
-    con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True,"school_id":1})
-
-@app.route("/api/change_password", methods=["POST"])
-@require_auth
-def api_change_password():
-    d = request.json
-    username  = g.username       # can only ever change YOUR OWN password now
-    school_id = g.school_id
-    old_pw    = d.get("old_password","")
-    new_pw    = d.get("new_password","").strip()
-    if len(new_pw) < 6: return jsonify({"ok":False,"error":"Password must be at least 6 characters"}), 400
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT password FROM users WHERE username=%s AND school_id=%s", (username, school_id))
-    row = cur.fetchone()
-    if not row or not verify_password(old_pw, row[0]):
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Current password is incorrect"}), 401
-    cur.execute("UPDATE users SET password=%s,must_change_password=0,token_version=COALESCE(token_version,0)+1 WHERE username=%s AND school_id=%s",
-                (hash_password(new_pw), username, school_id))
-    con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True})
-
-@app.route("/uploads/logos/<filename>")
-def serve_logo(filename):
-    return send_from_directory(os.path.join(UPLOAD_FOLDER,"logos"), filename)
-
+# ════════════════════════════════════════════════════════════
 
 # ── SUBJECTS / GRADES ─────────────────────────────────────────
 @app.route("/api/subjects", methods=["GET"])
@@ -901,72 +670,6 @@ def api_set_grading_system():
             cur.execute("UPDATE school_subjects SET is_noncredit=1 WHERE school_id=%s AND name=%s",(sid,name.strip().lower()))
         con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
-
-# ── CLASSES ───────────────────────────────────────────────────
-@app.route("/api/classes", methods=["GET"])
-@require_auth
-def api_get_classes():
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY class_name",(sid,))
-    classes = to_dicts(cur.fetchall(), cur); result = []
-    for c in classes:
-        cur.execute("SELECT * FROM streams WHERE school_id=%s AND class_id=%s ORDER BY stream_name",(sid,c["id"]))
-        result.append({**c,"streams":to_dicts(cur.fetchall(),cur)})
-    cur.close(); con.close(); return jsonify(result)
-
-@app.route("/api/classes", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_add_class():
-    sid = g.school_id; name = request.json.get("class_name","").strip()
-    if not name: return jsonify({"ok":False,"error":"Class name required"}),400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("INSERT INTO classes(school_id,class_name) VALUES(%s,%s) RETURNING id",(sid,name))
-        new_id = cur.fetchone()[0]; con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
-    cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
-
-@app.route("/api/classes/<int:cid>", methods=["DELETE"])
-@require_auth
-@require_role("admin")
-def api_delete_class(cid):
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s AND class_id=%s",(sid,cid))
-    if cur.fetchone()[0]>0:
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Students exist in this class"}),409
-    cur.execute("DELETE FROM streams WHERE school_id=%s AND class_id=%s",(sid,cid))
-    cur.execute("DELETE FROM classes WHERE id=%s AND school_id=%s",(cid,sid))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/classes/<int:cid>/streams", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_add_stream(cid):
-    sid = g.school_id; name = request.json.get("stream_name","").strip()
-    if not name: return jsonify({"ok":False,"error":"Stream name required"}),400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("INSERT INTO streams(school_id,class_id,stream_name) VALUES(%s,%s,%s) RETURNING id",(sid,cid,name))
-        new_id = cur.fetchone()[0]; con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Stream already exists"}),409
-    cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
-
-@app.route("/api/streams/<int:stream_id>", methods=["DELETE"])
-@require_auth
-@require_role("admin")
-def api_delete_stream(stream_id):
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s AND stream_id=%s",(sid,stream_id))
-    if cur.fetchone()[0]>0:
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Students exist in this stream"}),409
-    cur.execute("DELETE FROM streams WHERE id=%s AND school_id=%s",(stream_id,sid))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 # ── STUDENTS ──────────────────────────────────────────────────
 @app.route("/api/students", methods=["GET"])
@@ -1212,185 +915,6 @@ def api_reset_parent_credentials(student_id):
     cur.close(); con.close()
     return jsonify({"ok":True,"username":gen_username,"temp_password":new_password})    
 
-
-# ── TEACHERS ──────────────────────────────────────────────────
-@app.route("/api/teachers", methods=["GET"])
-@require_auth
-def api_get_teachers():
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT u.username,u.is_class_teacher,u.class_id,u.stream_id,u.must_change_password,
-                          c.class_name,st.stream_name
-                   FROM users u
-                   LEFT JOIN classes c ON u.class_id=c.id AND c.school_id=%s
-                   LEFT JOIN streams st ON u.stream_id=st.id
-                   WHERE u.role='teacher' AND u.school_id=%s ORDER BY u.username""",(sid,sid))
-    teachers = to_dicts(cur.fetchall(),cur); result=[]
-    for t in teachers:
-        cur.execute("""SELECT sa.subject,sa.class_id,sa.stream_id,c.class_name,st.stream_name
-                       FROM subject_assignments sa JOIN classes c ON sa.class_id=c.id
-                       LEFT JOIN streams st ON sa.stream_id=st.id
-                       WHERE sa.school_id=%s AND sa.username=%s""",(sid,t["username"]))
-        result.append({**t,"assignments":to_dicts(cur.fetchall(),cur)})
-    cur.close(); con.close(); return jsonify(result)
-
-@app.route("/api/teachers", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_create_teacher():
-    sid = g.school_id; d = request.json
-    username=d.get("username","").strip(); password=d.get("password","")
-    if not username or not password: return jsonify({"ok":False,"error":"Username and password required"}),400
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password) VALUES(%s,%s,'teacher',%s,1)",
-                    (username,hash_password(password),sid))
-        con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close()
-        return jsonify({"ok":False,"error":"Username already exists"}),409
-    cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/teachers/<username>", methods=["DELETE"])
-@require_auth
-@require_role("admin")
-def api_delete_teacher(username):
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("DELETE FROM subject_assignments WHERE school_id=%s AND username=%s",(sid,username))
-    cur.execute("DELETE FROM users WHERE username=%s AND role='teacher' AND school_id=%s",(username,sid))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/teachers/<username>/class_teacher", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_set_class_teacher(username):
-    sid = g.school_id; d = request.json
-    is_ct=bool(d.get("is_class_teacher",False)); class_id=d.get("class_id") or None; stream_id=d.get("stream_id") or None
-    if is_ct and not class_id: return jsonify({"ok":False,"error":"Class required"}),400
-    con = get_db(); cur = con.cursor()
-    cur.execute("UPDATE users SET is_class_teacher=%s,class_id=%s,stream_id=%s WHERE username=%s AND school_id=%s AND role='teacher'",
-                (1 if is_ct else 0, class_id if is_ct else None, stream_id if is_ct else None, username, sid))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/assign_teacher", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_assign_teacher():
-    sid = g.school_id; d = request.json
-    username=d.get("username",""); subject=d.get("subject","").lower().strip()
-    class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
-    con = get_db(); cur = con.cursor()
-    try:
-        cur.execute("INSERT INTO subject_assignments(school_id,username,subject,class_id,stream_id) VALUES(%s,%s,%s,%s,%s)",
-                    (sid,username,subject,class_id,stream_id))
-        con.commit()
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Already assigned"}),409
-    cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/unassign_teacher", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_unassign_teacher():
-    sid = g.school_id; d = request.json
-    username=d.get("username",""); subject=d.get("subject","").lower()
-    class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
-    con = get_db(); cur = con.cursor()
-    if stream_id:
-        cur.execute("DELETE FROM subject_assignments WHERE school_id=%s AND username=%s AND subject=%s AND class_id=%s AND stream_id=%s",
-                    (sid,username,subject,class_id,stream_id))
-    else:
-        cur.execute("DELETE FROM subject_assignments WHERE school_id=%s AND username=%s AND subject=%s AND class_id=%s AND stream_id IS NULL",
-                    (sid,username,subject,class_id))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
-
-# ── TERMS ──────────────────────────────────────────────────────
-@app.route("/api/terms", methods=["GET"])
-@require_auth
-def api_get_terms():
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT * FROM terms WHERE school_id=%s ORDER BY id DESC",(sid,))
-    rows = to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
-
-@app.route("/api/terms/active", methods=["GET"])
-@require_auth
-def api_active_term():
-    sid = g.school_id; t = get_active_term(sid)
-    return jsonify({"ok":bool(t),"term":t})
-
-@app.route("/api/terms", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_create_term():
-    sid = g.school_id; d = request.json
-    label=d.get("label","").strip(); ca_count=int(d.get("ca_count",2))
-    ca_weight=int(d.get("ca_weight",30)); ex_weight=int(d.get("exam_weight",70))
-    if not label: return jsonify({"ok":False,"error":"Term label required"}),400
-    if ca_weight+ex_weight!=100: return jsonify({"ok":False,"error":"Weights must sum to 100"}),400
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT id FROM terms WHERE school_id=%s AND status='open'",(sid,))
-    if cur.fetchone(): cur.close(); con.close(); return jsonify({"ok":False,"error":"Close current term first"}),409
-    cur.execute("INSERT INTO terms(school_id,label,ca_count,ca_weight,exam_weight,status) VALUES(%s,%s,%s,%s,%s,'open')",
-                (sid,label,ca_count,ca_weight,ex_weight))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
-
-@app.route("/api/terms/<int:tid>", methods=["PATCH"])
-@require_auth
-@require_role("admin")
-def api_update_term(tid):
-    sid = g.school_id; d = request.json or {}
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT status FROM terms WHERE id=%s AND school_id=%s",(tid,sid))
-    row = cur.fetchone()
-    if not row:
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Term not found"}),404
-    if row[0]=="closed":
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Closed terms are locked and can't be edited"}),400
-
-    fields=[]; vals=[]
-    if d.get("label") is not None:
-        label=d.get("label","").strip()
-        if not label:
-            cur.close(); con.close(); return jsonify({"ok":False,"error":"Term label required"}),400
-        fields.append("label=%s"); vals.append(label)
-    if d.get("ca_count") is not None:
-        try: ca_count=int(d.get("ca_count"))
-        except (TypeError,ValueError):
-            cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid CA count"}),400
-        if ca_count<1:
-            cur.close(); con.close(); return jsonify({"ok":False,"error":"Number of CAs must be at least 1"}),400
-        fields.append("ca_count=%s"); vals.append(ca_count)
-    if d.get("ca_weight") is not None and d.get("exam_weight") is not None:
-        try:
-            ca_weight=int(d.get("ca_weight")); exam_weight=int(d.get("exam_weight"))
-        except (TypeError,ValueError):
-            cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid weights"}),400
-        if ca_weight+exam_weight!=100:
-            cur.close(); con.close(); return jsonify({"ok":False,"error":"Weights must sum to 100"}),400
-        fields.append("ca_weight=%s"); vals.append(ca_weight)
-        fields.append("exam_weight=%s"); vals.append(exam_weight)
-    if not fields:
-        cur.close(); con.close(); return jsonify({"ok":False,"error":"Nothing to update"}),400
-
-    vals += [tid, sid]
-    cur.execute(f"UPDATE terms SET {','.join(fields)} WHERE id=%s AND school_id=%s", vals)
-    con.commit(); cur.close(); con.close()
-    return jsonify({"ok":True})
-
-@app.route("/api/terms/<int:tid>/close", methods=["POST"])
-@require_auth
-@require_role("admin")
-def api_close_term(tid):
-    sid = g.school_id
-    con = get_db(); cur = con.cursor()
-    cur.execute("SELECT status FROM terms WHERE id=%s AND school_id=%s",(tid,sid))
-    row = cur.fetchone()
-    if not row: cur.close(); con.close(); return jsonify({"ok":False,"error":"Not found"}),404
-    if row[0]=="closed": cur.close(); con.close(); return jsonify({"ok":False,"error":"Already closed"}),400
-    cur.execute("UPDATE terms SET status='closed' WHERE id=%s AND school_id=%s",(tid,sid))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True})
 
 # ── MARKS ─────────────────────────────────────────────────────
 @app.route("/api/marks/ca", methods=["POST"])
@@ -2678,28 +2202,6 @@ def api_sa_set_payment_config():
 # ── STATIC ─────────────────────────────────────────────────────
 _STATIC_FILES=["shared.css","DRDEMIC-LOGO.png"]
 
-@app.route("/")
-def index(): return send_from_directory(BASE_DIR,"index.html")
-
-@app.route("/setup")
-def setup_page(): return send_from_directory(BASE_DIR,"setup.html")
-
-@app.route("/register")
-def register_page(): return send_from_directory(BASE_DIR,"register.html")
-
-@app.route("/superadmin")
-def superadmin_page(): return send_from_directory(BASE_DIR,"superadmin.html")
-
-@app.route("/privacy")
-def privacy_page(): return send_from_directory(BASE_DIR,"privacy.html")
-
-@app.route("/terms")
-def terms_page(): return send_from_directory(BASE_DIR,"terms.html")
-
-@app.route("/storage/uploads/logos/<filename>")
-def serve_logo_static(filename):
-    return send_from_directory(os.path.join(UPLOAD_FOLDER,"logos"),filename)
-
 @app.route("/api/config/logo", methods=["POST"])
 @require_auth
 @require_role("admin")
@@ -2723,28 +2225,6 @@ def api_upload_logo():
     logo_path = f"api/logo/{school_id}"
     set_config_val(school_id, "logo_path", logo_path)
     return jsonify({"ok":True,"logo_path":logo_path})
-
-@app.route("/api/logo/<int:school_id>")
-def serve_logo_db(school_id):
-    data = get_config_val(school_id, "logo_data", "")
-    mime = get_config_val(school_id, "logo_mime", "image/png")
-    if not data:
-        return ("Not found", 404)
-    try:
-        raw = base64.b64decode(data)
-    except Exception:
-        return ("Not found", 404)
-    return send_file(io.BytesIO(raw), mimetype=mime)
-
-@app.route("/<path:filename>")
-def serve_static(filename):
-    if filename in _STATIC_FILES: return send_from_directory(BASE_DIR,filename)
-    return ("Not found",404)
-
-@app.route("/js/<path:filename>")
-def serve_js(filename):
-    if not filename.endswith(".js"): return ("Not found",404)
-    return send_from_directory(os.path.join(BASE_DIR,"js"),filename)
 
 
 @app.route("/api/students/import/template", methods=["GET"])
