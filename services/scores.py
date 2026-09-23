@@ -6,6 +6,15 @@ request/response handling.
 from core.db import get_db, to_dict, to_dicts
 from config import _FALLBACK_SUBJECTS, _FALLBACK_ABBR
 
+def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT id FROM subject_assignments
+                   WHERE school_id=%s AND username=%s AND subject=%s AND class_id=%s
+                   AND (stream_id=%s OR stream_id IS NULL)""",
+                (school_id, username, subject, class_id, stream_id))
+    row = cur.fetchone(); cur.close(); con.close()
+    return row is not None
+
 
 # ── SUBJECTS ──────────────────────────────────────────────────
 def get_subjects(school_id):
