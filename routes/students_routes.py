@@ -167,6 +167,7 @@ def api_update_student(student_id):
     if parent_row and (name_changed or phone_changed):
         old_username, must_change = parent_row
         if phone:
+            gen_username = name.strip().lower().replace(" ", "_")
             last4 = phone[-4:]
             cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
                            WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
@@ -176,8 +177,9 @@ def api_update_student(student_id):
             new_password = f"{last4}-{student_id}" if needs_suffix else last4
             new_username = gen_username
             try:
-                cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1
-                               WHERE username=%s AND school_id=%s AND student_id=%s, token_version=COALESCE(token_version,0)+1""",
+                cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1,
+                               token_version=COALESCE(token_version,0)+1
+                               WHERE username=%s AND school_id=%s AND student_id=%s""",
                             (new_username, hash_password(new_password), old_username, sid, student_id))
             except psycopg2.errors.UniqueViolation:
                 con.rollback(); cur.close(); con.close()
@@ -231,8 +233,9 @@ def api_reset_parent_credentials(student_id):
     new_password = f"{last4}-{student_id}" if needs_suffix else last4
     try:
         if parent_row:
-            cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1
-                           WHERE school_id=%s AND student_id=%s AND role='parent', token_version=COALESCE(token_version,0)+1""",
+            cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1,
+                           token_version=COALESCE(token_version,0)+1
+                           WHERE school_id=%s AND student_id=%s AND role='parent'""",
                         (gen_username, hash_password(new_password), sid, student_id))
         else:
             cur.execute("""INSERT INTO users(username,password,role,school_id,must_change_password,student_id)
