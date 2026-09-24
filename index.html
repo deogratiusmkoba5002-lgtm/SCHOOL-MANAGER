@@ -31,27 +31,31 @@
           </svg>
         </div>
         <div>
-          <h1 id="login-school-name">DrDemic School Manager</h1>
+          <h1 id="login-school-name" data-i18n="login.title">DrDemic School Manager</h1>
           <span id="login-school-sub">Academic Management System</span>
         </div>
       </div>
-      <p class="login-subtitle">Sign in to your account to continue</p>
+      <button id="lang-toggle-btn" onclick="toggleLang()" style="float:right;margin-top:-38px;background:none;border:1.5px solid var(--border);border-radius:20px;padding:4px 12px;font-size:.75rem;color:var(--muted);cursor:pointer">🇹🇿 Kiswahili</button>
+      <p class="login-subtitle" data-i18n="login.subtitle">Sign in to your account to continue</p>
       <div class="login-error" id="login-error"></div>
       <div class="field">
-        <label>School Registration Code</label>
-        <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization"
+        <label data-i18n="login.regcode_label">School Registration Code</label>
+        <input type="text" id="login-regcode" placeholder="e.g. S1234" data-i18n-placeholder="login.regcode_ph" autocomplete="organization"
           oninput="fetchBrandingByRegCode(this.value)" />
 
       </div>
       <div class="field">
-        <label>Username</label>
-        <input type="text" id="login-user" placeholder="Enter username" autocomplete="username" />
+        <label data-i18n="login.user_label">Username</label>
+        <input type="text" id="login-user" placeholder="Enter username" data-i18n-placeholder="login.user_ph" autocomplete="username" />
       </div>
       <div class="field">
-        <label>Password</label>
-        <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password" />
+        <label data-i18n="login.pass_label">Password</label>
+        <input type="password" id="login-pass" placeholder="Enter password" data-i18n-placeholder="login.pass_ph" autocomplete="current-password" />
       </div>
-      <button class="btn-primary" id="login-btn">Sign In</button>
+      <button class="btn-primary" id="login-btn" data-i18n="login.signin_btn">Sign In</button>
+      <div style="text-align:center;margin-top:16px">
+        <a href="/register" style="color:var(--blue);font-weight:600;font-size:.85rem;text-decoration:none" data-i18n="login.register_link">New school? Register here →</a>
+      </div>
     </div>
   </div>
 
@@ -1650,6 +1654,7 @@
   </div>
 
   <!-- ══════════════ JAVASCRIPT ══════════════ -->
+  <script src="/js/i18n.js"></script>
   <script src="/js/shared.js"></script>
   <script src="/js/page-dashboard.js"></script>
   <script src="/js/page-students.js"></script>

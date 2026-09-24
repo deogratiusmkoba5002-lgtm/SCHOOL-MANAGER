@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify
 
 from core.db import get_db
 from core.security import hash_password
-from core.school import valid_reg_code, get_school_id_by_reg_code, generate_unique_reg_code
+from core.school import valid_necta_code, get_school_id_by_reg_code
 from config import ALLOWED_LOGO_EXT, _mime_for_ext
 
 registration_bp = Blueprint("registration", __name__)
@@ -28,13 +28,10 @@ def api_register_school():
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
     if agree_terms != "1":
         return jsonify({"ok":False,"error":"You must agree to the Terms & Conditions and Privacy Policy"}), 400
-    if reg_code:
-        if not valid_reg_code(reg_code):
-            return jsonify({"ok":False,"error":"Registration code must be 3-32 characters: letters, numbers, underscore or hyphen only"}), 400
-        if get_school_id_by_reg_code(reg_code):
-            return jsonify({"ok":False,"error":f"Registration code '{reg_code}' is already taken by another school. Please choose a different one."}), 409
-    else:
-        reg_code = generate_unique_reg_code(school_name)
+    if not valid_necta_code(reg_code):
+        return jsonify({"ok":False,"error":"Enter your school's official NECTA code (e.g. S1234) so we can verify your school before activating full access."}), 400
+    if get_school_id_by_reg_code(reg_code):
+        return jsonify({"ok":False,"error":f"School code '{reg_code}' is already registered. If this is your school, contact support."}), 409
     logo_b64 = ""; logo_mime = ""
     if "logo" in request.files:
         f = request.files["logo"]
@@ -56,8 +53,8 @@ def api_register_school():
     if not grades_data:   return jsonify({"ok":False,"error":"At least one grade rule required"}), 400
     con = get_db(); cur = con.cursor()
     try:
-        cur.execute("""INSERT INTO schools(school_name,reg_code,terms_accepted_at,terms_accepted_by)
-                       VALUES(%s,%s,NOW(),%s) RETURNING id""", (school_name, reg_code, admin_user))
+        cur.execute("""INSERT INTO schools(school_name,reg_code,necta_code,verification_status,terms_accepted_at,terms_accepted_by)
+                       VALUES(%s,%s,%s,'pending',NOW(),%s) RETURNING id""", (school_name, reg_code, reg_code, admin_user))
         school_id = cur.fetchone()[0]
         cur.execute("INSERT INTO users(username,password,role,school_id) VALUES(%s,%s,'admin',%s)",
                     (admin_user, hash_password(admin_pass), school_id))

@@ -233,6 +233,7 @@ async function loadConfig(){
   window.subActive = sub.ok ? sub.active : true;
   const c = await api("/config");
   config = {...config, ...c};
+  renderVerificationBanner(c);
   if(c.allowed_subjects && c.allowed_subjects.length) config.allowed_subjects = c.allowed_subjects;
   if(c.grade_rules && c.grade_rules.length) GRADE_RULES = c.grade_rules;
   const logoPath = c.school_info && c.school_info.logo_path;
@@ -270,6 +271,30 @@ async function loadConfig(){
     } else {
       infoEl.innerHTML=`<p style="color:var(--orange);margin-top:8px">⚠ No active term. Go to <strong>Terms</strong> to open one.</p>`;
     }
+  }
+}
+
+function renderVerificationBanner(c){
+  let bar = document.getElementById("verification-banner");
+  if(!bar){
+    bar = document.createElement("div");
+    bar.id = "verification-banner";
+    bar.style.cssText = "position:sticky;top:0;z-index:150;padding:10px 20px;font-size:.85rem;font-weight:600;text-align:center;display:none";
+    document.getElementById("main").prepend(bar);
+  }
+  if(c.verification_status === "pending"){
+    bar.style.display = "block";
+    bar.style.background = "#FFF3E0"; bar.style.color = "#E65100"; bar.style.borderBottom = "2px solid #FF6D00";
+    bar.textContent = "⏳ Pending registration verification — your school code is being reviewed. You can keep using the system in the meantime.";
+  } else if(c.verification_status === "rejected"){
+    bar.style.display = "block";
+    bar.style.background = "#FFEBEE"; bar.style.color = "#C62828"; bar.style.borderBottom = "2px solid #F44336";
+    bar.textContent = "⚠ Registration rejected: " + (c.rejection_reason || "Contact support.") + " — your data will be removed if this isn't resolved.";
+  } else {
+    bar.style.display = "none";
+  }
+  if(c.just_approved){
+    toast("✅ Your school registration has been verified and approved!","success");
   }
 }
 

@@ -306,6 +306,11 @@ def init_db():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS terms_accepted_by TEXT",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'approved'",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS necta_code TEXT",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS approved_notice_pending INTEGER DEFAULT 0",
     ]
     
     for m in migrations:

@@ -97,9 +97,21 @@ def api_config():
     sid = g.school_id; term = get_active_term(sid)
     subjects = get_subjects(sid); subj_map = get_subject_map(sid)
     info = {k: get_config_val(sid,k,"") for k in ["school_name","phone","email","admin_phone","motto","logo_path"]}
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT verification_status, rejection_reason, approved_notice_pending FROM schools WHERE id=%s",(sid,))
+    vrow = cur.fetchone()
+    verification_status = vrow[0] if vrow else "approved"
+    rejection_reason = vrow[1] if vrow else None
+    approved_notice = bool(vrow[2]) if vrow and g.role=="admin" else False
+    if approved_notice:
+        cur.execute("UPDATE schools SET approved_notice_pending=0 WHERE id=%s",(sid,))
+        con.commit()
+    cur.close(); con.close()
     return jsonify({"allowed_subjects":subjects,"subject_abbr":subj_map,"active_term":term,
                     "ca_count":term["ca_count"] if term else 2,"school_name":info.get("school_name","School Name"),
-                    "school_info":info,"grade_rules":get_grade_rules(sid)})
+                    "school_info":info,"grade_rules":get_grade_rules(sid),
+                    "verification_status":verification_status,"rejection_reason":rejection_reason,
+                    "just_approved":approved_notice})
 
 @config_bp.route("/api/config/school_name", methods=["POST"])
 @require_auth

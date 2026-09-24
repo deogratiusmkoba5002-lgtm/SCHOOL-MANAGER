@@ -369,9 +369,9 @@ input,select,textarea{font-family:inherit;outline:none}
           </div>
 
           <div class="field">
-            <label>School Registration Code <span style="color:var(--red)">*</span></label>
-            <input type="text" id="school-reg-code" placeholder="e.g. Peter_07">
-            <div class="field-hint">A short unique code your staff will type alongside their username &amp; password to log in — this is what points a login at your school specifically, so it must be different from every other school's code. It doesn't have to match your school's name (e.g. Saint Peter's High School could use "Peter_07"). Letters, numbers, underscore and hyphen only, 3–32 characters.</div>
+            <label>Official NECTA School Code <span style="color:var(--red)">*</span></label>
+            <input type="text" id="school-reg-code" placeholder="e.g. S1234">
+            <div class="field-hint">Enter your school's official NECTA registration code. We use this to verify your school before activating full access — your staff will also use it (alongside username &amp; password) to log in, so it must be unique. Format: one letter followed by 3–6 digits (e.g. S1234).</div>
           </div>
         </div>
 
@@ -606,7 +606,7 @@ function validateStep(n){
     if(adminPass !== adminPassConfirm){ toast("Passwords don't match","error"); document.getElementById("admin-password-confirm").focus(); return false; }
     const regCode = document.getElementById("school-reg-code").value.trim();
     if(!regCode){ toast("Choose a school registration code","error"); document.getElementById("school-reg-code").focus(); return false; }
-    if(!/^[A-Za-z0-9_-]{3,32}$/.test(regCode)){ toast("Registration code must be 3–32 characters: letters, numbers, underscore or hyphen only","error"); document.getElementById("school-reg-code").focus(); return false; }
+    if(!/^[A-Za-z]\d{3,6}$/.test(regCode)){ toast("Enter a valid NECTA school code, e.g. S1234 (one letter followed by 3–6 digits)","error"); document.getElementById("school-reg-code").focus(); return false; }
     const agreeEl = document.getElementById("agree-terms");
     if(!agreeEl.checked){ toast("You must agree to the Terms & Conditions and Privacy Policy to continue","error"); agreeEl.scrollIntoView({behavior:"smooth",block:"center"}); return false; }
   }
@@ -824,8 +824,8 @@ async function submitRegistration(){
     const res = await fetch(`${API}/register/school`,{method:"POST",body:fd});
     const d   = await res.json();
     if(d.ok){
-      toast("🎉 School registered successfully! Redirecting to login...","success");
-      setTimeout(()=>window.location.href="/",2200);
+      toast("🎉 School registered! Your account is active — verification is pending, so you'll see a notice until we confirm your NECTA code. Redirecting to login...","success");
+      setTimeout(()=>window.location.href="/",3200);
     } else {
       toast(d.error||"Registration failed","error");
       btn.innerHTML=`<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Complete Registration`;

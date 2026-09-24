@@ -5,6 +5,7 @@ from config import SUBSCRIPTION_PLANS
 from core.db import get_db, to_dicts
 from core.security import verify_password
 from core.auth import _require_superadmin, _sa_serializer
+from core.school import purge_expired_rejected_schools
 from services.subscriptions import _expire_stale_payment_requests, _platform_payment_config
 
 superadmin_bp = Blueprint("superadmin", __name__)
@@ -52,6 +53,40 @@ def api_superadmin_schools():
     except Exception as e:
         current_app.loger.error("Superadmin schools listing failed: %s", e)
         return jsonify({"ok":False,"error":"Could not load schools list."}),500
+
+@superadmin_bp.route("/api/superadmin/schools/pending", methods=["GET"])
+def api_superadmin_pending_schools():
+    sa,err=_require_superadmin()
+    if err: return err
+    purge_expired_rejected_schools()
+    con=get_db(); cur=con.cursor()
+    cur.execute("""SELECT id,school_name,necta_code,CAST(registered_at AS TEXT),verification_status,
+                          rejection_reason,CAST(rejected_at AS TEXT)
+                   FROM schools WHERE verification_status IN ('pending','rejected') ORDER BY registered_at DESC""")
+    rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close()
+    return jsonify({"ok":True,"schools":rows})
+
+@superadmin_bp.route("/api/superadmin/schools/<int:sid>/approve", methods=["POST"])
+def api_superadmin_approve_school(sid):
+    sa,err=_require_superadmin()
+    if err: return err
+    con=get_db(); cur=con.cursor()
+    cur.execute("""UPDATE schools SET verification_status='approved', rejection_reason=NULL,
+                   rejected_at=NULL, approved_notice_pending=1 WHERE id=%s""",(sid,))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
+
+@superadmin_bp.route("/api/superadmin/schools/<int:sid>/reject", methods=["POST"])
+def api_superadmin_reject_school(sid):
+    sa,err=_require_superadmin()
+    if err: return err
+    note = (request.json or {}).get("note","").strip()
+    if not note: return jsonify({"ok":False,"error":"A rejection reason is required"}),400
+    con=get_db(); cur=con.cursor()
+    cur.execute("""UPDATE schools SET verification_status='rejected', rejection_reason=%s,
+                   rejected_at=NOW() WHERE id=%s""",(note,sid))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok":True})
 
 @superadmin_bp.route("/api/superadmin/announce", methods=["GET"])
 def api_superadmin_announce_list():

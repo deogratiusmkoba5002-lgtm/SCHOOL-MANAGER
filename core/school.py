@@ -82,3 +82,40 @@ def get_school_name(school_id):
 
 def is_registration_complete(school_id):
     return get_config_val(school_id, "registration_complete", "0") == "1"
+
+_NECTA_CODE_RE = re.compile(r'^[A-Za-z]\d{3,6}$')
+
+def valid_necta_code(code):
+    # Placeholder pattern (one letter + 3–6 digits, e.g. S1234). Swap this
+    # regex for the real NECTA format once you confirm it exactly.
+    return bool(code) and bool(_NECTA_CODE_RE.match(code.strip()))
+
+
+def purge_expired_rejected_schools():
+    """Deletes schools rejected more than 6 hours ago that were never
+    re-verified. Called lazily (no scheduler needed) whenever superadmin
+    loads the verification queue."""
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT id FROM schools WHERE verification_status='rejected'
+                   AND rejected_at IS NOT NULL AND rejected_at < NOW() - INTERVAL '6 hours'""")
+    ids = [r[0] for r in cur.fetchall()]
+    for sid in ids:
+        cur.execute("DELETE FROM ca_scores WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM exam_scores WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM test_scores WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM subject_assignments WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM remarks WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE school_id=%s)", (sid,))
+        cur.execute("DELETE FROM announcements WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM students WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM streams WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM classes WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM school_subjects WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM grade_config WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM terms WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM users WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM school_config WHERE school_id=%s", (sid,))
+        cur.execute("DELETE FROM schools WHERE id=%s", (sid,))
+    if ids: con.commit()
+    cur.close(); con.close()
+    return len(ids)

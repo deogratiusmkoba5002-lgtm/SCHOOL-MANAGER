@@ -305,10 +305,20 @@ textarea{resize:vertical;min-height:90px}
     </div>
 
     <div class="section">
-  <div class="section-title">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-    Payment Verification Queue
-  </div>
+      <div class="section-title">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        School Verification Queue
+      </div>
+      <div class="card">
+        <div id="sa-pending-schools"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        Payment Verification Queue
+      </div>
   <div class="card">
     <div class="form-row" style="margin-bottom:14px">
       <div class="form-group">
@@ -461,7 +471,42 @@ document.addEventListener("keydown", e=>{
 
 // ── LOAD ALL ───────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig()]);
+  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools()]);
+}
+
+async function loadPendingSchools(){
+  const data = await saApi("/schools/pending");
+  const list = document.getElementById("sa-pending-schools");
+  if(!data.ok || !data.schools.length){ list.innerHTML = `<div class="empty">No schools awaiting verification.</div>`; return; }
+  list.innerHTML = data.schools.map(s=>`
+    <div class="notice-item">
+      <div class="notice-meta">
+        <span class="notice-title">${esc(s.school_name)} — code: <strong>${esc(s.necta_code||"—")}</strong></span>
+        <span class="notice-date">${s.cast ? s.cast.slice(0,16) : ""}</span>
+      </div>
+      <span class="notice-target" style="${s.verification_status==='rejected'?'background:#FFEBEE;color:#C62828':'background:#FFF9C4;color:#F57F17'}">
+        Status: ${esc(s.verification_status)}${s.verification_status==='rejected' ? " — deletes automatically ~6h after rejection" : ""}
+      </span>
+      ${s.rejection_reason ? `<div class="notice-body">Reason: ${esc(s.rejection_reason)}</div>` : ""}
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveSchool(${s.id})">Approve</button>
+        <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectSchool(${s.id})">Reject</button>
+      </div>
+    </div>`).join("");
+}
+async function approveSchool(id){
+  if(!confirm("Approve this school's registration?")) return;
+  const data = await saApi(`/schools/${id}/approve`,"POST",{});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("School approved","success"); loadPendingSchools(); loadSchools();
+}
+async function rejectSchool(id){
+  const note = prompt("Reason for rejecting this school (shown to the admin):");
+  if(note===null) return;
+  if(!note.trim()){ toast("A reason is required","error"); return; }
+  const data = await saApi(`/schools/${id}/reject`,"POST",{note});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("School rejected — data will be removed in ~6 hours if unresolved","info"); loadPendingSchools();
 }
 
 // —————————PAYMENTS OVERVIEW——————————————————————————————————
