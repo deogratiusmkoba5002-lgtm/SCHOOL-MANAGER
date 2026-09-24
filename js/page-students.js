@@ -65,7 +65,6 @@ function renderStudents(list){
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id},'${(s.display_id||s.id)}')">${reportSVG()} Report</button>
           <button class="btn btn-sm btn-outline" onclick="openEditStudent(${s.id})">${editSVG()} Edit</button>
-          <button class="btn btn-sm btn-outline" onclick="openEditStudent(${s.id})">${editSVG()} Edit</button>
           <button class="btn btn-sm btn-outline" onclick="openAccessModal(${s.id})">${s.access_active?"✅":"🔒"} Access</button>
           <button class="btn btn-sm btn-red btn-icon" onclick="deleteStudent(${s.id},'${s.name}')">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
