@@ -10,6 +10,7 @@ from services.scores import (
     compute_average_from_finals, get_subject_rank_map, get_subject_assess_rank_map,
     get_class_report_data,
 )
+from services.access import has_active_access
 
 parent_bp = Blueprint("parent", __name__)
 
@@ -89,6 +90,8 @@ def api_publish_assessments():
 @require_auth
 def api_parent_terms():
     sid=g.school_id
+    if g.role == "parent" and not has_active_access(sid, g.student_id):
+        return jsonify([])
     con=get_db(); cur=con.cursor()
     # A term shows up here if EITHER the legacy whole-term publish switch is
     # on, OR at least one individual assessment has been published via the
@@ -113,6 +116,8 @@ def api_parent_results():
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
     if int(student_id) !=g.student_id:
         return jsonify({"ok":False,"error":"Access denied"}),403 
+    if not has_active_access(sid, g.student_id):
+        return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock results.","code":"parent_access_required"}),402
     if assess:
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT published FROM published_assessments WHERE school_id=%s AND term_id=%s AND assess_key=%s",(sid,term_id,assess))

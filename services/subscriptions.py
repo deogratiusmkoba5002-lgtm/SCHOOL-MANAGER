@@ -5,13 +5,12 @@ config lookup.
 """
 from datetime import datetime
 from functools import wraps
-
 from flask import g, jsonify
-
 from core.db import get_db
-
+from config import SCHOOL_SUBSCRIPTION_ENFORCED
 
 def is_subscribed(school_id):
+    if not SCHOOL_SUBSCRIPTION_ENFORCED: return True
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT subscription_exempt, subscription_status, subscription_expires_at FROM schools WHERE id=%s", (school_id,))
     row = cur.fetchone(); cur.close(); con.close()

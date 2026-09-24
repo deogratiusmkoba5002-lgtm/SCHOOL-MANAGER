@@ -1,1416 +1,1745 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>DrDemic School Manager</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="/shared.css"/>
-<link rel="icon" type="image/png" href="DRDEMIC-LOGO.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DrDemic School Manager</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/shared.css" />
+  <link rel="icon" type="image/png" href="DRDEMIC-LOGO.png">
 </head>
+
 <body>
-<div id="toast-container"></div>
-<button id = "sub-expiry-badge" onclick = "goToSubscriptionPage()"
-  style = "display:none; position:fixed; top:14px; right:14px; z-index:200; background:var(--red); color:white; border:none; border-radius:20px; padding:8px 16px; font-size:.8rem;
+  <div id="toast-container"></div>
+  <button id="sub-expiry-badge" onclick="goToSubscriptionPage()" style="display:none; position:fixed; top:14px; right:14px; z-index:200; background:var(--red); color:white; border:none; border-radius:20px; padding:8px 16px; font-size:.8rem;
     font-weight:700; box-shadow:0 4px 14px rgba(244,67,54,.4); cursor:pointer; align-items:center; gap:6px;">
-    ⚠️ <span id = "sub-expiry-text"></span>
-</button>
+    ⚠️ <span id="sub-expiry-text"></span>
+  </button>
 
-<!-- ══════════════ LOGIN PAGE ══════════════ -->
-<div id="login-page">
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="login-logo-icon" id="login-logo-icon-wrap">
-        <img id="login-school-logo" src="" alt="" style="display:none;width:32px;height:32px;border-radius:6px;object-fit:contain"/>
-        <svg id="login-default-icon" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-      </div>
-      <div>
-        <h1 id="login-school-name">DrDemic School Manager</h1>
-        <span id="login-school-sub">Academic Management System</span>
-      </div>
-    </div>
-    <p class="login-subtitle">Sign in to your account to continue</p>
-    <div class="login-error" id="login-error"></div>
-    <div class="field">
-      <label>School Registration Code</label>
-      <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization" oninput="fetchBrandingByRegCode(this.value)"/>
-
-    </div>
-    <div class="field">
-      <label>Username</label>
-      <input type="text" id="login-user" placeholder="Enter username" autocomplete="username"/>
-    </div>
-    <div class="field">
-      <label>Password</label>
-      <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password"/>
-    </div>
-    <button class="btn-primary" id="login-btn">Sign In</button>
-  </div>
-</div>
-
-<!-- ══════════════ APP ══════════════ -->
-<!-- Hamburger -->
-<button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">
-  <span></span><span></span><span></span>
-</button>
-<div id="overlay" onclick="closeSidebar()"></div>
-
-<div id="app">
-  <!-- SIDEBAR -->
-  <nav id="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-brand">
-        <div class="sidebar-brand-icon" id="sidebar-brand-icon-wrap">
-          <img id="sidebar-school-logo" src="" alt="" style="display:none;width:26px;height:26px;border-radius:6px;object-fit:contain"/>
-          <svg id="sidebar-default-icon" viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+  <!-- ══════════════ LOGIN PAGE ══════════════ -->
+  <div id="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-icon" id="login-logo-icon-wrap">
+          <img id="login-school-logo" src="" alt=""
+            style="display:none;width:32px;height:32px;border-radius:6px;object-fit:contain" />
+          <svg id="login-default-icon" viewBox="0 0 24 24">
+            <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z" />
+          </svg>
         </div>
         <div>
-          <h2 id="sidebar-school-name">SchoolManager</h2>
-          <span>Academic System</span>
+          <h1 id="login-school-name">DrDemic School Manager</h1>
+          <span id="login-school-sub">Academic Management System</span>
         </div>
       </div>
-    </div>
-    <div class="sidebar-user">
-      <div class="sidebar-user-badge">
-        <span class="sidebar-user-dot"></span>
-        <span id="sidebar-username">—</span>
-        <span id="sidebar-role-badge" style="margin-left:4px;opacity:.6"></span>
-      </div>
-    </div>
-    <div class="sidebar-nav" id="sidebar-nav"></div>
-    <div class="sidebar-footer">
-      <button class="btn-logout" id="logout-btn">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-        Logout
-      </button>
-    </div>
-  </nav>
+      <p class="login-subtitle">Sign in to your account to continue</p>
+      <div class="login-error" id="login-error"></div>
+      <div class="field">
+        <label>School Registration Code</label>
+        <input type="text" id="login-regcode" placeholder="e.g. Peter_07" autocomplete="organization"
+          oninput="fetchBrandingByRegCode(this.value)" />
 
-  <!-- MAIN -->
-  <main id="main">
-    <!-- TERM BANNER -->
-    <div id="term-banner" style="display:none;margin:-28px -32px 20px -32px">
-      <div class="term-banner" id="term-banner-bar">
-        <div class="term-badge" id="term-badge-label">No active term</div>
-        <div id="term-banner-detail" style="opacity:.85;font-size:.75rem"></div>
       </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="login-user" placeholder="Enter username" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password" />
+      </div>
+      <button class="btn-primary" id="login-btn">Sign In</button>
     </div>
+  </div>
 
-    <!-- ── ADMIN PARENTS PAGE ── -->
-    <div class="page" id="page-parents">
-      <div class="page-header">
-        <h2 class="page-title">Parents</h2>
-        <p class="page-sub">Manage what parents can see and send announcements</p>
-      </div>
+  <!-- ══════════════ APP ══════════════ -->
+  <!-- Hamburger -->
+  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div id="overlay" onclick="closeSidebar()"></div>
 
-      <!-- Results publishing card -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
-          Results Visibility
-        </div>
-        <div id="results-status-display" style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">
-          Loading...
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-green" id="btn-publish-results">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-            Update Results (Publish)
-          </button>
-          <button class="btn btn-red" id="btn-unpublish-results">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
-            Hide Results
-          </button>
-        </div>
-      </div>
-
-      <!-- Announcements card -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-          Post Announcement
-        </div>
-        <div class="form-grid">
-          <div class="form-group full">
-            <label class="form-label">Title</label>
-            <input type="text" class="form-input" id="ann-title" placeholder="e.g. End of Term Exam Schedule"/>
+  <div id="app">
+    <!-- SIDEBAR -->
+    <nav id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-icon" id="sidebar-brand-icon-wrap">
+            <img id="sidebar-school-logo" src="" alt=""
+              style="display:none;width:26px;height:26px;border-radius:6px;object-fit:contain" />
+            <svg id="sidebar-default-icon" viewBox="0 0 24 24">
+              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z" />
+            </svg>
           </div>
-          <div class="form-group full">
-            <label class="form-label">Message</label>
-            <textarea class="form-input" id="ann-body" rows="4" placeholder="Type your announcement here..." style="resize:vertical"></textarea>
+          <div>
+            <h2 id="sidebar-school-name">SchoolManager</h2>
+            <span>Academic System</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">Target Classes</label>
-            <select class="form-select" id="ann-target" multiple style="height:100px">
-              <option value="all" selected>All Classes</option>
-            </select>
-            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Select "All Classes" for everyone.</p>
+        </div>
+      </div>
+      <div class="sidebar-user">
+        <div class="sidebar-user-badge">
+          <span class="sidebar-user-dot"></span>
+          <span id="sidebar-username">—</span>
+          <span id="sidebar-role-badge" style="margin-left:4px;opacity:.6"></span>
+        </div>
+      </div>
+      <div class="sidebar-nav" id="sidebar-nav"></div>
+      <div class="sidebar-footer">
+        <button class="btn-logout" id="logout-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
+          </svg>
+          Logout
+        </button>
+      </div>
+    </nav>
+
+    <!-- MAIN -->
+    <main id="main">
+      <!-- TERM BANNER -->
+      <div id="term-banner" style="display:none;margin:-28px -32px 20px -32px">
+        <div class="term-banner" id="term-banner-bar">
+          <div class="term-badge" id="term-badge-label">No active term</div>
+          <div id="term-banner-detail" style="opacity:.85;font-size:.75rem"></div>
+        </div>
+      </div>
+
+      <!-- ── ADMIN PARENTS PAGE ── -->
+      <div class="page" id="page-parents">
+        <div class="page-header">
+          <h2 class="page-title">Parents</h2>
+          <p class="page-sub">Manage what parents can see and send announcements</p>
+        </div>
+
+        <!-- Results publishing card -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z" />
+            </svg>
+            Results Visibility
           </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="btn-post-announcement" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-              Post Announcement
+          <div id="results-status-display"
+            style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">
+            Loading...
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-green" id="btn-publish-results">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+              </svg>
+              Update Results (Publish)
+            </button>
+            <button class="btn btn-red" id="btn-unpublish-results">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" />
+              </svg>
+              Hide Results
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- Existing announcements -->
-      <div class="table-card">
-        <div class="table-toolbar">
-          <span class="table-toolbar-title">Posted Announcements</span>
-        </div>
-        <div id="announcements-admin-list" style="padding:16px"></div>
-      </div>
-    </div>
-
-    <!-- ── PARENT DASHBOARD ── -->
-    <div class="page" id="page-parent-dashboard">
-      <!-- Big greeting hero -->
-      <div style="background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 60%,var(--light) 100%);border-radius:16px;padding:48px 32px;text-align:center;margin-bottom:28px;position:relative;overflow:hidden">
-        <div style="position:absolute;inset:0;opacity:.06;background:url('data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFFFFF'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4z'/%3E%3C/g%3E%3C/svg%3E')"></div>
-        <div style="width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;border:3px solid rgba(255,255,255,.3)">
-          <svg viewBox="0 0 24 24" fill="white" width="40" height="40"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-        </div>
-        <h1 id="parent-greeting-text" style="font-family:'Syne',sans-serif;font-size:clamp(1.4rem,5vw,2.2rem);font-weight:800;color:white;margin-bottom:10px;line-height:1.2"></h1>
-        <p id="parent-greeting-sub" style="font-size:clamp(.9rem,3vw,1.1rem);color:rgba(255,255,255,.8);margin-bottom:0"></p>
-      </div>
-
-      <!-- Quick action cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px">
-        <div onclick="showPage('parent-reports')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
-          <div style="width:48px;height:48px;background:var(--pale);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
-            <svg viewBox="0 0 24 24" fill="var(--blue)" width="24" height="24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-          </div>
-          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">View Reports</div>
-          <div style="font-size:.8rem;color:var(--muted)">See your child's report cards</div>
-        </div>
-        <div onclick="showPage('parent-analytics')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
-          <div style="width:48px;height:48px;background:#E8F5E9;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
-            <svg viewBox="0 0 24 24" fill="#2E7D32" width="24" height="24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-          </div>
-          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Academic Analytics</div>
-          <div style="font-size:.8rem;color:var(--muted)">Track academic performance</div>
-        </div>
-        <div onclick="showPage('parent-announcements')" style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
-          <div style="width:48px;height:48px;background:#FFF3E0;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
-            <svg viewBox="0 0 24 24" fill="#E65100" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-          </div>
-          <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Announcements</div>
-          <div style="font-size:.8rem;color:var(--muted)">School news and notices</div>
-        </div>
-      </div>
-
-      <!-- Coming soon placeholder at bottom -->
-    </div>
-
-    <!-- ── PARENT REPORTS ── -->
-    <div class="page" id="page-parent-reports">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">View Results &amp; Reports</h2>
-        <p class="page-sub">Choose what you would like to view</p>
-      </div>
-
-      <!-- Two choice cards -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px" id="parent-reports-choice">
-        <div onclick="showParentSection('report-card')" style="background:var(--card);border-radius:14px;padding:28px 20px;cursor:pointer;border:2px solid var(--pale);text-align:center;transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
-          <div style="width:52px;height:52px;background:var(--pale);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-            <svg viewBox="0 0 24 24" fill="var(--blue)" width="26" height="26"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-          </div>
-          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Report Cards</div>
-          <div style="font-size:.8rem;color:var(--muted)">Full official report card with all marks, grades and remarks</div>
-        </div>
-        <div onclick="showParentSection('results')" style="background:var(--card);border-radius:14px;padding:28px 20px;cursor:pointer;border:2px solid var(--pale);text-align:center;transition:all .2s;box-shadow:var(--shadow)" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
-          <div style="width:52px;height:52px;background:#E8F5E9;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-            <svg viewBox="0 0 24 24" fill="#2E7D32" width="26" height="26"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-          </div>
-          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">View Results</div>
-          <div style="font-size:.8rem;color:var(--muted)">Marks for a specific CA or exam — see scores and position per subject</div>
-        </div>
-      </div>
-
-      <!-- Report Card section -->
-      <div id="parent-section-report-card" style="display:none">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-          <button onclick="showParentSection(null)" class="btn btn-outline btn-sm">← Back</button>
-          <span style="font-weight:700;color:var(--navy)">Report Cards</span>
-        </div>
+        <!-- Announcements card -->
         <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+            </svg>
+            Post Announcement
+          </div>
           <div class="form-grid">
+            <div class="form-group full">
+              <label class="form-label">Title</label>
+              <input type="text" class="form-input" id="ann-title" placeholder="e.g. End of Term Exam Schedule" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Message</label>
+              <textarea class="form-input" id="ann-body" rows="4" placeholder="Type your announcement here..."
+                style="resize:vertical"></textarea>
+            </div>
             <div class="form-group">
-              <label class="form-label">Select Term</label>
-              <select class="form-select" id="parent-rc-term-sel"></select>
+              <label class="form-label">Target Classes</label>
+              <select class="form-select" id="ann-target" multiple style="height:100px">
+                <option value="all" selected>All Classes</option>
+              </select>
+              <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Select
+                "All Classes" for everyone.</p>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end">
-              <button class="btn btn-blue" id="parent-view-rc-btn" style="width:100%">View Report Card</button>
+              <button class="btn btn-blue" id="btn-post-announcement" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+                Post Announcement
+              </button>
             </div>
           </div>
         </div>
-        <div id="parent-rc-output"></div>
+
+        <!-- Existing announcements -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span class="table-toolbar-title">Posted Announcements</span>
+          </div>
+          <div id="announcements-admin-list" style="padding:16px"></div>
+        </div>
       </div>
 
-      <!-- Results section -->
-      <div id="parent-section-results" style="display:none">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-          <button onclick="showParentSection(null)" class="btn btn-outline btn-sm">← Back</button>
-          <span style="font-weight:700;color:var(--navy)">View Results</span>
+      <!-- ── PARENT DASHBOARD ── -->
+      <div class="page" id="page-parent-dashboard">
+        <!-- Big greeting hero -->
+        <div
+          style="background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 60%,var(--light) 100%);border-radius:16px;padding:48px 32px;text-align:center;margin-bottom:28px;position:relative;overflow:hidden">
+          <div
+            style="position:absolute;inset:0;opacity:.06;background:url('data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23FFFFFF'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4z'/%3E%3C/g%3E%3C/svg%3E')">
+          </div>
+          <div
+            style="width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;border:3px solid rgba(255,255,255,.3)">
+            <svg viewBox="0 0 24 24" fill="white" width="40" height="40">
+              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z" />
+            </svg>
+          </div>
+          <h1 id="parent-greeting-text"
+            style="font-family:'Syne',sans-serif;font-size:clamp(1.4rem,5vw,2.2rem);font-weight:800;color:white;margin-bottom:10px;line-height:1.2">
+          </h1>
+          <p id="parent-greeting-sub"
+            style="font-size:clamp(.9rem,3vw,1.1rem);color:rgba(255,255,255,.8);margin-bottom:0"></p>
         </div>
+
+        <!-- Quick action cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+          <div onclick="showPage('parent-reports')"
+            style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)"
+            onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+            <div
+              style="width:48px;height:48px;background:var(--pale);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+              <svg viewBox="0 0 24 24" fill="var(--blue)" width="24" height="24">
+                <path
+                  d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+              </svg>
+            </div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">View Reports</div>
+            <div style="font-size:.8rem;color:var(--muted)">See your child's report cards</div>
+          </div>
+          <div onclick="showPage('parent-analytics')"
+            style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)"
+            onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+            <div
+              style="width:48px;height:48px;background:#E8F5E9;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+              <svg viewBox="0 0 24 24" fill="#2E7D32" width="24" height="24">
+                <path
+                  d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+              </svg>
+            </div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Academic Analytics</div>
+            <div style="font-size:.8rem;color:var(--muted)">Track academic performance</div>
+          </div>
+          <div onclick="showPage('parent-announcements')"
+            style="background:var(--card);border-radius:14px;padding:24px;cursor:pointer;border:2px solid var(--pale);transition:all .2s;box-shadow:var(--shadow)"
+            onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+            <div
+              style="width:48px;height:48px;background:#FFF3E0;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+              <svg viewBox="0 0 24 24" fill="#E65100" width="24" height="24">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              </svg>
+            </div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">Announcements</div>
+            <div style="font-size:.8rem;color:var(--muted)">School news and notices</div>
+          </div>
+        </div>
+
+        <!-- Coming soon placeholder at bottom -->
+      </div>
+
+      <!-- ── PARENT REPORTS ── -->
+      <div class="page" id="page-parent-reports">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">View Results &amp; Reports</h2>
+          <p class="page-sub">Choose what you would like to view</p>
+        </div>
+        <div id="parent-reports-locked"
+          style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#FFF8E1;border-left:4px solid #FFB300;border-radius:10px;padding:18px 20px;margin-bottom:16px">
+          <div style="font-size:.92rem;color:#5D4037"><strong>🔒 Results and report cards need active access.</strong>
+            Subscribe to see the full examination history.</div>
+          <button class="btn btn-blue btn-sm" onclick="showPage('parent-subscription')">View Plans</button>
+        </div>
+        <!-- Two choice cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px" id="parent-reports-choice">
+          <div onclick="showParentSection('report-card')"
+            style="background:var(--card);border-radius:14px;padding:28px 20px;cursor:pointer;border:2px solid var(--pale);text-align:center;transition:all .2s;box-shadow:var(--shadow)"
+            onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+            <div
+              style="width:52px;height:52px;background:var(--pale);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+              <svg viewBox="0 0 24 24" fill="var(--blue)" width="26" height="26">
+                <path
+                  d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+              </svg>
+            </div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Report Cards</div>
+            <div style="font-size:.8rem;color:var(--muted)">Full official report card with all marks, grades and remarks
+            </div>
+          </div>
+          <div onclick="showParentSection('results')"
+            style="background:var(--card);border-radius:14px;padding:28px 20px;cursor:pointer;border:2px solid var(--pale);text-align:center;transition:all .2s;box-shadow:var(--shadow)"
+            onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--pale)'">
+            <div
+              style="width:52px;height:52px;background:#E8F5E9;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+              <svg viewBox="0 0 24 24" fill="#2E7D32" width="26" height="26">
+                <path
+                  d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+              </svg>
+            </div>
+            <div style="font-weight:700;color:var(--navy);margin-bottom:6px">View Results</div>
+            <div style="font-size:.8rem;color:var(--muted)">Marks for a specific CA or exam — see scores and position
+              per subject</div>
+          </div>
+        </div>
+
+        <!-- Report Card section -->
+        <div id="parent-section-report-card" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <button onclick="showParentSection(null)" class="btn btn-outline btn-sm">← Back</button>
+            <span style="font-weight:700;color:var(--navy)">Report Cards</span>
+          </div>
+          <div class="section-card" style="margin-bottom:20px">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Select Term</label>
+                <select class="form-select" id="parent-rc-term-sel"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-blue" id="parent-view-rc-btn" style="width:100%">View Report Card</button>
+              </div>
+            </div>
+          </div>
+          <div id="parent-rc-output"></div>
+        </div>
+
+        <!-- Results section -->
+        <div id="parent-section-results" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <button onclick="showParentSection(null)" class="btn btn-outline btn-sm">← Back</button>
+            <span style="font-weight:700;color:var(--navy)">View Results</span>
+          </div>
+          <div class="section-card" style="margin-bottom:20px">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Select Term</label>
+                <select class="form-select" id="parent-res-term-sel" onchange="loadResAssessments()"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Select Assessment</label>
+                <select class="form-select" id="parent-res-assess-sel"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-blue" id="parent-view-res-btn" style="width:100%">View Results</button>
+              </div>
+            </div>
+          </div>
+          <div id="parent-res-output"></div>
+        </div>
+      </div>
+
+      <!-- ── PARENT ANALYTICS ── -->
+      <div class="page" id="page-parent-analytics">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Academic Analytics</h2>
+          <p class="page-sub">Performance trends, insights and recommendations</p>
+        </div>
+        <div id="analytics-locked-banner"
+          style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#FFF8E1;border-left:4px solid #FFB300;border-radius:10px;padding:14px 18px;margin-bottom:16px">
+          <div style="font-size:.9rem;color:#5D4037"><strong>🔒 Subscribe to unlock analytics.</strong> You're on the
+            free preview — the graph and subject cards fill in once access is active.</div>
+          <button class="btn btn-blue btn-sm" onclick="showPage('parent-subscription')">View Plans</button>
+        </div>
+        <!-- Graph type selector -->
+        <div class="tabs" id="analytics-tabs" style="margin-bottom:20px">
+          <div class="tab active" data-atab="avg" onclick="switchAnalyticsTab('avg')">Overall Average Trend</div>
+          <div class="tab" data-atab="subject" onclick="switchAnalyticsTab('subject')">Subject Trend</div>
+        </div>
+        <!-- Subject selector (only for subject tab) -->
+        <div id="analytics-subject-picker" style="display:none;margin-bottom:16px">
+          <div class="section-card" style="padding:14px 18px">
+            <div class="form-grid" style="grid-template-columns:1fr auto">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Select Subject</label>
+                <select class="form-select" id="analytics-subject-sel" onchange="renderAnalytics()"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Graph canvas -->
         <div class="section-card" style="margin-bottom:20px">
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Select Term</label>
-              <select class="form-select" id="parent-res-term-sel" onchange="loadResAssessments()"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Select Assessment</label>
-              <select class="form-select" id="parent-res-assess-sel"></select>
-            </div>
-            <div class="form-group" style="display:flex;align-items:flex-end">
-              <button class="btn btn-blue" id="parent-view-res-btn" style="width:100%">View Results</button>
-            </div>
+          <canvas id="analytics-chart" style="width:100%;height:260px;display:block"></canvas>
+          <div id="analytics-no-data" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+            Not enough published results to display a graph yet.
           </div>
         </div>
-        <div id="parent-res-output"></div>
-      </div>
-    </div>
-
-    <!-- ── PARENT ANALYTICS ── -->
-    <div class="page" id="page-parent-analytics">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Academic Analytics</h2>
-        <p class="page-sub">Performance trends, insights and recommendations</p>
-      </div>
-      <!-- Graph type selector -->
-      <div class="tabs" id="analytics-tabs" style="margin-bottom:20px">
-        <div class="tab active" data-atab="avg" onclick="switchAnalyticsTab('avg')">Overall Average Trend</div>
-        <div class="tab" data-atab="subject" onclick="switchAnalyticsTab('subject')">Subject Trend</div>
-      </div>
-      <!-- Subject selector (only for subject tab) -->
-      <div id="analytics-subject-picker" style="display:none;margin-bottom:16px">
-        <div class="section-card" style="padding:14px 18px">
-          <div class="form-grid" style="grid-template-columns:1fr auto">
-            <div class="form-group" style="margin:0">
-              <label class="form-label">Select Subject</label>
-              <select class="form-select" id="analytics-subject-sel" onchange="renderAnalytics()"></select>
-            </div>
+        <!-- Summary + Insights -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="analytics-summary-grid">
+          <div class="section-card">
+            <div style="font-weight:700;color:var(--green);margin-bottom:10px">💪 Best Subjects</div>
+            <div id="analytics-best"></div>
+          </div>
+          <div class="section-card">
+            <div style="font-weight:700;color:var(--red);margin-bottom:10px">📚 Needs Attention</div>
+            <div id="analytics-weak"></div>
           </div>
         </div>
-      </div>
-      <!-- Graph canvas -->
-      <div class="section-card" style="margin-bottom:20px">
-        <canvas id="analytics-chart" style="width:100%;height:260px;display:block"></canvas>
-        <div id="analytics-no-data" style="display:none;text-align:center;padding:40px;color:var(--muted)">
-          Not enough published results to display a graph yet.
+        <div class="section-card" id="analytics-insights-card">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:12px">💡 Insights &amp; Recommendations</div>
+          <div id="analytics-insights"></div>
         </div>
       </div>
-      <!-- Summary + Insights -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="analytics-summary-grid">
-        <div class="section-card">
-          <div style="font-weight:700;color:var(--green);margin-bottom:10px">💪 Best Subjects</div>
-          <div id="analytics-best"></div>
-        </div>
-        <div class="section-card">
-          <div style="font-weight:700;color:var(--red);margin-bottom:10px">📚 Needs Attention</div>
-          <div id="analytics-weak"></div>
-        </div>
-      </div>
-      <div class="section-card" id="analytics-insights-card">
-        <div style="font-weight:700;color:var(--navy);margin-bottom:12px">💡 Insights &amp; Recommendations</div>
-        <div id="analytics-insights"></div>
-      </div>
-    </div>
 
-    <!-- ── PARENT ANNOUNCEMENTS ── -->
-    <div class="page" id="page-parent-announcements">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Announcements</h2>
-        <p class="page-sub">School news and important notices</p>
-      </div>
-      <div id="parent-announcements-list"></div>
-    </div>
-
-    <!-- ── DASHBOARD ── -->
-    <div class="page" id="page-dashboard">
-      <div class="page-header">
-        <h2 class="page-title">Dashboard</h2>
-        <p class="page-sub">Welcome back — here's a quick overview</p>
-      </div>
-      <div style="margin-bottom:24px">
-        <div id="dash-school-name" style="font-family:'Syne',sans-serif;font-size:2.1rem;font-weight:800;color:var(--navy);line-height:1.2"></div>
-        <span id="dash-school-badge" class="badge badge-blue" style="margin-top:8px;display:none"></span>
-      </div>
-      <div class="stats-grid" id="dash-stats"></div>
-
-      <div class="section-card" id="dash-sub-ticket-card" style="display:none;margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4z"/></svg>
-          Subscription
+      <!-- ── PARENT ANNOUNCEMENTS ── -->
+      <div class="page" id="page-parent-announcements">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Announcements</h2>
+          <p class="page-sub">School news and important notices</p>
         </div>
-        <div id="dash-sub-ticket-body"></div>
-      </div>  
+        <div id="parent-announcements-list"></div>
+      </div>
+
+      <!-- ── PARENT SUBSCRIPTION ── -->
+      <div class="page" id="page-parent-subscription">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Subscription</h2>
+          <p class="page-sub">Unlock full results, detailed analytics and report-card PDFs</p>
+        </div>
+        <div id="parent-subscription-body"></div>
+      </div>
+
+      <!-- ── DASHBOARD ── -->
+      <div class="page" id="page-dashboard">
+        <div class="page-header">
+          <h2 class="page-title">Dashboard</h2>
+          <p class="page-sub">Welcome back — here's a quick overview</p>
+        </div>
+        <div style="margin-bottom:24px">
+          <div id="dash-school-name"
+            style="font-family:'Syne',sans-serif;font-size:2.1rem;font-weight:800;color:var(--navy);line-height:1.2">
+          </div>
+          <span id="dash-school-badge" class="badge badge-blue" style="margin-top:8px;display:none"></span>
+        </div>
+        <div class="stats-grid" id="dash-stats"></div>
+
+        <div class="section-card" id="dash-sub-ticket-card" style="display:none;margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4z" />
+            </svg>
+            Subscription
+          </div>
+          <div id="dash-sub-ticket-body"></div>
+        </div>
         <div class="section-card" id="dash-class-analytics-card" style="display:none;margin-bottom:20px">
           <div class="section-card-title">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.41 3.41 17.83l6-6 4 4 6.29-6.29L22 12V6z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.41 3.41 17.83l6-6 4 4 6.29-6.29L22 12V6z" />
+            </svg>
             Class Performance
           </div>
           <div id="dash-class-analytics-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
         </div>
-      <!-- Platform Notices from Superadmin -->
-      <div class="section-card" id="platform-notices-card" style="display:none;border-left:4px solid #7B1FA2">
-        <div class="section-card-title" style="color:#7B1FA2">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-          Platform Notices
-          <span id="platform-notices-badge" style="margin-left:8px;background:#7B1FA2;color:#fff;border-radius:999px;padding:2px 9px;font-size:.75rem;display:none"></span>
+        <!-- Platform Notices from Superadmin -->
+        <div class="section-card" id="platform-notices-card" style="display:none;border-left:4px solid #7B1FA2">
+          <div class="section-card-title" style="color:#7B1FA2">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+            </svg>
+            Platform Notices
+            <span id="platform-notices-badge"
+              style="margin-left:8px;background:#7B1FA2;color:#fff;border-radius:999px;padding:2px 9px;font-size:.75rem;display:none"></span>
+          </div>
+          <div id="platform-notices-list"></div>
         </div>
-        <div id="platform-notices-list"></div>
-      </div>
-      <div class="section-card">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-          Recent Students
+        <div class="section-card">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+            </svg>
+            Recent Students
+          </div>
+          <div id="dash-recent-students"></div>
         </div>
-        <div id="dash-recent-students"></div>
       </div>
-    </div>
 
-    <!-- ── ADMIN ANALYTICS ── -->
-    <div class="page" id="page-admin-analytics">
-      <div class="page-header">
-        <h2 class="page-title">Admin Analytics</h2>
-        <p class="page-sub">School-wide performance insights</p>
+      <!-- ── ADMIN ANALYTICS ── -->
+      <div class="page" id="page-admin-analytics">
+        <div class="page-header">
+          <h2 class="page-title">Admin Analytics</h2>
+          <p class="page-sub">School-wide performance insights</p>
+        </div>
+        <div class="section-card" style="margin-bottom:16px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Scope</label>
+              <select class="form-select" id="admin-an-class-sel"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Stream</label>
+              <select class="form-select" id="admin-an-stream-sel" style="display:none"></select>
+            </div>
+          </div>
+        </div>
+        <div class="section-card">
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong
+              id="admin-an-current-label">—</strong></div>
+          <canvas id="admin-an-chart" style="width:100%;height:240px;display:block"></canvas>
+        </div>
+        <div id="admin-an-cards" style="margin-top:16px"></div>
       </div>
-      <div class="section-card" style="margin-bottom:16px">
-        <div class="form-grid">
+
+      <!-- ── CLASS TEACHER ANALYTICS ── -->
+      <div class="page" id="page-ct-analytics">
+        <div class="page-header">
+          <h2 class="page-title">Class Teacher Analytics</h2>
+          <p class="page-sub">Performance insights for your class</p>
+        </div>
+        <div class="section-card">
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong
+              id="ct-an-current-label">—</strong></div>
+          <canvas id="ct-an-chart" style="width:100%;height:240px;display:block"></canvas>
+        </div>
+        <div id="ct-an-cards" style="margin-top:16px"></div>
+      </div>
+
+      <!-- ── SUBJECT TEACHER ANALYTICS ── -->
+      <div class="page" id="page-teacher-analytics">
+        <div class="page-header">
+          <h2 class="page-title">Teacher Analytics</h2>
+          <p class="page-sub">Subject-level performance insights</p>
+        </div>
+        <div class="section-card" style="margin-bottom:16px">
           <div class="form-group">
-            <label class="form-label">Scope</label>
-            <select class="form-select" id="admin-an-class-sel"></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Stream</label>
-            <select class="form-select" id="admin-an-stream-sel" style="display:none"></select>
+            <label class="form-label">Assignment</label>
+            <select class="form-select" id="teacher-an-assign-sel"></select>
           </div>
         </div>
-      </div>
-      <div class="section-card">
-        <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong id="admin-an-current-label">—</strong></div>
-        <canvas id="admin-an-chart" style="width:100%;height:240px;display:block"></canvas>
-      </div>
-      <div id="admin-an-cards" style="margin-top:16px"></div>
-    </div>
-
-    <!-- ── CLASS TEACHER ANALYTICS ── -->
-    <div class="page" id="page-ct-analytics">
-      <div class="page-header">
-        <h2 class="page-title">Class Teacher Analytics</h2>
-        <p class="page-sub">Performance insights for your class</p>
-      </div>
-      <div class="section-card">
-        <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong id="ct-an-current-label">—</strong></div>
-        <canvas id="ct-an-chart" style="width:100%;height:240px;display:block"></canvas>
-      </div>
-      <div id="ct-an-cards" style="margin-top:16px"></div>
-    </div>
-
-    <!-- ── SUBJECT TEACHER ANALYTICS ── -->
-    <div class="page" id="page-teacher-analytics">
-      <div class="page-header">
-        <h2 class="page-title">Teacher Analytics</h2>
-        <p class="page-sub">Subject-level performance insights</p>
-      </div>
-      <div class="section-card" style="margin-bottom:16px">
-        <div class="form-group">
-          <label class="form-label">Assignment</label>
-          <select class="form-select" id="teacher-an-assign-sel"></select>
+        <div class="section-card">
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong
+              id="teacher-an-current-label">—</strong></div>
+          <canvas id="teacher-an-chart" style="width:100%;height:240px;display:block"></canvas>
         </div>
+        <div id="teacher-an-cards" style="margin-top:16px"></div>
       </div>
-      <div class="section-card">
-        <div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">Current examination: <strong id="teacher-an-current-label">—</strong></div>
-        <canvas id="teacher-an-chart" style="width:100%;height:240px;display:block"></canvas>
-      </div>
-      <div id="teacher-an-cards" style="margin-top:16px"></div>
-    </div>
 
-    
 
-    <!-- ── STUDENTS ── -->
-    <div class="page" id="page-students">
-      <div class="page-header">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 class="page-title">Students</h2>
-            <p class="page-sub">Manage all enrolled students</p>
+
+      <!-- ── STUDENTS ── -->
+      <div class="page" id="page-students">
+        <div class="page-header">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+            <div>
+              <h2 class="page-title">Students</h2>
+              <p class="page-sub">Manage all enrolled students</p>
+            </div>
+            <button class="btn btn-outline" onclick="openImportModal()"
+              style="border-color:var(--green);color:var(--green)">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+              </svg>
+              Import Excel
+            </button>
+            <button class="btn btn-blue" id="btn-add-student">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M19 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z" />
+              </svg>
+              Add Student
+            </button>
           </div>
-          <button class="btn btn-outline" onclick="openImportModal()" style="border-color:var(--green);color:var(--green)">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            Import Excel
-          </button>
-          <button class="btn btn-blue" id="btn-add-student">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
-            Add Student
-          </button>
         </div>
-      </div>
-      <div class="table-card">
-        <div class="table-toolbar">
-          <span class="table-toolbar-title">All Students</span>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span class="table-toolbar-title">All Students</span>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <div style="position:relative">
+                <button class="btn btn-outline btn-sm" id="student-filter-btn" onclick="toggleStudentFilter()">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                    <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+                  </svg>
+                  Filter
+                  <span id="student-filter-badge" class="badge badge-blue"
+                    style="display:none;margin-left:4px;padding:1px 7px"></span>
+                </button>
+                <div id="student-filter-dropdown"
+                  style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:white;border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:16px;width:220px;z-index:20">
+                  <div class="field" style="margin-bottom:12px">
+                    <label>Class</label>
+                    <select id="filter-class" onchange="onFilterClassChange()">
+                      <option value="">All Classes</option>
+                    </select>
+                  </div>
+                  <div class="field" style="margin-bottom:14px">
+                    <label>Stream</label>
+                    <select id="filter-stream">
+                      <option value="">All Streams</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button class="btn btn-sm btn-outline" style="flex:1" onclick="clearStudentFilter()">Clear</button>
+                    <button class="btn btn-sm btn-blue" style="flex:1" onclick="applyStudentFilter()">Apply</button>
+                  </div>
+                </div>
+              </div>
+              <div class="search-box">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                </svg>
+                <input type="text" id="student-search" placeholder="Search students…" />
+              </div>
+            </div>
+          </div>
+          <div id="student-bulk-bar"
+            style="display:none;align-items:center;gap:12px;padding:10px 20px;background:var(--pale);border-bottom:1px solid var(--border);position:relative">
+            <span id="student-bulk-count" style="font-size:.85rem;font-weight:600;color:var(--blue)">0 selected</span>
             <div style="position:relative">
-              <button class="btn btn-outline btn-sm" id="student-filter-btn" onclick="toggleStudentFilter()">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
-                Filter
-                <span id="student-filter-badge" class="badge badge-blue" style="display:none;margin-left:4px;padding:1px 7px"></span>
+              <button class="btn btn-sm btn-outline" id="student-bulk-menu-btn" onclick="toggleBulkMenu()"
+                title="Actions">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path
+                    d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                </svg>
+                Actions
               </button>
-              <div id="student-filter-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:white;border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:16px;width:220px;z-index:20">
-                <div class="field" style="margin-bottom:12px">
-                  <label>Class</label>
-                  <select id="filter-class" onchange="onFilterClassChange()"><option value="">All Classes</option></select>
+              <div id="student-bulk-menu"
+                style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:white;border:1.5px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:190px;z-index:50;overflow:hidden">
+                <div onclick="document.getElementById('student-bulk-menu').style.display='none';bulkDownloadReports()"
+                  style="padding:10px 16px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)"
+                  onmouseover="this.style.background='var(--pale)'" onmouseout="this.style.background='none'">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                  </svg>
+                  Download Reports
                 </div>
-                <div class="field" style="margin-bottom:14px">
-                  <label>Stream</label>
-                  <select id="filter-stream"><option value="">All Streams</option></select>
-                </div>
-                <div style="display:flex;gap:8px">
-                  <button class="btn btn-sm btn-outline" style="flex:1" onclick="clearStudentFilter()">Clear</button>
-                  <button class="btn btn-sm btn-blue" style="flex:1" onclick="applyStudentFilter()">Apply</button>
+                <div onclick="document.getElementById('student-bulk-menu').style.display='none';bulkDeleteStudents()"
+                  style="padding:10px 16px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red)"
+                  onmouseover="this.style.background='#FFEBEE'" onmouseout="this.style.background='none'">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                  </svg>
+                  Delete Selected
                 </div>
               </div>
             </div>
-            <div class="search-box">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-              <input type="text" id="student-search" placeholder="Search students…"/>
+            <button class="btn btn-sm btn-outline" onclick="clearStudentSelection()">Cancel</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:36px"><input type="checkbox" id="select-all-students"
+                      onchange="toggleSelectAllStudents(this)"></th>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>Class</th>
+                  <th>Stream</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="students-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── CLASSES (admin) ── -->
+      <div class="page" id="page-classes">
+        <div class="page-header">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+            <div>
+              <h2 class="page-title">Classes &amp; Streams</h2>
+              <p class="page-sub">Create classes and optional streams under each class</p>
             </div>
           </div>
         </div>
-        <div id="student-bulk-bar" style="display:none;align-items:center;gap:12px;padding:10px 20px;background:var(--pale);border-bottom:1px solid var(--border);position:relative">
-          <span id="student-bulk-count" style="font-size:.85rem;font-weight:600;color:var(--blue)">0 selected</span>
-          <div style="position:relative">
-            <button class="btn btn-sm btn-outline" id="student-bulk-menu-btn" onclick="toggleBulkMenu()" title="Actions">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-              Actions
-            </button>
-            <div id="student-bulk-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:white;border:1.5px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:190px;z-index:50;overflow:hidden">
-              <div onclick="document.getElementById('student-bulk-menu').style.display='none';bulkDownloadReports()"
-                   style="padding:10px 16px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)"
-                   onmouseover="this.style.background='var(--pale)'" onmouseout="this.style.background='none'">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                Download Reports
-              </div>
-              <div onclick="document.getElementById('student-bulk-menu').style.display='none';bulkDeleteStudents()"
-                   style="padding:10px 16px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red)"
-                   onmouseover="this.style.background='#FFEBEE'" onmouseout="this.style.background='none'">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                Delete Selected
-              </div>
+        <!-- Add class -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z" />
+            </svg>
+            Add New Class
+          </div>
+          <div class="form-grid" style="max-width:500px">
+            <div class="form-group">
+              <label class="form-label">Class Name (e.g. Form 1, Grade 7)</label>
+              <input type="text" class="form-input" id="new-class-name" placeholder="e.g. Form 1" />
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="btn-add-class" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z" />
+                </svg>
+                Add Class
+              </button>
             </div>
           </div>
-          <button class="btn btn-sm btn-outline" onclick="clearStudentSelection()">Cancel</button>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th style="width:36px"><input type="checkbox" id="select-all-students" onchange="toggleSelectAllStudents(this)"></th>
-              <th>#</th><th>Name</th><th>Class</th><th>Stream</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="students-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── CLASSES (admin) ── -->
-    <div class="page" id="page-classes">
-      <div class="page-header">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 class="page-title">Classes &amp; Streams</h2>
-            <p class="page-sub">Create classes and optional streams under each class</p>
-          </div>
-        </div>
-      </div>
-      <!-- Add class -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
-          Add New Class
-        </div>
-        <div class="form-grid" style="max-width:500px">
-          <div class="form-group">
-            <label class="form-label">Class Name (e.g. Form 1, Grade 7)</label>
-            <input type="text" class="form-input" id="new-class-name" placeholder="e.g. Form 1"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="btn-add-class" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
-              Add Class
-            </button>
-          </div>
-        </div>
-      </div>
-      <!-- Classes list -->
-      <div id="classes-list"></div>
-    </div>
-
-    <!-- ── TEACHERS (admin) ── -->
-    <div class="page" id="page-teachers">
-      <div class="page-header">
-        <h2 class="page-title">Teachers</h2>
-        <p class="page-sub">Create accounts and manage assignments. Only admin can do this.</p>
-      </div>
-      <!-- Create teacher -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-          Create Teacher Account
-        </div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" class="form-input" id="new-teacher-user" placeholder="e.g. mrjones"/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password (set with teacher present)</label>
-            <input type="password" class="form-input" id="new-teacher-pass" placeholder="Min 4 characters"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="btn-create-teacher" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
-              Create Account
-            </button>
-          </div>
-        </div>
-      </div>
-      <!-- Teachers table -->
-      <div class="table-card" style="margin-bottom:20px">
-        <div class="table-toolbar">
-          <span class="table-toolbar-title">All Teachers</span>
-          <button class="btn btn-blue btn-sm" id="btn-assign-teacher">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
-            Assign Subject
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Username</th><th>Class Teacher Of</th><th>Assignments</th><th>Actions</th></tr></thead>
-            <tbody id="teachers-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── MARKS ENTRY ── -->
-    <div class="page" id="page-marks">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Enter Marks</h2>
-        <p class="page-sub">Enter CA and exam marks for your students</p>
-      </div>
-      <div class="section-card">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-          Mark Entry Configuration
-        </div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Subject</label>
-            <select class="form-select" id="marks-subject"></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Class</label>
-            <select class="form-select" id="marks-class"></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Assessment Type</label>
-            <select class="form-select" id="marks-type"></select>
-          </div>
-        </div>
-        <div style="margin-top:16px">
-          <button class="btn btn-blue" id="marks-load-btn">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
-            Load Students
-          </button>
-        </div>
-      </div>
-      <div class="section-card" id="marks-entry-section" style="display:none">
-        <div class="section-card-title" id="marks-entry-title">Students</div>
-        <div id="marks-students-list"></div>
-        <div style="margin-top:16px">
-          <button class="btn btn-green" id="marks-save-all-btn">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-            Save All Marks
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── REPORT CARD VIEW ── -->
-    <div class="page" id="page-reports">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Report Cards</h2>
-        <p class="page-sub">View and download student report cards</p>
-      </div>
-      <div class="section-card">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Student ID</label>
-            <input type="text" class="form-input" id="report-student-id" placeholder="e.g. 00030/0009"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="report-view-btn" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-              View Report
-            </button>
-          </div>
-        </div>
-      </div>
-      <div id="report-output"></div>
-    </div>
-
-    <!-- ── TERMS ── -->
-    <div class="page" id="page-terms">
-      <div class="page-header">
-        <h2 class="page-title">Terms</h2>
-        <p class="page-sub">Manage academic terms — open, view, and close them</p>
-      </div>
-      <!-- Create new term (admin only) -->
-      <div class="section-card" style="margin-bottom:20px" id="create-term-card">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
-          Open New Term
-        </div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Term Label (e.g. "Term 1 2026")</label>
-            <input type="text" class="form-input" id="term-label" placeholder="Term 1 2026"/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Number of CAs</label>
-            <input type="number" class="form-input" id="term-ca-count" min="1" max="10" value="2"/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">CA Weight (%)</label>
-            <input type="number" class="form-input" id="term-ca-weight" min="1" max="99" value="30"
-                   oninput="document.getElementById('term-exam-weight').value=100-parseInt(this.value||0)"/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Exam Weight (%) — auto</label>
-            <input type="number" class="form-input" id="term-exam-weight" value="70" readonly
-                   style="background:#eee;cursor:not-allowed"/>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="btn-open-term" style="width:100%">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
-              Open Term
-            </button>
-          </div>
-        </div>
-      </div>
-      <!-- Tests (current term) -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-          Tests (Current Term)
-        </div>
-        <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
-          Tests are quick assessments (e.g. a weekly test) that do <strong>not</strong> count toward the term final and never appear on report cards. You can choose which classes participate, and optionally publish a test so parents can see it in "View Results" — with position, average, division and points — just like a CA or Exam.
-        </p>
-        <button class="btn btn-blue btn-sm" onclick="openAddTestModal()" style="margin-bottom:14px">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          Add Test
-        </button>
-        <div id="tests-list"></div>
+        <!-- Classes list -->
+        <div id="classes-list"></div>
       </div>
 
-      <!-- Terms list -->
-      <div class="table-card">
-        <div class="table-toolbar">
-          <span class="table-toolbar-title">All Terms</span>
+      <!-- ── TEACHERS (admin) ── -->
+      <div class="page" id="page-teachers">
+        <div class="page-header">
+          <h2 class="page-title">Teachers</h2>
+          <p class="page-sub">Create accounts and manage assignments. Only admin can do this.</p>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Label</th><th>CAs</th><th>CA Weight</th><th>Exam Weight</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody id="terms-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── SCORE SHEETS ── -->
-    <div class="page" id="page-sheets">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Score Sheets</h2>
-        <p class="page-sub">Class-wide score sheets and PDF exports</p>
-      </div>
-      <div class="section-card" style="margin-bottom:16px">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Sheet Type</label>
-            <select class="form-select" id="sheet-type-sel" onchange="onSheetTypeChange()">
-              <option value="marks">Marks Score Sheet</option>
-              <option value="grade">Grade Score Sheet</option>
-            </select>
+        <!-- Create teacher -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+            </svg>
+            Create Teacher Account
           </div>
-        </div>
-        <div id="grade-sheet-options" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--pale)">
           <div class="form-grid">
             <div class="form-group">
-              <label class="form-label">Examination Level</label>
-              <select class="form-select" id="gsheet-level">
-                <option value="o_level">O-Level (NECTA CSEE)</option>
-                <option value="a_level">A-Level (ACSEE)</option>
+              <label class="form-label">Username</label>
+              <input type="text" class="form-input" id="new-teacher-user" placeholder="e.g. mrjones" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password (set with teacher present)</label>
+              <input type="password" class="form-input" id="new-teacher-pass" placeholder="Min 4 characters" />
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="btn-create-teacher" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" />
+                </svg>
+                Create Account
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Teachers table -->
+        <div class="table-card" style="margin-bottom:20px">
+          <div class="table-toolbar">
+            <span class="table-toolbar-title">All Teachers</span>
+            <button class="btn btn-blue btn-sm" id="btn-assign-teacher">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" />
+              </svg>
+              Assign Subject
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Class Teacher Of</th>
+                  <th>Assignments</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="teachers-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MARKS ENTRY ── -->
+      <div class="page" id="page-marks">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Enter Marks</h2>
+          <p class="page-sub">Enter CA and exam marks for your students</p>
+        </div>
+        <div class="section-card">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+            </svg>
+            Mark Entry Configuration
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Subject</label>
+              <select class="form-select" id="marks-subject"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Class</label>
+              <select class="form-select" id="marks-class"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assessment Type</label>
+              <select class="form-select" id="marks-type"></select>
+            </div>
+          </div>
+          <div style="margin-top:16px">
+            <button class="btn btn-blue" id="marks-load-btn">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" />
+              </svg>
+              Load Students
+            </button>
+          </div>
+        </div>
+        <div class="section-card" id="marks-entry-section" style="display:none">
+          <div class="section-card-title" id="marks-entry-title">Students</div>
+          <div id="marks-students-list"></div>
+          <div style="margin-top:16px">
+            <button class="btn btn-green" id="marks-save-all-btn">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" />
+              </svg>
+              Save All Marks
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── REPORT CARD VIEW ── -->
+      <div class="page" id="page-reports">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Report Cards</h2>
+          <p class="page-sub">View and download student report cards</p>
+        </div>
+        <div class="section-card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Student ID</label>
+              <input type="text" class="form-input" id="report-student-id" placeholder="e.g. 00030/0009" />
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="report-view-btn" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+                </svg>
+                View Report
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="report-output"></div>
+      </div>
+
+      <!-- ── TERMS ── -->
+      <div class="page" id="page-terms">
+        <div class="page-header">
+          <h2 class="page-title">Terms</h2>
+          <p class="page-sub">Manage academic terms — open, view, and close them</p>
+        </div>
+        <!-- Create new term (admin only) -->
+        <div class="section-card" style="margin-bottom:20px" id="create-term-card">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" />
+            </svg>
+            Open New Term
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Term Label (e.g. "Term 1 2026")</label>
+              <input type="text" class="form-input" id="term-label" placeholder="Term 1 2026" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Number of CAs</label>
+              <input type="number" class="form-input" id="term-ca-count" min="1" max="10" value="2" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">CA Weight (%)</label>
+              <input type="number" class="form-input" id="term-ca-weight" min="1" max="99" value="30"
+                oninput="document.getElementById('term-exam-weight').value=100-parseInt(this.value||0)" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Exam Weight (%) — auto</label>
+              <input type="number" class="form-input" id="term-exam-weight" value="70" readonly
+                style="background:#eee;cursor:not-allowed" />
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="btn-open-term" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" />
+                </svg>
+                Open Term
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Tests (current term) -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+            </svg>
+            Tests (Current Term)
+          </div>
+          <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
+            Tests are quick assessments (e.g. a weekly test) that do <strong>not</strong> count toward the term final
+            and never appear on report cards. You can choose which classes participate, and optionally publish a test so
+            parents can see it in "View Results" — with position, average, division and points — just like a CA or Exam.
+          </p>
+          <button class="btn btn-blue btn-sm" onclick="openAddTestModal()" style="margin-bottom:14px">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            Add Test
+          </button>
+          <div id="tests-list"></div>
+        </div>
+
+        <!-- Terms list -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <span class="table-toolbar-title">All Terms</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>CAs</th>
+                  <th>CA Weight</th>
+                  <th>Exam Weight</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="terms-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SCORE SHEETS ── -->
+      <div class="page" id="page-sheets">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Score Sheets</h2>
+          <p class="page-sub">Class-wide score sheets and PDF exports</p>
+        </div>
+        <div class="section-card" style="margin-bottom:16px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Sheet Type</label>
+              <select class="form-select" id="sheet-type-sel" onchange="onSheetTypeChange()">
+                <option value="marks">Marks Score Sheet</option>
+                <option value="grade">Grade Score Sheet</option>
               </select>
             </div>
-            <div class="form-group">
-              <label class="form-label">Grades Used for Division</label>
-              <select class="form-select" id="gsheet-source">
-                <option value="school">My School's Grades</option>
-                <option value="necta">NECTA Fixed Grades</option>
-              </select>
-            </div>
-            <div class="form-group full">
-              <label class="form-label">Non-Credit Subjects <span style="font-weight:400;text-transform:none">(excluded from division &amp; points)</span></label>
-              <select class="form-select" id="gsheet-noncredit" multiple style="height:90px"></select>
+          </div>
+          <div id="grade-sheet-options"
+            style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--pale)">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Examination Level</label>
+                <select class="form-select" id="gsheet-level">
+                  <option value="o_level">O-Level (NECTA CSEE)</option>
+                  <option value="a_level">A-Level (ACSEE)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Grades Used for Division</label>
+                <select class="form-select" id="gsheet-source">
+                  <option value="school">My School's Grades</option>
+                  <option value="necta">NECTA Fixed Grades</option>
+                </select>
+              </div>
+              <div class="form-group full">
+                <label class="form-label">Non-Credit Subjects <span
+                    style="font-weight:400;text-transform:none">(excluded from division &amp; points)</span></label>
+                <select class="form-select" id="gsheet-noncredit" multiple style="height:90px"></select>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="tabs" id="sheets-tabs">
-        <div class="tab active" data-tab="ca">CA Score Sheet</div>
-        <div class="tab" data-tab="exam">Exam Score Sheet</div>
-        <div class="tab" data-tab="terminal">Terminal Score Sheet</div>
+        <div class="tabs" id="sheets-tabs">
+          <div class="tab active" data-tab="ca">CA Score Sheet</div>
+          <div class="tab" data-tab="exam">Exam Score Sheet</div>
+          <div class="tab" data-tab="terminal">Terminal Score Sheet</div>
+        </div>
+
+        <!-- CA tab -->
+        <div id="sheets-tab-ca">
+          <div class="section-card">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Class</label>
+                <select class="form-select" id="ca-sheet-class"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Assessment</label>
+                <select class="form-select" id="ca-sheet-assess"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+                <button class="btn btn-blue" id="ca-sheet-view-btn" style="flex:1">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z" />
+                  </svg>
+                  View
+                </button>
+                <button class="btn btn-pdf" id="ca-sheet-pdf-btn" style="flex:1">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z" />
+                  </svg>
+                  PDF
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="ca-sheet-output"></div>
+        </div>
+
+        <!-- Exam tab -->
+        <div id="sheets-tab-exam" style="display:none">
+          <div class="section-card">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Class</label>
+                <select class="form-select" id="exam-sheet-class"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+                <button class="btn btn-blue" id="exam-sheet-view-btn" style="flex:1">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z" />
+                  </svg>
+                  View
+                </button>
+                <button class="btn btn-pdf" id="exam-sheet-pdf-btn" style="flex:1">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                  </svg>
+                  PDF
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="exam-sheet-output"></div>
+        </div>
+
+        <!-- Terminal tab -->
+        <div id="sheets-tab-terminal" style="display:none">
+          <div class="section-card">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Class</label>
+                <select class="form-select" id="term-sheet-class"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+                <button class="btn btn-blue" id="term-sheet-view-btn" style="flex:1">View</button>
+                <button class="btn btn-pdf" id="term-sheet-pdf-btn" style="flex:1">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                  </svg>
+                  PDF
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="term-sheet-output"></div>
+        </div>
       </div>
 
-      <!-- CA tab -->
-      <div id="sheets-tab-ca">
+      <!-- ── PAST TERMS ── -->
+      <div class="page" id="page-past">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Past Terms</h2>
+          <p class="page-sub">View marks from closed terms (read-only)</p>
+        </div>
+        <div class="tabs" id="past-tabs">
+          <div class="tab active" data-ptab="marks">Subject Marks Table</div>
+          <div class="tab" data-ptab="report">Student Report Card</div>
+        </div>
+
+        <!-- Subject marks table -->
+        <div id="past-tab-marks">
+          <div class="section-card">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Select Term</label>
+                <select class="form-select" id="past-term-sel"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Subject</label>
+                <select class="form-select" id="past-subject-sel"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Class</label>
+                <select class="form-select" id="past-class-sel"></select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-blue" id="past-marks-btn" style="width:100%">Show Marks</button>
+              </div>
+            </div>
+          </div>
+          <div id="past-marks-output"></div>
+        </div>
+
+        <!-- Report card -->
+        <div id="past-tab-report" style="display:none">
+          <div class="section-card">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Select Term</label>
+                <select class="form-select" id="past-term-sel2"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Student ID</label>
+                <input type="text" class="form-input" id="past-student-id" placeholder="00030/0009" />
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-blue" id="past-view-btn" style="width:100%">View Report</button>
+              </div>
+            </div>
+          </div>
+          <div id="past-report-output"></div>
+        </div>
+      </div>
+
+      <!-- ── RANKINGS ── -->
+      <div class="page" id="page-rankings">
+        <div class="page-header">
+          <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>Back</button>
+          <h2 class="page-title">Rankings</h2>
+          <p class="page-sub">Rank students by subject and assessment</p>
+        </div>
         <div class="section-card">
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Class</label>
-              <select class="form-select" id="ca-sheet-class"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Assessment</label>
-              <select class="form-select" id="ca-sheet-assess"></select>
-            </div>
-            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
-              <button class="btn btn-blue" id="ca-sheet-view-btn" style="flex:1">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z"/></svg>
-                View
-              </button>
-              <button class="btn btn-pdf" id="ca-sheet-pdf-btn" style="flex:1">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/></svg>
-                PDF
-              </button>
-            </div>
-          </div>
-        </div>
-        <div id="ca-sheet-output"></div>
-      </div>
-
-      <!-- Exam tab -->
-      <div id="sheets-tab-exam" style="display:none">
-        <div class="section-card">
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Class</label>
-              <select class="form-select" id="exam-sheet-class"></select>
-            </div>
-            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
-              <button class="btn btn-blue" id="exam-sheet-view-btn" style="flex:1">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z"/></svg>
-                View
-              </button>
-              <button class="btn btn-pdf" id="exam-sheet-pdf-btn" style="flex:1">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-                PDF
-              </button>
-            </div>
-          </div>
-        </div>
-        <div id="exam-sheet-output"></div>
-      </div>
-
-      <!-- Terminal tab -->
-      <div id="sheets-tab-terminal" style="display:none">
-        <div class="section-card">
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Class</label>
-              <select class="form-select" id="term-sheet-class"></select>
-            </div>
-            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
-              <button class="btn btn-blue" id="term-sheet-view-btn" style="flex:1">View</button>
-              <button class="btn btn-pdf" id="term-sheet-pdf-btn" style="flex:1">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-                PDF
-              </button>
-            </div>
-          </div>
-        </div>
-        <div id="term-sheet-output"></div>
-      </div>
-    </div>
-
-    <!-- ── PAST TERMS ── -->
-    <div class="page" id="page-past">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Past Terms</h2>
-        <p class="page-sub">View marks from closed terms (read-only)</p>
-      </div>
-      <div class="tabs" id="past-tabs">
-        <div class="tab active" data-ptab="marks">Subject Marks Table</div>
-        <div class="tab" data-ptab="report">Student Report Card</div>
-      </div>
-
-      <!-- Subject marks table -->
-      <div id="past-tab-marks">
-        <div class="section-card">
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Select Term</label>
-              <select class="form-select" id="past-term-sel"></select>
+              <select class="form-select" id="rank-class-sel"></select>
             </div>
             <div class="form-group">
               <label class="form-label">Subject</label>
-              <select class="form-select" id="past-subject-sel"></select>
+              <select class="form-select" id="rank-subj-sel"></select>
             </div>
             <div class="form-group">
-              <label class="form-label">Class</label>
-              <select class="form-select" id="past-class-sel"></select>
+              <label class="form-label">Assessment</label>
+              <select class="form-select" id="rank-assess-sel"></select>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end">
-              <button class="btn btn-blue" id="past-marks-btn" style="width:100%">Show Marks</button>
+              <button class="btn btn-blue" id="rank-show-btn" style="width:100%">Show Ranking</button>
             </div>
           </div>
         </div>
-        <div id="past-marks-output"></div>
+        <div id="rank-output"></div>
       </div>
 
-      <!-- Report card -->
-      <div id="past-tab-report" style="display:none">
-        <div class="section-card">
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Select Term</label>
-              <select class="form-select" id="past-term-sel2"></select>
+
+
+      <!-- ── CONFIG (admin) ── -->
+      <div class="page" id="page-config">
+        <div class="page-header">
+          <h2 class="page-title">Configuration</h2>
+          <p class="page-sub">Everything set during registration — editable any time</p>
+        </div>
+
+        <!-- School Identity -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z" />
+            </svg>
+            School Identity
+          </div>
+          <!-- Subscription -->
+          <div class="section-card" style="margin-bottom:20px">
+            <div class="section-card-title">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z" />
+              </svg>
+              Subscription
             </div>
-            <div class="form-group">
-              <label class="form-label">Student ID</label>
-              <input type="text" class="form-input" id="past-student-id" placeholder="00030/0009"/>
+            <div id="sub-status-display"
+              style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">
+              Loading...</div>
+            <div id="sub-plans-area"></div>
+            <!-- Grading System -->
+            <div class="section-card" style="margin-bottom:20px">
+              <div class="section-card-title">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                </svg>
+                Grading System &amp; Divisions
+              </div>
+              <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">
+                Choose which examination level your school follows and whether divisions are calculated using your own
+                grade boundaries or NECTA's official ones.
+              </p>
+              <div class="field-row">
+                <div class="field">
+                  <label>Examination Level</label>
+                  <select id="gs-level" onchange="onGradingLevelChange()">
+                    <option value="o_level">O-Level (NECTA CSEE)</option>
+                    <option value="a_level">A-Level (ACSEE)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Grades Used for Division</label>
+                  <select id="gs-source">
+                    <option value="school">My School's Grades</option>
+                    <option value="necta">NECTA Fixed Grades</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field" id="gs-principal-wrap" style="display:none">
+                <label>Principal Subjects <span class="opt">(A-Level only — used for division
+                    calculation)</span></label>
+                <select id="gs-principal-subjects" multiple style="height:130px">
+                </select>
+                <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Only
+                  these subjects count toward the A-Level division and points — others are still recorded but ignored in
+                  division math.</p>
+              </div>
+              <div class="field">
+                <label>Non-Credit Subjects <span class="opt">(excluded from division &amp; points
+                    calculation)</span></label>
+                <select id="gs-noncredit-subjects" multiple style="height:110px"></select>
+                <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Scores
+                  are still recorded and shown, but these subjects never count toward the division or points.</p>
+              </div>
+              <button class="btn btn-blue" id="gs-save-btn" onclick="saveGradingSystem()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" />
+                </svg>
+                Save Grading System
+              </button>
             </div>
-            <div class="form-group" style="display:flex;align-items:flex-end">
-              <button class="btn btn-blue" id="past-view-btn" style="width:100%">View Report</button>
+          </div>
+
+          <div class="field" style="max-width:320px">
+            <label>School Logo <span class="opt">(optional)</span></label>
+            <div class="logo-upload-area" id="config-logo-drop"
+              onclick="document.getElementById('config-logo-input').click()">
+              <input type="file" id="config-logo-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                onchange="handleConfigLogoSelect(event)">
+              <img id="config-logo-preview" class="logo-preview" alt="Logo preview" />
+              <svg class="logo-upload-icon" id="config-logo-upload-icon" viewBox="0 0 24 24">
+                <path
+                  d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+              </svg>
+              <div class="logo-upload-text" id="config-logo-upload-text">Drag & drop or click to upload a new logo</div>
+              <div class="logo-upload-btn" id="config-logo-btn-label">Choose File</div>
             </div>
           </div>
-        </div>
-        <div id="past-report-output"></div>
-      </div>
-    </div>
 
-    <!-- ── RANKINGS ── -->
-    <div class="page" id="page-rankings">
-      <div class="page-header">
-        <button class="page-back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Back</button>
-        <h2 class="page-title">Rankings</h2>
-        <p class="page-sub">Rank students by subject and assessment</p>
-      </div>
-      <div class="section-card">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Class</label>
-            <select class="form-select" id="rank-class-sel"></select>
+          <div class="field-row">
+            <div class="field">
+              <label>School Name</label>
+              <input type="text" id="config-school-name" placeholder="e.g. St. Mary's Secondary School" />
+            </div>
+            <div class="field">
+              <label>Motto <span class="opt">(optional)</span></label>
+              <input type="text" id="config-school-motto" placeholder="e.g. Knowledge is Power" />
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Subject</label>
-            <select class="form-select" id="rank-subj-sel"></select>
+          <div class="field-row">
+            <div class="field">
+              <label>School Phone <span class="opt">(optional)</span></label>
+              <input type="tel" id="config-school-phone" placeholder="+255 712 345 678" />
+            </div>
+            <div class="field">
+              <label>School Email <span class="opt">(optional)</span></label>
+              <input type="email" id="config-school-email" placeholder="info@yourschool.ac.tz" />
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Assessment</label>
-            <select class="form-select" id="rank-assess-sel"></select>
+          <div class="field" style="max-width:340px">
+            <label>Admin / Support Contact Phone <span class="opt">(optional)</span></label>
+            <input type="tel" id="config-admin-phone" placeholder="+255 755 000 111" />
           </div>
-          <div class="form-group" style="display:flex;align-items:flex-end">
-            <button class="btn btn-blue" id="rank-show-btn" style="width:100%">Show Ranking</button>
+          <button class="btn btn-blue" id="config-school-save-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" />
+            </svg>
+            Save School Identity
+          </button>
+        </div>
+
+        <!-- Registration Code (login) -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z" />
+            </svg>
+            School Registration Code
           </div>
+          <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
+            Staff enter this code alongside their username and password to log in — it's what tells the system which
+            school's data to open, so it must be unique across every school on the platform. This is useful for a
+            teacher who works at more than one school: they simply switch codes to reach the other school's account.
+          </p>
+          <div class="field" style="max-width:320px">
+            <label>Registration Code</label>
+            <input type="text" id="config-reg-code" placeholder="e.g. Peter_07" />
+          </div>
+          <button class="btn btn-outline" id="config-reg-code-save-btn" onclick="configSaveRegCode()">Save Registration
+            Code</button>
         </div>
-      </div>
-      <div id="rank-output"></div>
-    </div>
 
-
-
-    <!-- ── CONFIG (admin) ── -->
-    <div class="page" id="page-config">
-      <div class="page-header">
-        <h2 class="page-title">Configuration</h2>
-        <p class="page-sub">Everything set during registration — editable any time</p>
-      </div>
-
-      <!-- School Identity -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-          School Identity
+        <!-- Classes & Streams -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z" />
+            </svg>
+            Classes &amp; Streams
+          </div>
+          <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Changes here save immediately. Classes or
+            streams with students already in them can't be removed.</p>
+          <div class="classes-list" id="config-classes-list"></div>
+          <button class="btn-add-class" onclick="configAddClass()">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            Add Class
+          </button>
         </div>
-        <!-- Subscription -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z"/></svg>
-          Subscription
+
+        <!-- Subjects -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z" />
+            </svg>
+            Subjects
+          </div>
+          <p class="abbr-hint">The abbreviation appears on score sheets and report cards (max 4 letters).</p>
+          <div class="subjects-list" id="config-subjects-list"></div>
+          <button class="btn-add-subj" onclick="configAddSubject()">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            Add Subject
+          </button>
+          <button class="btn btn-blue" id="config-subjects-save-btn" style="margin-top:14px"
+            onclick="configSaveSubjects()">Save Subjects</button>
         </div>
-        <div id="sub-status-display" style="margin-bottom:16px;padding:12px;background:var(--pale);border-radius:8px;font-size:.9rem">Loading...</div>
-        <div id="sub-plans-area"></div>
+
         <!-- Grading System -->
         <div class="section-card" style="margin-bottom:20px">
           <div class="section-card-title">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-            Grading System &amp; Divisions
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+            </svg>
+            Grading System
           </div>
-          <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">
-            Choose which examination level your school follows and whether divisions are calculated using your own grade boundaries or NECTA's official ones.
+          <div class="grades-list" id="config-grades-list"></div>
+          <button class="btn-add-grade" onclick="configAddGrade()">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            Add Grade
+          </button>
+          <div class="grade-preview" id="config-grade-preview"></div>
+          <button class="btn btn-blue" id="config-grades-save-btn" style="margin-top:14px"
+            onclick="configSaveGrades()">Save Grading System</button>
+        </div>
+
+        <!-- Active Term Info -->
+        <div class="section-card">
+          <div class="section-card-title">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+            </svg>
+            Active Term
+          </div>
+          <div id="config-term-info" style="color:var(--muted);font-size:.9rem;padding:8px 0">Loading...</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Add Student Modal (updated with stream) -->
+  <div class="modal-backdrop" id="modal-add-student" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Add New Student</div>
+      <div class="form-grid single">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" class="form-input" id="new-student-name" placeholder="Student full name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Class</label>
+          <select class="form-select" id="new-student-class" onchange="onStudentClassChange()"></select>
+        </div>
+        <div class="form-group" id="new-student-stream-group" style="display:none">
+          <label class="form-label">Stream (optional)</label>
+          <select class="form-select" id="new-student-stream">
+            <option value="">— No stream / Overall —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Parent / Guardian Phone Number</label>
+          <input type="tel" class="form-input" id="new-student-phone" placeholder="e.g. 0712345678" />
+          <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Used to generate login credentials for the
+            parent portal</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-add-student')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-add-student">Add Student</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Student Modal -->
+  <div class="modal-backdrop" id="modal-edit-student" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Edit Student</div>
+      <div class="form-grid single">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" class="form-input" id="edit-student-name" placeholder="Student full name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Class</label>
+          <select class="form-select" id="edit-student-class" onchange="onEditStudentClassChange()"></select>
+        </div>
+        <div class="form-group" id="edit-student-stream-group" style="display:none">
+          <label class="form-label">Stream (optional)</label>
+          <select class="form-select" id="edit-student-stream">
+            <option value="">— No stream / Overall —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Parent / Guardian Phone Number</label>
+          <input type="tel" class="form-input" id="edit-student-phone"
+            placeholder="Leave blank to keep current phone" />
+          <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Changing name or phone will regenerate the
+            parent's login — but only if they haven't logged in for the first time yet.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-edit-student')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-edit-student">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ MODALS ══════════════ -->
+
+  <!-- Force Password Change Modal -->
+  <div class="modal-backdrop" id="modal-change-password" style="display:none;z-index:2000">
+    <div class="modal">
+      <div style="text-align:center;margin-bottom:20px">
+        <div
+          style="width:56px;height:56px;background:var(--pale);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+          <svg viewBox="0 0 24 24" fill="var(--blue)" width="28" height="28">
+            <path
+              d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
+          </svg>
+        </div>
+        <div class="modal-title" style="margin-bottom:6px">Set Your Password</div>
+        <p style="font-size:.85rem;color:var(--muted)">Your account was created by the admin. Please set your own
+          password before continuing.</p>
+      </div>
+      <div class="form-grid single">
+        <div class="form-group">
+          <label class="form-label">Current Password (given by admin)</label>
+          <input type="password" class="form-input" id="cp-old" placeholder="Enter current password" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">New Password</label>
+          <input type="password" class="form-input" id="cp-new" placeholder="At least 6 characters" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <input type="password" class="form-input" id="cp-confirm" placeholder="Repeat new password" />
+        </div>
+        <div class="login-error" id="cp-error" style="display:none;margin-bottom:0"></div>
+      </div>
+      <button class="btn btn-blue" id="cp-save-btn" style="width:100%;margin-top:20px;padding:13px">
+        Set Password & Continue
+      </button>
+    </div>
+  </div>
+
+
+  <div class="modal-backdrop" id="modal-assign-teacher" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Assign Teacher to Subject</div>
+      <div class="form-grid single">
+        <div class="form-group">
+          <label class="form-label">Teacher Username</label>
+          <select class="form-select" id="assign-teacher-user"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <select class="form-select" id="assign-teacher-subject"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Class / Stream ("Overall" = all streams)</label>
+          <select class="form-select" id="assign-teacher-class"></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credentials Modal -->
+  <div class="modal-backdrop" id="modal-credentials" style="display:none">
+    <div class="modal">
+      <div style="text-align:center;margin-bottom:20px">
+        <div
+          style="width:56px;height:56px;background:#E8F5E9;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+          <svg viewBox="0 0 24 24" fill="#2E7D32" width="28" height="28">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+          </svg>
+        </div>
+        <div class="modal-title" style="margin-bottom:6px">Student Added Successfully!</div>
+        <p style="font-size:.85rem;color:var(--muted)">Parent login credentials for <strong
+            id="cred-student-name"></strong></p>
+      </div>
+      <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div
+              style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+              Username</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--navy);word-break:break-all" id="cred-username"></div>
+          </div>
+          <div>
+            <div
+              style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+              Temp Password</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--navy)" id="cred-password"></div>
+          </div>
+        </div>
+      </div>
+      <div
+        style="background:#FFF8E1;border-left:3px solid #FFD600;border-radius:8px;padding:12px;font-size:.82rem;color:#5D4037;margin-bottom:20px">
+        ⚠ Write these down now. Give them to the parent. They will be asked to change the password on first login.
+      </div>
+      <button class="btn btn-blue" onclick="closeModal('modal-credentials')" style="width:100%">Done — I've noted the
+        credentials</button>
+    </div>
+  </div>
+
+  <!-- Parent Access Modal (admin) -->
+  <div class="modal-backdrop" id="modal-access" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Parent Access</div>
+      <div id="access-modal-body"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:20px">
+        <button class="btn btn-outline" onclick="closeAccessModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Stream Modal -->
+  <div class="modal-backdrop" id="modal-add-stream" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Add Stream</div>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">Adding stream to: <strong
+          id="add-stream-class-label"></strong></p>
+      <div class="form-group">
+        <label class="form-label">Stream Name (e.g. A, B, Science, Arts)</label>
+        <input type="text" class="form-input" id="new-stream-name" placeholder="e.g. A" />
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-add-stream')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-add-stream">Add Stream</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Test Modal -->
+  <div class="modal-backdrop" id="modal-add-test" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Add Test</div>
+      <div class="form-group">
+        <label class="form-label">Test Label</label>
+        <input type="text" class="form-input" id="new-test-label" placeholder="e.g. Weekly Test 1" />
+      </div>
+      <div class="form-group" style="margin-top:16px">
+        <label class="form-label"
+          style="text-transform:none;letter-spacing:0;font-size:.88rem;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="new-test-all-classes" checked onchange="toggleTestClassPicker()" /> All Classes
+        </label>
+      </div>
+      <div id="test-class-picker"
+        style="display:none;max-height:220px;overflow-y:auto;margin-top:10px;padding:10px;background:var(--pale);border-radius:8px">
+      </div>
+      <p style="font-size:.75rem;color:var(--muted);margin-top:10px">Only teachers and students in the selected classes
+        will see this test — in marks entry, analytics, score sheets and (if published) the parent portal.</p>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-add-test')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-add-test">Add Test</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Set Class Teacher Modal -->
+  <div class="modal-backdrop" id="modal-set-ct" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Class Teacher Assignment</div>
+      <input type="hidden" id="ct-username" />
+      <div class="form-grid single">
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" id="ct-is-ct" onchange="toggleCTClass()" style="margin-right:8px" />
+            This teacher is a class teacher
+          </label>
+        </div>
+        <div class="form-group" id="ct-class-group" style="display:none">
+          <label class="form-label">Assigned Class / Stream</label>
+          <select class="form-select" id="ct-class"></select>
+          <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Select "Overall" to be class teacher of all
+            streams</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-set-ct')">Cancel</button>
+        <button class="btn btn-blue" id="confirm-set-ct">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ JAVASCRIPT ══════════════ -->
+  <script src="/js/shared.js"></script>
+  <script src="/js/page-dashboard.js"></script>
+  <script src="/js/page-students.js"></script>
+  <script src="/js/page-teachers.js"></script>
+  <script src="/js/page-reports.js"></script>
+  <script src="/js/page-parent.js"></script>
+  <script src="/js/page-access.js"></script>
+  <script src="/js/page-config.js"></script>
+  <script src="/js/page-analytics.js"></script>
+
+  <!-- ══ IMPORT STUDENTS MODAL ══ -->
+  <div class="modal-backdrop" id="modal-import-students" style="display:none"
+    onclick="if(event.target===this)closeModal('modal-import-students')">
+    <div class="modal" style="width:min(640px,95vw)">
+      <div class="modal-title">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style="color:var(--green)">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+        </svg>
+        Import Students from Excel / CSV
+      </div>
+
+      <!-- Step 1: Upload -->
+      <div id="import-step-upload">
+        <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 1 — Download the template</div>
+          <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Fill it with your students' data. Don't
+            change the column headers.</p>
+          <button class="btn btn-outline" id="import-template-btn" onclick="downloadTemplate()">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+            📥 Download Template
+          </button>
+        </div>
+        <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 2 — Upload your filled file</div>
+          <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Accepts <strong>.xlsx</strong> or
+            <strong>.csv</strong> files.
           </p>
-          <div class="field-row">
-            <div class="field">
-              <label>Examination Level</label>
-              <select id="gs-level" onchange="onGradingLevelChange()">
-                <option value="o_level">O-Level (NECTA CSEE)</option>
-                <option value="a_level">A-Level (ACSEE)</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Grades Used for Division</label>
-              <select id="gs-source">
-                <option value="school">My School's Grades</option>
-                <option value="necta">NECTA Fixed Grades</option>
-              </select>
-            </div>
-          </div>
-          <div class="field" id="gs-principal-wrap" style="display:none">
-            <label>Principal Subjects <span class="opt">(A-Level only — used for division calculation)</span></label>
-            <select id="gs-principal-subjects" multiple style="height:130px">
-            </select>
-            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Only these subjects count toward the A-Level division and points — others are still recorded but ignored in division math.</p>
-          </div>
-          <div class="field">
-            <label>Non-Credit Subjects <span class="opt">(excluded from division &amp; points calculation)</span></label>
-            <select id="gs-noncredit-subjects" multiple style="height:110px"></select>
-            <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Scores are still recorded and shown, but these subjects never count toward the division or points.</p>
-          </div>
-          <button class="btn btn-blue" id="gs-save-btn" onclick="saveGradingSystem()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-            Save Grading System
+          <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv"
+            style="width:100%;padding:10px;border:2px dashed var(--border);border-radius:8px;font-size:.88rem;background:white" />
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
+          <button class="btn btn-outline" onclick="closeModal('modal-import-students')">Cancel</button>
+          <button class="btn btn-blue" id="import-preview-btn" onclick="previewImport()">
+            Preview File →
           </button>
         </div>
       </div>
+      <!-- Step 1.5: Match unrecognized classes/streams -->
+      <div id="import-step-mapping" style="display:none"></div>
 
-        <div class="field" style="max-width:320px">
-          <label>School Logo <span class="opt">(optional)</span></label>
-          <div class="logo-upload-area" id="config-logo-drop" onclick="document.getElementById('config-logo-input').click()">
-            <input type="file" id="config-logo-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onchange="handleConfigLogoSelect(event)">
-            <img id="config-logo-preview" class="logo-preview" alt="Logo preview"/>
-            <svg class="logo-upload-icon" id="config-logo-upload-icon" viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-            <div class="logo-upload-text" id="config-logo-upload-text">Drag & drop or click to upload a new logo</div>
-            <div class="logo-upload-btn" id="config-logo-btn-label">Choose File</div>
-          </div>
+      <!-- Step 2: Preview -->
+      <div id="import-step-preview" style="display:none">
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px" id="import-total-label"></div>
+        <div style="overflow-x:auto;margin-bottom:14px">
+          <table style="width:100%;font-size:.8rem;border-collapse:collapse">
+            <thead>
+              <tr style="background:var(--pale)">
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">#</th>
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">Name</th>
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">Class</th>
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">Stream</th>
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">Phone</th>
+                <th style="padding:8px 10px;text-align:left;color:var(--blue)">Status</th>
+              </tr>
+            </thead>
+            <tbody id="import-preview-body"></tbody>
+          </table>
         </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label>School Name</label>
-            <input type="text" id="config-school-name" placeholder="e.g. St. Mary's Secondary School"/>
-          </div>
-          <div class="field">
-            <label>Motto <span class="opt">(optional)</span></label>
-            <input type="text" id="config-school-motto" placeholder="e.g. Knowledge is Power"/>
-          </div>
+        <div id="import-status" style="display:none;margin-bottom:14px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px">
+          <button class="btn btn-outline" id="import-back-btn"
+            onclick="document.getElementById('import-step-upload').style.display='block';document.getElementById('import-step-preview').style.display='none'">←
+            Back</button>
+          <button class="btn btn-blue" id="import-confirm-btn" onclick="confirmImport()">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+            </svg>
+            Confirm Import
+          </button>
+          <button class="btn btn-blue" id="import-done-btn" style="display:none"
+            onclick="closeModal('modal-import-students')">
+            Done
+          </button>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label>School Phone <span class="opt">(optional)</span></label>
-            <input type="tel" id="config-school-phone" placeholder="+255 712 345 678"/>
-          </div>
-          <div class="field">
-            <label>School Email <span class="opt">(optional)</span></label>
-            <input type="email" id="config-school-email" placeholder="info@yourschool.ac.tz"/>
-          </div>
-        </div>
-        <div class="field" style="max-width:340px">
-          <label>Admin / Support Contact Phone <span class="opt">(optional)</span></label>
-          <input type="tel" id="config-admin-phone" placeholder="+255 755 000 111"/>
-        </div>
-        <button class="btn btn-blue" id="config-school-save-btn">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-          Save School Identity
-        </button>
-      </div>
-
-      <!-- Registration Code (login) -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z"/></svg>
-          School Registration Code
-        </div>
-        <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px">
-          Staff enter this code alongside their username and password to log in — it's what tells the system which school's data to open, so it must be unique across every school on the platform. This is useful for a teacher who works at more than one school: they simply switch codes to reach the other school's account.
-        </p>
-        <div class="field" style="max-width:320px">
-          <label>Registration Code</label>
-          <input type="text" id="config-reg-code" placeholder="e.g. Peter_07"/>
-        </div>
-        <button class="btn btn-outline" id="config-reg-code-save-btn" onclick="configSaveRegCode()">Save Registration Code</button>
-      </div>
-
-      <!-- Classes & Streams -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
-          Classes &amp; Streams
-        </div>
-        <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Changes here save immediately. Classes or streams with students already in them can't be removed.</p>
-        <div class="classes-list" id="config-classes-list"></div>
-        <button class="btn-add-class" onclick="configAddClass()">
-          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          Add Class
-        </button>
-      </div>
-
-      <!-- Subjects -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
-          Subjects
-        </div>
-        <p class="abbr-hint">The abbreviation appears on score sheets and report cards (max 4 letters).</p>
-        <div class="subjects-list" id="config-subjects-list"></div>
-        <button class="btn-add-subj" onclick="configAddSubject()">
-          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          Add Subject
-        </button>
-        <button class="btn btn-blue" id="config-subjects-save-btn" style="margin-top:14px" onclick="configSaveSubjects()">Save Subjects</button>
-      </div>
-
-      <!-- Grading System -->
-      <div class="section-card" style="margin-bottom:20px">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-          Grading System
-        </div>
-        <div class="grades-list" id="config-grades-list"></div>
-        <button class="btn-add-grade" onclick="configAddGrade()">
-          <svg viewBox="0 0 24 24"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          Add Grade
-        </button>
-        <div class="grade-preview" id="config-grade-preview"></div>
-        <button class="btn btn-blue" id="config-grades-save-btn" style="margin-top:14px" onclick="configSaveGrades()">Save Grading System</button>
-      </div>
-
-      <!-- Active Term Info -->
-      <div class="section-card">
-        <div class="section-card-title">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-          Active Term
-        </div>
-        <div id="config-term-info" style="color:var(--muted);font-size:.9rem;padding:8px 0">Loading...</div>
-      </div>
-    </div>
-
-  </main>
-</div>
-
-<!-- Add Student Modal (updated with stream) -->
-<div class="modal-backdrop" id="modal-add-student" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Add New Student</div>
-    <div class="form-grid single">
-      <div class="form-group">
-        <label class="form-label">Full Name</label>
-        <input type="text" class="form-input" id="new-student-name" placeholder="Student full name"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Class</label>
-        <select class="form-select" id="new-student-class" onchange="onStudentClassChange()"></select>
-      </div>
-      <div class="form-group" id="new-student-stream-group" style="display:none">
-        <label class="form-label">Stream (optional)</label>
-        <select class="form-select" id="new-student-stream">
-          <option value="">— No stream / Overall —</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Parent / Guardian Phone Number</label>
-        <input type="tel" class="form-input" id="new-student-phone" placeholder="e.g. 0712345678"/>
-        <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Used to generate login credentials for the parent portal</p>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-add-student')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-add-student">Add Student</button>
-    </div>
-  </div>
-</div>
-
-<!-- Edit Student Modal -->
-<div class="modal-backdrop" id="modal-edit-student" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Edit Student</div>
-    <div class="form-grid single">
-      <div class="form-group">
-        <label class="form-label">Full Name</label>
-        <input type="text" class="form-input" id="edit-student-name" placeholder="Student full name"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Class</label>
-        <select class="form-select" id="edit-student-class" onchange="onEditStudentClassChange()"></select>
-      </div>
-      <div class="form-group" id="edit-student-stream-group" style="display:none">
-        <label class="form-label">Stream (optional)</label>
-        <select class="form-select" id="edit-student-stream">
-          <option value="">— No stream / Overall —</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Parent / Guardian Phone Number</label>
-        <input type="tel" class="form-input" id="edit-student-phone" placeholder="Leave blank to keep current phone"/>
-        <p style="font-size:.72rem;color:var(--muted);margin-top:4px">Changing name or phone will regenerate the parent's login — but only if they haven't logged in for the first time yet.</p>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-edit-student')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-edit-student">Save Changes</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════ MODALS ══════════════ -->
-
-<!-- Force Password Change Modal -->
-<div class="modal-backdrop" id="modal-change-password" style="display:none;z-index:2000">
-  <div class="modal">
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="width:56px;height:56px;background:var(--pale);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
-        <svg viewBox="0 0 24 24" fill="var(--blue)" width="28" height="28"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
-      </div>
-      <div class="modal-title" style="margin-bottom:6px">Set Your Password</div>
-      <p style="font-size:.85rem;color:var(--muted)">Your account was created by the admin. Please set your own password before continuing.</p>
-    </div>
-    <div class="form-grid single">
-      <div class="form-group">
-        <label class="form-label">Current Password (given by admin)</label>
-        <input type="password" class="form-input" id="cp-old" placeholder="Enter current password"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">New Password</label>
-        <input type="password" class="form-input" id="cp-new" placeholder="At least 6 characters"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Confirm New Password</label>
-        <input type="password" class="form-input" id="cp-confirm" placeholder="Repeat new password"/>
-      </div>
-      <div class="login-error" id="cp-error" style="display:none;margin-bottom:0"></div>
-    </div>
-    <button class="btn btn-blue" id="cp-save-btn" style="width:100%;margin-top:20px;padding:13px">
-      Set Password & Continue
-    </button>
-  </div>
-</div>
-
-
-<div class="modal-backdrop" id="modal-assign-teacher" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Assign Teacher to Subject</div>
-    <div class="form-grid single">
-      <div class="form-group">
-        <label class="form-label">Teacher Username</label>
-        <select class="form-select" id="assign-teacher-user"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Subject</label>
-        <select class="form-select" id="assign-teacher-subject"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Class / Stream ("Overall" = all streams)</label>
-        <select class="form-select" id="assign-teacher-class"></select>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
-    </div>
-  </div>
-</div>
-
-<!-- Credentials Modal -->
-<div class="modal-backdrop" id="modal-credentials" style="display:none">
-  <div class="modal">
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="width:56px;height:56px;background:#E8F5E9;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
-        <svg viewBox="0 0 24 24" fill="#2E7D32" width="28" height="28"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-      </div>
-      <div class="modal-title" style="margin-bottom:6px">Student Added Successfully!</div>
-      <p style="font-size:.85rem;color:var(--muted)">Parent login credentials for <strong id="cred-student-name"></strong></p>
-    </div>
-    <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Username</div>
-          <div style="font-size:1rem;font-weight:700;color:var(--navy);word-break:break-all" id="cred-username"></div>
-        </div>
-        <div>
-          <div style="font-size:.7rem;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Temp Password</div>
-          <div style="font-size:1rem;font-weight:700;color:var(--navy)" id="cred-password"></div>
-        </div>
-      </div>
-    </div>
-    <div style="background:#FFF8E1;border-left:3px solid #FFD600;border-radius:8px;padding:12px;font-size:.82rem;color:#5D4037;margin-bottom:20px">
-      ⚠ Write these down now. Give them to the parent. They will be asked to change the password on first login.
-    </div>
-    <button class="btn btn-blue" onclick="closeModal('modal-credentials')" style="width:100%">Done — I've noted the credentials</button>
-  </div>
-</div>
-
-<!-- Add Stream Modal -->
-<div class="modal-backdrop" id="modal-add-stream" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Add Stream</div>
-    <p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">Adding stream to: <strong id="add-stream-class-label"></strong></p>
-    <div class="form-group">
-      <label class="form-label">Stream Name (e.g. A, B, Science, Arts)</label>
-      <input type="text" class="form-input" id="new-stream-name" placeholder="e.g. A"/>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-add-stream')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-add-stream">Add Stream</button>
-    </div>
-  </div>
-</div>
-
-<!-- Add Test Modal -->
-<div class="modal-backdrop" id="modal-add-test" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Add Test</div>
-    <div class="form-group">
-      <label class="form-label">Test Label</label>
-      <input type="text" class="form-input" id="new-test-label" placeholder="e.g. Weekly Test 1"/>
-    </div>
-    <div class="form-group" style="margin-top:16px">
-      <label class="form-label" style="text-transform:none;letter-spacing:0;font-size:.88rem;display:flex;align-items:center;gap:8px">
-        <input type="checkbox" id="new-test-all-classes" checked onchange="toggleTestClassPicker()"/> All Classes
-      </label>
-    </div>
-    <div id="test-class-picker" style="display:none;max-height:220px;overflow-y:auto;margin-top:10px;padding:10px;background:var(--pale);border-radius:8px"></div>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:10px">Only teachers and students in the selected classes will see this test — in marks entry, analytics, score sheets and (if published) the parent portal.</p>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-add-test')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-add-test">Add Test</button>
-    </div>
-  </div>
-</div>
-
-<!-- Set Class Teacher Modal -->
-<div class="modal-backdrop" id="modal-set-ct" style="display:none">
-  <div class="modal">
-    <div class="modal-title">Class Teacher Assignment</div>
-    <input type="hidden" id="ct-username"/>
-    <div class="form-grid single">
-      <div class="form-group">
-        <label class="form-label">
-          <input type="checkbox" id="ct-is-ct" onchange="toggleCTClass()" style="margin-right:8px"/>
-          This teacher is a class teacher
-        </label>
-      </div>
-      <div class="form-group" id="ct-class-group" style="display:none">
-        <label class="form-label">Assigned Class / Stream</label>
-        <select class="form-select" id="ct-class"></select>
-        <p style="font-size:.75rem;color:var(--muted);margin-top:4px">Select "Overall" to be class teacher of all streams</p>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('modal-set-ct')">Cancel</button>
-      <button class="btn btn-blue" id="confirm-set-ct">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════ JAVASCRIPT ══════════════ -->
-<script src="/js/shared.js"></script>
-<script src="/js/page-dashboard.js"></script>
-<script src="/js/page-students.js"></script>
-<script src="/js/page-teachers.js"></script>
-<script src="/js/page-reports.js"></script>
-<script src="/js/page-parent.js"></script>
-<script src="/js/page-config.js"></script>
-<script src="/js/page-analytics.js"></script>
-
-<!-- ══ IMPORT STUDENTS MODAL ══ -->
-<div class="modal-backdrop" id="modal-import-students" style="display:none" onclick="if(event.target===this)closeModal('modal-import-students')">
-  <div class="modal" style="width:min(640px,95vw)">
-    <div class="modal-title">
-      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style="color:var(--green)"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-      Import Students from Excel / CSV
-    </div>
-
-    <!-- Step 1: Upload -->
-    <div id="import-step-upload">
-      <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
-        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 1 — Download the template</div>
-        <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Fill it with your students' data. Don't change the column headers.</p>
-        <button class="btn btn-outline" id="import-template-btn" onclick="downloadTemplate()">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          📥 Download Template
-        </button>
-      </div>
-      <div style="background:var(--pale);border-radius:10px;padding:16px;margin-bottom:16px">
-        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Step 2 — Upload your filled file</div>
-        <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">Accepts <strong>.xlsx</strong> or <strong>.csv</strong> files.</p>
-        <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv"
-               style="width:100%;padding:10px;border:2px dashed var(--border);border-radius:8px;font-size:.88rem;background:white"/>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
-        <button class="btn btn-outline" onclick="closeModal('modal-import-students')">Cancel</button>
-        <button class="btn btn-blue" id="import-preview-btn" onclick="previewImport()">
-          Preview File →
-        </button>
-      </div>
-    </div>
-    <!-- Step 1.5: Match unrecognized classes/streams -->
-    <div id="import-step-mapping" style="display:none"></div>
-
-    <!-- Step 2: Preview -->
-    <div id="import-step-preview" style="display:none">
-      <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px" id="import-total-label"></div>
-      <div style="overflow-x:auto;margin-bottom:14px">
-        <table style="width:100%;font-size:.8rem;border-collapse:collapse">
-          <thead>
-            <tr style="background:var(--pale)">
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">#</th>
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Name</th>
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Class</th>
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Stream</th>
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Phone</th>
-              <th style="padding:8px 10px;text-align:left;color:var(--blue)">Status</th>
-            </tr>
-          </thead>
-          <tbody id="import-preview-body"></tbody>
-        </table>
-      </div>
-      <div id="import-status" style="display:none;margin-bottom:14px"></div>
-      <div style="display:flex;justify-content:flex-end;gap:10px">
-        <button class="btn btn-outline" id="import-back-btn" onclick="document.getElementById('import-step-upload').style.display='block';document.getElementById('import-step-preview').style.display='none'">← Back</button>
-        <button class="btn btn-blue" id="import-confirm-btn" onclick="confirmImport()">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-          Confirm Import
-        </button>
-        <button class="btn btn-blue" id="import-done-btn" style="display:none" onclick="closeModal('modal-import-students')">
-          Done
-        </button>
       </div>
     </div>
   </div>
-</div>
 
 </body>
+
 </html>

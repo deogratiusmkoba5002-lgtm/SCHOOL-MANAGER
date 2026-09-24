@@ -9,6 +9,7 @@ from services.scores import (
     get_class_report_data, _active_subjects_in_scores, get_subject_rank_map,
     compute_student_finals, compute_average_from_finals, _assign_positions,
 )
+from services.access import get_access
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -30,6 +31,9 @@ def api_report(student_id):
     row = cur.fetchone(); student = to_dict(row,cur) if row else None
     cur.close(); con.close()
     if not student: return jsonify({"ok":False,"error":"Student not found"}),404
+    access = get_access(sid, student_id)
+    if g.role == "parent" and not access["active"]:
+        return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock full reports.","code":"parent_access_required"}),402
     student["display_id"] = format_student_display_id(sid, student.pop("school_student_no", None))
     term = get_term_by_id(sid,int(term_id)) if term_id else get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No term available"}),400
@@ -71,7 +75,7 @@ def api_report(student_id):
     cur.execute("SELECT * FROM remarks WHERE school_id=%s AND student_id=%s AND term_id=%s",(sid,student_id,tid))
     rmk_row = cur.fetchone(); rmk = to_dict(rmk_row,cur) if rmk_row else None
     cur.close(); con.close()
-    return jsonify({"ok":True,"student":student,"term":term,"rows":rows,
+    return jsonify({"ok":True,"student":student,"term":term,"rows":rows,"access":access,
                     "average":avg,"grade":get_grade(sid,avg),
                     "class_position":c_pos,"class_total":c_total,
                     "stream_position":s_pos,"stream_total":s_total,

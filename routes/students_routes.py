@@ -9,23 +9,29 @@ from core.auth import require_auth, require_role
 from core.security import hash_password
 from core.school import format_student_display_id
 from services.students import gen_parent_creds
+from datetime import datetime
 
 students_bp = Blueprint("students", __name__)
-
 
 @students_bp.route("/api/students", methods=["GET"])
 @require_auth
 def api_students():
     sid = g.school_id
     con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no,s.flag_reason
+    cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name,s.school_student_no,s.flag_reason,
+                          sa.expires_at AS access_expires_at
                    FROM students s JOIN classes c ON s.class_id=c.id
                    LEFT JOIN streams st ON s.stream_id=st.id
+                   LEFT JOIN student_access sa ON sa.student_id=s.id AND sa.school_id=s.school_id
                    WHERE s.school_id=%s ORDER BY c.class_name,st.stream_name,s.name""",(sid,))
     rows = to_dicts(cur.fetchall(),cur); cur.close(); con.close()
-    for r in rows: r["display_id"] = format_student_display_id(sid, r.pop("school_student_no", None))
+    now = datetime.utcnow()
+    for r in rows:
+        r["display_id"] = format_student_display_id(sid, r.pop("school_student_no", None))
+        exp = r.pop("access_expires_at", None)
+        r["access_active"] = bool(exp and exp > now)
+        r["access_expires_at"] = (exp.isoformat() + "Z") if exp else None
     return jsonify(rows)
-
 
 @students_bp.route("/api/students", methods=["POST"])
 @require_auth

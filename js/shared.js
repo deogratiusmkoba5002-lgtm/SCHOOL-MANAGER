@@ -116,6 +116,7 @@ function schoolSVG()  {return`<svg viewBox="0 0 24 24" fill="currentColor"><path
 function calSVG()     {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>`}
 function historySVG() {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`}
 function emptySVG()   {return`<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px;height:48px;color:var(--border)"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.35C18 2.53 15.88.5 13.5.5c-1.35 0-2.56.6-3.4 1.53L9 3.15 7.9 2.03C7.06 1.1 5.85.5 4.5.5 2.12.5 0 2.53 0 4.65 0 5.12.11 5.56.18 6H0l2 14h20l2-14h-4zm-6.5-4c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35-1.13-.75-2-1.56-2-2.35C11.5 2.87 12.37 2 13.5 2zM4.5 2c1.13 0 2 .87 2 1.65 0 .79-.87 1.6-2 2.35C3.37 5.25 2.5 4.44 2.5 3.65 2.5 2.87 3.37 2 4.5 2zM4 18l-1.5-10h15L16 18H4z"/></svg>`}
+function lockSVG()    {return`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`}
 
 // ── DYNAMIC GRADES ───────────────────────────────────────────
 let GRADE_RULES = [
@@ -285,6 +286,7 @@ async function bootApp(){
   buildNav();
   if(currentUser.role==="parent"){
     await refreshTermBanner();
+    await loadParentAccess();
     showPage("parent-dashboard");
     loadParentDashboard();
     if(currentUser.must_change_password) openModal("modal-change-password");
@@ -318,6 +320,7 @@ const NAV_PARENT = [
   {id:"parent-reports",      icon:reportSVG(), label:"View Reports"},
   {id:"parent-analytics",    icon:starSVG(),   label:"Academic Analytics"},
   {id:"parent-announcements",icon:chatSVG(),   label:"Announcements"},
+  {id:"parent-subscription", icon:lockSVG(),   label:"Subscription"},
 ];
 function buildTeacherNav(user){
   const items = [
@@ -401,6 +404,7 @@ function _showPage(id){
   if(id==="admin-analytics") loadAdminAnalytics();
   if(id==="ct-analytics") loadCTAnalytics();
   if(id==="teacher-analytics") loadTeacherAnalytics();
+  if(id==="parent-subscription") loadParentSubscription();
 }
 
 // ── LOGOUT ───────────────────────────────────────────────────

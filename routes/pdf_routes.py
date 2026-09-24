@@ -17,12 +17,12 @@ from services.scores import (
     compute_average_from_finals, get_subject_rank_map, get_class_report_data,
 )
 from services.pdf import _esc, _school_header_story, _blue_sheet_pdf
+from services.access import has_active_access
 
 pdf_bp = Blueprint("pdf", __name__)
 
 @pdf_bp.route("/api/pdf/report/<int:sid>", methods=["GET"])
 @require_auth
-@subscription_required
 @require_role("admin","teacher","parent")
 def pdf_report(sid):
     school_id=g.school_id
@@ -36,6 +36,8 @@ def pdf_report(sid):
                    WHERE s.id=%s AND s.school_id=%s""",(sid,school_id))
     row=cur.fetchone(); student=to_dict(row,cur) if row else None; cur.close(); con.close()
     if not student: return jsonify({"error":"Not found"}),404
+    if not has_active_access(school_id, sid):
+        return jsonify({"ok":False,"error":"Parent access required for this student's report PDF","code":"parent_access_required"}),402
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
     if not term: return jsonify({"error":"No term"}),400
     tid=term["id"]; ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]

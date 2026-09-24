@@ -28,6 +28,15 @@ function populateParentTermSel(selId, loadAssessments=false){
   if(loadAssessments) loadResAssessments();
 }
 async function loadParentReports(){
+  const locked = !(window.parentAccess && window.parentAccess.active);
+  const choice = document.getElementById("parent-reports-choice");
+  document.getElementById("parent-reports-locked").style.display = locked ? "flex" : "none";
+  if(locked){
+    choice.dataset.lockedHide = "1";
+    ["parent-reports-choice","parent-section-report-card","parent-section-results"].forEach(id=>document.getElementById(id).style.display="none");
+    return;
+  }
+  if(choice.dataset.lockedHide==="1"){ choice.style.display="grid"; choice.dataset.lockedHide="0"; }
   const terms = await api("/parent/terms");
   parentPublishedTerms = terms;
   loadAnalyticsData();
@@ -251,6 +260,9 @@ function switchAnalyticsTab(tab){
 }
 async function loadAnalyticsData(){
   const sid = currentUser.student_id; if(!sid) return;
+  const locked = !(window.parentAccess && window.parentAccess.active);
+  if(locked){ showAnalyticsLocked(); return; }
+  document.getElementById("analytics-locked-banner").style.display = "none";
   if(!parentPublishedTerms.length){ const terms = await api("/parent/terms"); parentPublishedTerms = terms; }
   if(!parentPublishedTerms.length){ showAnalyticsNoData(); return; }
   const sortedTerms = [...parentPublishedTerms].sort((a,b)=>a.id - b.id);
@@ -295,6 +307,18 @@ function showAnalyticsNoData(){
   document.getElementById("analytics-best").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
   document.getElementById("analytics-weak").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
   document.getElementById("analytics-insights").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet. Results will appear here once published by the school.</p>`;
+}
+function showAnalyticsLocked(){
+  document.getElementById("analytics-locked-banner").style.display = "flex";
+  document.getElementById("analytics-chart").style.display = "block";
+  document.getElementById("analytics-no-data").style.display = "none";
+  document.getElementById("analytics-summary-grid").style.display = "grid";
+  document.getElementById("analytics-insights-card").style.display = "block";
+  drawTrendChart("analytics-chart", [], []);   // empty axes, "Not enough data yet"
+  const lockedMsg = `<p style="color:var(--muted);font-size:.85rem">🔒 Subscribe to see this</p>`;
+  document.getElementById("analytics-best").innerHTML = lockedMsg;
+  document.getElementById("analytics-weak").innerHTML = lockedMsg;
+  document.getElementById("analytics-insights").innerHTML = lockedMsg;
 }
 function renderAnalytics(){
   if(!analyticsData||!analyticsData.length) return;

@@ -235,6 +235,35 @@ def init_db():
         data       JSONB NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
     );
+        CREATE TABLE IF NOT EXISTS student_access (
+        school_id  INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        plan       TEXT NOT NULL DEFAULT '',
+        expires_at TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(school_id, student_id)
+    );
+    CREATE TABLE IF NOT EXISTS student_payments (
+        id              SERIAL PRIMARY KEY,
+        school_id       INTEGER NOT NULL,
+        student_id      INTEGER NOT NULL,
+        plan            TEXT NOT NULL,
+        duration_days   INTEGER NOT NULL,
+        amount          INTEGER NOT NULL,
+        currency        TEXT NOT NULL DEFAULT 'TZS',
+        reference       TEXT UNIQUE,
+        idempotency_key TEXT,
+        phone           TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        method          TEXT,
+        initiated_by    TEXT,
+        initiated_role  TEXT,
+        failure_reason  TEXT,
+        applied         INTEGER NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP DEFAULT NOW(),
+        paid_at         TIMESTAMP,
+        expires_at      TIMESTAMP
+    );
     """)
     
 
@@ -438,6 +467,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_users_school_role ON users(school_id, role)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_scores_student ON exam_scores(school_id, student_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ca_scores_student ON ca_scores(school_id, student_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_student_payments_student ON student_payments(school_id, student_id)")
     except Exception as e:
         print(f"Index creation note: {e}")
 

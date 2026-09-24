@@ -70,7 +70,7 @@ async function loadSubscriptionCard(){
   _subPaymentInfoCache = s.payment_info;
 
   if(s.exempt){
-    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Demo / grandfathered school — all features unlocked.</span>`;
+        statusEl.innerHTML = `<span style="color:var(--green);font-weight:600">✓ All school features are free. Only report-card PDFs need per-student parent access.</span>`;
     plansEl.innerHTML = "";
     return;
   }

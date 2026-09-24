@@ -65,6 +65,8 @@ function renderStudents(list){
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-outline" onclick="quickReport(${s.id},'${(s.display_id||s.id)}')">${reportSVG()} Report</button>
           <button class="btn btn-sm btn-outline" onclick="openEditStudent(${s.id})">${editSVG()} Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="openEditStudent(${s.id})">${editSVG()} Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="openAccessModal(${s.id})">${s.access_active?"✅":"🔒"} Access</button>
           <button class="btn btn-sm btn-red btn-icon" onclick="deleteStudent(${s.id},'${s.name}')">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
           </button>
@@ -121,9 +123,12 @@ function closeBulkMenuOnOutsideClick(e){
   }
 }
 async function bulkDownloadReports(){
-  const ids = [...selectedStudentIds];
-  if(!ids.length) return;
-  if(!requireSub()) return;
+  const selected = [...selectedStudentIds];
+  if(!selected.length) return;
+  const ids = selected.filter(id=>{ const s = allStudents.find(x=>x.id===id); return s && s.access_active; });
+  const locked = selected.length - ids.length;
+  if(!ids.length){ toast("None of the selected students have active parent access","error"); return; }
+  if(locked) toast(`${locked} student(s) skipped — parent access not active`,"info");
   toast(`Downloading ${ids.length} report(s)…`,"info");
   for(let i=0;i<ids.length;i++){
     const params = new URLSearchParams();

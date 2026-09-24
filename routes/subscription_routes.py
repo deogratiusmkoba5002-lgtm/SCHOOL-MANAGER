@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import psycopg2
 from flask import Blueprint, request, jsonify, g
 
-from config import SUBSCRIPTION_PLANS
+from config import SUBSCRIPTION_PLANS, SCHOOL_SUBSCRIPTION_ENFORCED
 from core.db import get_db
 from core.auth import require_auth, require_role
 from services.subscriptions import is_subscribed, _expire_stale_payment_requests, _platform_payment_config
@@ -43,7 +43,7 @@ def api_subscription_status():
         elif rstatus == "rejected":
             last_decision = {"status": "rejected", "note": rdecision_note}
 
-    return jsonify({"ok": True, "active": is_subscribed(sid), "exempt": bool(exempt),
+    return jsonify({"ok": True, "active": is_subscribed(sid), "exempt": bool(exempt) or not SCHOOL_SUBSCRIPTION_ENFORCED,
                      "plan": plan, "status": status,
                      "expires_at": expires_at.isoformat() if expires_at else None,
                      "plans": SUBSCRIPTION_PLANS,

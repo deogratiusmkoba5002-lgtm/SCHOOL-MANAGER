@@ -52,3 +52,26 @@ if not SECRET_KEY:
 
 SESSION_MAX_AGE    = 12 * 3600  # 12h
 SA_SESSION_MAX_AGE = 12 * 3600
+
+# ── PARENT ACCESS (per-student paid entitlement, via Snippe) ──────────────
+def _price(env_name, default):
+    try: return int(os.environ.get(env_name, default))
+    except ValueError: return default
+
+# Snippe's minimum is 500 TZS, so 100/200 can't be tested. Later set env vars
+# PARENT_PRICE_6M=3000 and PARENT_PRICE_12M=5000 (or edit the defaults here).
+PARENT_PLANS = {
+    "6m":  {"label": "6 Months",  "days": 182, "amount": _price("PARENT_PRICE_6M", 500)},
+    "12m": {"label": "12 Months", "days": 365, "amount": _price("PARENT_PRICE_12M", 1000)},
+}
+
+SNIPPE_API_BASE       = "https://api.snippe.sh"
+SNIPPE_API_KEY        = os.environ.get("SNIPPE_API_KEY", "")
+SNIPPE_WEBHOOK_SECRET = os.environ.get("SNIPPE_WEBHOOK_SECRET", "")
+SNIPPE_MIN_AMOUNT     = 500
+SNIPPE_FALLBACK_EMAIL = os.environ.get("SNIPPE_FALLBACK_EMAIL", "billing@drdemic.app")  # Snippe requires an email
+# Render sets RENDER_EXTERNAL_URL automatically; set PUBLIC_BASE_URL if you use a custom domain.
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+
+# Schools/teachers/admins use everything free. Set to "1" to bring the old per-school paywall back.
+SCHOOL_SUBSCRIPTION_ENFORCED = os.environ.get("SCHOOL_SUBSCRIPTION_ENFORCED", "0") == "1"
