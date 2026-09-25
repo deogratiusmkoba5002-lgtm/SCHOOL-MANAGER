@@ -816,6 +816,8 @@ async function submitRegistration(){
     fd.append("motto",       document.getElementById("school-motto").value.trim());
     fd.append("reg_code",    document.getElementById("school-reg-code").value.trim());
     fd.append("agree_terms", document.getElementById("agree-terms").checked ? "1" : "0");
+    const refToken = new URLSearchParams(window.location.search).get("ref") || "";
+    fd.append("ref_token", refToken);
     fd.append("classes",     JSON.stringify(classes.filter(c=>c.name.trim())));
     fd.append("subjects",    JSON.stringify(subjects.filter(s=>s.name.trim())));
     fd.append("grades",      JSON.stringify(grades));
