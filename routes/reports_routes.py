@@ -10,6 +10,7 @@ from services.scores import (
     compute_student_finals, compute_average_from_finals, _assign_positions,
 )
 from services.access import get_access
+from services.stars import maybe_record_qualifying_parent
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -34,6 +35,8 @@ def api_report(student_id):
     access = get_access(sid, student_id)
     if g.role == "parent" and not access["active"]:
         return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock full reports.","code":"parent_access_required"}),402
+    if g.role == "parent":
+        maybe_record_qualifying_parent(sid, student_id)
     student["display_id"] = format_student_display_id(sid, student.pop("school_student_no", None))
     term = get_term_by_id(sid,int(term_id)) if term_id else get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No term available"}),400

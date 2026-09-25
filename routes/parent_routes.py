@@ -11,8 +11,7 @@ from services.scores import (
     get_class_report_data,
 )
 from services.access import has_active_access
-from services.stars import ensure_cycle_started
-
+from services.stars import ensure_cycle_started, maybe_record_qualifying_parent
 parent_bp = Blueprint("parent", __name__)
 
 # ── RESULTS PUBLISHING ────────────────────────────────────────
@@ -122,6 +121,8 @@ def api_parent_results():
         return jsonify({"ok":False,"error":"Access denied"}),403 
     if not has_active_access(sid, g.student_id):
         return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock results.","code":"parent_access_required"}),402
+    maybe_record_qualifying_parent(sid, g.student_id)
+    stid=int(student_id); term=get_term_by_id(sid, term_id)
     if assess:
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT published FROM published_assessments WHERE school_id=%s AND term_id=%s AND assess_key=%s",(sid,term_id,assess))

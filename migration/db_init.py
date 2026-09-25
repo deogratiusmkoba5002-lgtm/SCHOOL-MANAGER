@@ -357,6 +357,33 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_star_withdrawals_school ON star_withdrawals(school_id);
     CREATE INDEX IF NOT EXISTS idx_star_qualifying_parents_school ON star_qualifying_parents(school_id);
     """)
+
+
+    # ── RATE LIMITING & NOTIFICATIONS ───────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS rate_limit_events (
+        id         SERIAL PRIMARY KEY,
+        scope      TEXT NOT NULL,
+        identifier TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_scope_id ON rate_limit_events(scope, identifier, created_at);
+
+    CREATE TABLE IF NOT EXISTS star_notifications (
+        id           SERIAL PRIMARY KEY,
+        school_id    INTEGER NOT NULL,
+        event        TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        body         TEXT NOT NULL DEFAULT '',
+        reference_id INTEGER,
+        is_read      INTEGER NOT NULL DEFAULT 0,
+        created_at   TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_star_notifications_school ON star_notifications(school_id, is_read);
+    """)
+
+
+    # Migrations - add missing columns to existing tables
     
 
     # Migrations - add missing columns to existing tables

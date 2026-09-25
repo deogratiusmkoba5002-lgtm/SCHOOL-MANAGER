@@ -10,6 +10,7 @@ from services.access import (
     get_access, plans_public, start_payment, finalize_payment, refresh_pending,
     verify_webhook_signature, SnippeError,
 )
+from core.ratelimit import rate_limit
 
 access_bp = Blueprint("access", __name__)
 
@@ -83,6 +84,7 @@ def api_access_check(payment_id):
 
 
 @access_bp.route("/api/access/webhook", methods=["POST"])
+@rate_limit("access_webhook", max_attempts=120, window_minutes=5, by="ip")
 def api_access_webhook():
     raw = request.get_data()
     if not verify_webhook_signature(raw, request.headers):

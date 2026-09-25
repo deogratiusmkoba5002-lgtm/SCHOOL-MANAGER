@@ -209,3 +209,70 @@ def api_sa_set_payment_config():
                 (business_name, payment_number, ",".join(networks)))
     con.commit(); cur.close(); con.close()
     return jsonify({"ok": True})
+
+@superadmin_bp.route("/api/superadmin/star_withdrawals", methods=["GET"])
+def api_sa_star_withdrawals():
+    sa, err = _require_superadmin()
+    if err: return err
+    status = request.args.get("status", "REQUESTED")
+    con = get_db(); cur = con.cursor()
+    q = """SELECT w.id, w.school_id, s.school_name, w.stars, w.amount, w.status,
+                  CAST(w.requested_at AS TEXT), w.decided_by, CAST(w.decided_at AS TEXT), w.note,
+                  pa.account_identifier
+           FROM star_withdrawals w JOIN schools s ON s.id = w.school_id
+           LEFT JOIN star_payout_accounts pa ON pa.id = w.payout_account_id"""
+    params = ()
+    if status != "all":
+        q += " WHERE w.status=%s"; params = (status,)
+    q += " ORDER BY w.requested_at ASC"
+    cur.execute(q, params)
+    rows = to_dicts(cur.fetchall(), cur); cur.close(); con.close()
+    return jsonify({"ok": True, "withdrawals": rows})
+
+
+@superadmin_bp.route("/api/superadmin/star_withdrawals/<int:wid>/approve", methods=["POST"])
+def api_sa_approve_withdrawal(wid):
+    sa, err = _require_superadmin()
+    if err: return err
+    note = (request.json or {}).get("note", "")
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT school_id, status FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
+    row = cur.fetchone()
+    if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
+    school_id, status = row
+    if status not in ("REQUESTED", "PROCESSING"):
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "Already decided"}), 409
+    cur.execute("""UPDATE star_withdrawals SET status='WITHDRAWN', decided_by=%s, decided_at=NOW(), note=%s
+                   WHERE id=%s""", (sa, note, wid))
+    cur.execute("""UPDATE star_transactions SET status='WITHDRAWN'
+                   WHERE reference_type='star_withdrawal' AND reference_id=%s""", (wid,))
+    con.commit(); cur.close(); con.close()
+    from services.stars import log_star_event, create_star_notification
+    log_star_event(school_id, "WITHDRAWAL_APPROVED", actor_username=sa, reference_id=wid, new_state="WITHDRAWN")
+    create_star_notification(school_id, "WITHDRAWAL_APPROVED", "Withdrawal completed",
+                              f"Your withdrawal request #{wid} has been paid out.", wid)
+    return jsonify({"ok": True})
+
+@superadmin_bp.route("/api/superadmin/star_withdrawals/<int:wid>/reject", methods=["POST"])
+def api_sa_reject_withdrawal(wid):
+    sa, err = _require_superadmin()
+    if err: return err
+    note = (request.json or {}).get("note", "").strip()
+    if not note: return jsonify({"ok": False, "error": "A reason is required"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT school_id, status FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
+    row = cur.fetchone()
+    if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
+    school_id, status = row
+    if status not in ("REQUESTED", "PROCESSING"):
+        cur.close(); con.close(); return jsonify({"ok": False, "error": "Already decided"}), 409
+    cur.execute("""UPDATE star_withdrawals SET status='REJECTED', decided_by=%s, decided_at=NOW(), note=%s
+                   WHERE id=%s""", (sa, note, wid))
+    cur.execute("""UPDATE star_transactions SET status='REVERSED'
+                   WHERE reference_type='star_withdrawal' AND reference_id=%s""", (wid,))
+    con.commit(); cur.close(); con.close()
+    from services.stars import log_star_event, create_star_notification
+    log_star_event(school_id, "WITHDRAWAL_REJECTED", actor_username=sa, reference_id=wid, new_state="REJECTED")
+    create_star_notification(school_id, "WITHDRAWAL_REJECTED", "Withdrawal rejected",
+                              f"Your withdrawal request #{wid} was rejected. Reason: {note}", wid)
+    return jsonify({"ok": True})

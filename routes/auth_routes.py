@@ -11,6 +11,7 @@ from core.auth import (
     LOGIN_MAX_ATTEMPTS, _login_attempts_count, _record_login_attempt,
 )
 from core.school import get_school_id_by_reg_code, is_registration_complete
+from core.ratelimit import rate_limit
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -96,6 +97,7 @@ def api_setup_admin():
 
 @auth_bp.route("/api/change_password", methods=["POST"])
 @require_auth
+@rate_limit("change_password", max_attempts=5, window_minutes=15, by="user")
 def api_change_password():
     d = request.json
     username  = g.username

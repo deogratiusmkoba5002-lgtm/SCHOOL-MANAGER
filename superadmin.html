@@ -339,6 +339,28 @@ textarea{resize:vertical;min-height:90px}
 
 <div class="section">
   <div class="section-title">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z"/></svg>
+    ⭐ Star Withdrawal Queue
+  </div>
+  <div class="card">
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group">
+        <label>Filter</label>
+        <select id="sw-status-filter" onchange="loadStarWithdrawals()">
+          <option value="REQUESTED">Requested</option>
+          <option value="PROCESSING">Processing</option>
+          <option value="WITHDRAWN">Withdrawn</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+    </div>
+    <div id="sw-list"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1z"/></svg>
     Payment Settings
   </div>
@@ -471,7 +493,47 @@ document.addEventListener("keydown", e=>{
 
 // ── LOAD ALL ───────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools()]);
+  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools(), loadStarWithdrawals()]);
+}
+
+// ── STAR WITHDRAWAL QUEUE ────────────────────────────────────
+async function loadStarWithdrawals(){
+  const status = document.getElementById("sw-status-filter").value;
+  const data = await saApi("/star_withdrawals?status="+status);
+  const list = document.getElementById("sw-list");
+  if(!data.ok || !data.withdrawals.length){ list.innerHTML = `<div class="empty">No withdrawal requests.</div>`; return; }
+  list.innerHTML = data.withdrawals.map(w=>`
+  <div class="notice-item">
+    <div class="notice-meta">
+      <span class="notice-title">${esc(w.school_name)} — ⭐${w.stars} (${w.amount.toLocaleString()} TZS)</span>
+      <span class="notice-date">${w.requested_at ? w.requested_at.slice(0,16) : ""}</span>
+    </div>
+    <div class="notice-body">
+      Payout to: <strong>${esc(w.account_identifier||"—")}</strong>
+      ${w.decided_by ? "<br>Decided by "+esc(w.decided_by)+(w.decided_at?" on "+esc(w.decided_at.slice(0,16)):"") : ""}
+      ${w.note ? "<br>Note: "+esc(w.note) : ""}
+    </div>
+    <span class="notice-target" style="${w.status==='REJECTED'?'background:#FFEBEE;color:#C62828':w.status==='WITHDRAWN'?'background:#E8F5E9;color:#2E7D32':''}">Status: ${esc(w.status)}</span>
+    ${(w.status==="REQUESTED"||w.status==="PROCESSING") ? `
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveStarWithdrawal(${w.id})">Mark Paid Out</button>
+        <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectStarWithdrawal(${w.id})">Reject</button>
+      </div>` : ""}
+  </div>`).join("");
+}
+async function approveStarWithdrawal(id){
+  if(!confirm("Confirm you have PAID OUT this withdrawal via Snippe/manual transfer? This cannot be undone.")) return;
+  const data = await saApi("/star_withdrawals/"+id+"/approve","POST",{});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("Marked as paid out","success"); loadStarWithdrawals();
+}
+async function rejectStarWithdrawal(id){
+  const note = prompt("Reason for rejecting this withdrawal (shown to the school):");
+  if(note===null) return;
+  if(!note.trim()){ toast("A reason is required","error"); return; }
+  const data = await saApi("/star_withdrawals/"+id+"/reject","POST",{note});
+  if(!data.ok){ toast(data.error||"Failed","error"); return; }
+  toast("Rejected — stars released back to balance","info"); loadStarWithdrawals();
 }
 
 async function loadPendingSchools(){

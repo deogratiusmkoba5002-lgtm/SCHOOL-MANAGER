@@ -48,6 +48,16 @@ def has_active_access(school_id, student_id):
     if not student_id: return False
     return get_access(school_id, student_id)["active"]
 
+def get_latest_completed_payment_reference(school_id, student_id):
+    """Used by the Star System to attach a real payment reference to a
+    qualifying-parent record — never trust the caller to supply one."""
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT reference FROM student_payments
+                   WHERE school_id=%s AND student_id=%s AND status='completed' AND applied=1
+                   ORDER BY id DESC LIMIT 1""", (school_id, student_id))
+    row = cur.fetchone(); cur.close(); con.close()
+    return row[0] if row else None
+
 
 # ── SNIPPE CLIENT ─────────────────────────────────────────────
 def normalize_phone(raw):

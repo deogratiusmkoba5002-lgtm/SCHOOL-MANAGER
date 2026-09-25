@@ -324,6 +324,7 @@ async function bootApp(){
   showPage(defaultPage);
   loadDashboard();
   checkSubscriptionExpiryBadge();
+  if(typeof refreshStarNotifBadge==="function") refreshStarNotifBadge();
   if(currentUser.must_change_password) openModal("modal-change-password");
 }
 

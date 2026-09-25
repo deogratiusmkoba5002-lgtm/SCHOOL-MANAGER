@@ -9,11 +9,13 @@ from core.security import hash_password
 from core.school import valid_necta_code, get_school_id_by_reg_code
 from config import ALLOWED_LOGO_EXT, _mime_for_ext
 from services.stars import resolve_school_by_referral_token, record_referral_relationship
+from core.ratelimit import rate_limit
 
 registration_bp = Blueprint("registration", __name__)
 
 
 @registration_bp.route("/api/register/school", methods=["POST"])
+@rate_limit("school_registration", max_attempts=5, window_minutes=60, by="ip")
 def api_register_school():
     data         = request.form
     school_name  = data.get("school_name","").strip()
