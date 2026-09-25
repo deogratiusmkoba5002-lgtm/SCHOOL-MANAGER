@@ -8,6 +8,7 @@ from core.db import get_db
 from core.security import hash_password
 from core.school import valid_necta_code, get_school_id_by_reg_code
 from config import ALLOWED_LOGO_EXT, _mime_for_ext
+from services.stars import resolve_school_by_referral_token, record_referral_relationship
 
 registration_bp = Blueprint("registration", __name__)
 
@@ -95,4 +96,4 @@ def api_register_school():
         con.rollback(); cur.close(); con.close()
         return jsonify({"ok":False,"error":str(e)}), 500
     cur.close(); con.close()
-    return jsonify({"ok":True,"school_id":school_id})
+    return jsonify({"ok":True,"school_id":school_id})    
