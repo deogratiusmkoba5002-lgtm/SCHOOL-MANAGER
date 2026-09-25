@@ -11,6 +11,7 @@ from services.scores import (
     get_class_report_data,
 )
 from services.access import has_active_access
+from services.stars import ensure_cycle_started
 
 parent_bp = Blueprint("parent", __name__)
 
@@ -43,7 +44,10 @@ def api_toggle_results():
     cur.execute("""INSERT INTO results_published(school_id,term_id,published) VALUES(%s,%s,%s)
                    ON CONFLICT(school_id,term_id) DO UPDATE SET published=EXCLUDED.published""",
                 (sid,int(term_id),1 if publish else 0))
-    con.commit(); cur.close(); con.close(); return jsonify({"ok":True,"published":publish})
+    con.commit(); cur.close(); con.close()
+    if publish:
+        ensure_cycle_started(sid)
+    return jsonify({"ok":True,"published":publish})
 
 @parent_bp.route("/api/results/assessments", methods=["GET"])
 @require_auth
