@@ -133,3 +133,150 @@ def get_referral_stats(school_id):
     successful = cur.fetchone()[0]
     cur.close(); con.close()
     return {"schools_referred": total_referred, "successful_referrals": successful}
+
+# ── PREREQUISITES ────────────────────────────────────────────────
+def _school_meets_cycle_prerequisites(school_id):
+    """Registration complete + has students + has assigned teachers +
+    has published results at least once. All checked server-side —
+    this is never something the client can assert."""
+    from core.school import is_registration_complete
+    if not is_registration_complete(school_id):
+        return False
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s", (school_id,))
+    if cur.fetchone()[0] < 1:
+        cur.close(); con.close(); return False
+    cur.execute("SELECT COUNT(*) FROM subject_assignments WHERE school_id=%s", (school_id,))
+    if cur.fetchone()[0] < 1:
+        cur.close(); con.close(); return False
+    cur.execute("""SELECT COUNT(*) FROM results_published WHERE school_id=%s AND published=1
+                   UNION ALL
+                   SELECT COUNT(*) FROM published_assessments WHERE school_id=%s AND published=1""",
+                (school_id, school_id))
+    rows = cur.fetchall(); cur.close(); con.close()
+    return any(r[0] > 0 for r in rows)
+
+
+# ── CYCLE LIFECYCLE ──────────────────────────────────────────────
+def ensure_cycle_started(school_id):
+    """Idempotent. Starts a new IN_PROGRESS cycle for this school if
+    prerequisites are met and no cycle is currently in progress. Safe to
+    call from any request path (e.g. after publishing results) — cheap
+    no-op otherwise."""
+    if get_current_cycle(school_id) is not None:
+        return  # already have one in progress
+    if not _school_meets_cycle_prerequisites(school_id):
+        return
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT COALESCE(MAX(cycle_number),0)+1 FROM star_cycles WHERE school_id=%s", (school_id,))
+    next_num = cur.fetchone()[0]
+    try:
+        cur.execute("""INSERT INTO star_cycles(school_id, cycle_number, status)
+                       VALUES(%s,%s,'IN_PROGRESS')""", (school_id, next_num))
+        con.commit()
+    except Exception:
+        con.rollback()  # race: another request just created it — fine
+    cur.close(); con.close()
+    log_star_event(school_id, "CYCLE_STARTED", new_state=f"cycle_number={next_num}")
+
+
+def record_qualifying_parent(school_id, student_id, payment_reference):
+    """Call this ONLY after independently verifying, server-side:
+      1) the payment for this student is genuinely completed (via
+         services/access.finalize_payment or equivalent trusted check)
+      2) the parent has actually accessed/viewed the student's results
+    This function itself does no payment/access verification — it is the
+    ledger-side recorder, kept separate so it can be called from exactly
+    one trusted call site later (Phase 5) without duplicating logic.
+
+    Idempotent per (cycle, student) via the UNIQUE(cycle_id, student_id)
+    constraint — the same student can never double-count in one cycle.
+    """
+    ensure_cycle_started(school_id)
+    cycle = get_current_cycle(school_id)
+    if not cycle:
+        return {"ok": False, "reason": "no_active_cycle"}
+
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("""INSERT INTO star_qualifying_parents(cycle_id, school_id, student_id, payment_reference)
+                       VALUES(%s,%s,%s,%s)""", (cycle["id"], school_id, student_id, payment_reference))
+        cur.execute("""UPDATE star_cycles SET qualifying_parent_count = qualifying_parent_count + 1,
+                       updated_at = NOW() WHERE id=%s""", (cycle["id"],))
+        con.commit()
+    except Exception:
+        con.rollback()
+        cur.close(); con.close()
+        return {"ok": False, "reason": "already_qualified_or_error"}
+    cur.close(); con.close()
+
+    log_star_event(school_id, "QUALIFYING_PARENT_RECORDED", reference_id=cycle["id"])
+    _maybe_complete_cycle(school_id, cycle["id"])
+    return {"ok": True, "cycle_id": cycle["id"]}
+
+
+def _maybe_complete_cycle(school_id, cycle_id):
+    """Checks whether a cycle has hit the required parent count and, if
+    so, completes it exactly once and awards the reward(s). Uses a
+    row lock + status guard so concurrent calls can never double-award."""
+    from config import STAR_CYCLE_MIN_PARENTS, STAR_VALUE_TZS
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("""SELECT qualifying_parent_count, status FROM star_cycles
+                       WHERE id=%s FOR UPDATE""", (cycle_id,))
+        row = cur.fetchone()
+        if not row:
+            con.rollback(); cur.close(); con.close(); return
+        count, status = row
+        if status != "IN_PROGRESS" or count < STAR_CYCLE_MIN_PARENTS:
+            con.commit(); cur.close(); con.close(); return  # not ready, or already handled
+
+        cur.execute("""UPDATE star_cycles SET status='COMPLETED', completed_at=NOW(), updated_at=NOW()
+                       WHERE id=%s""", (cycle_id,))
+        cur.execute("""INSERT INTO star_transactions(school_id, type, stars, amount, reference_type,
+                                                       reference_id, description, status)
+                       VALUES(%s,'CYCLE_REWARD',1,%s,'star_cycle',%s,%s,'AVAILABLE')""",
+                    (school_id, STAR_VALUE_TZS, cycle_id, f"Cycle {cycle_id} completed"))
+        con.commit()
+    except Exception:
+        con.rollback(); cur.close(); con.close(); raise
+    cur.close(); con.close()
+
+    log_star_event(school_id, "CYCLE_COMPLETED", reference_id=cycle_id, new_state="COMPLETED")
+    log_star_event(school_id, "STAR_EARNED", reference_id=cycle_id, new_state="CYCLE_REWARD")
+    _maybe_award_referral_reward(school_id)
+
+
+def _maybe_award_referral_reward(referred_school_id):
+    """When a referred school completes ITS FIRST cycle, the referring
+    school earns exactly one referral star — never more, and never for
+    that referred school's second-level referrals (enforced simply by
+    only ever looking at direct referring_school_id, one hop)."""
+    from config import STAR_VALUE_TZS
+    referring_school_id = get_referring_school(referred_school_id)
+    if not referring_school_id:
+        return
+
+    con = get_db(); cur = con.cursor()
+    # Only the referred school's FIRST completed cycle triggers this.
+    cur.execute("""SELECT COUNT(*) FROM star_cycles WHERE school_id=%s AND status='COMPLETED'""",
+                (referred_school_id,))
+    completed_count = cur.fetchone()[0]
+    if completed_count != 1:
+        cur.close(); con.close(); return  # not the first completion — already rewarded, or none yet
+
+    # Guard against double-award if this ever runs twice for the same referred school.
+    cur.execute("""SELECT 1 FROM star_transactions
+                   WHERE school_id=%s AND type='REFERRAL_REWARD' AND reference_type='referred_school'
+                   AND reference_id=%s""", (referring_school_id, referred_school_id))
+    if cur.fetchone():
+        cur.close(); con.close(); return
+
+    cur.execute("""INSERT INTO star_transactions(school_id, type, stars, amount, reference_type,
+                                                   reference_id, description, status)
+                   VALUES(%s,'REFERRAL_REWARD',1,%s,'referred_school',%s,%s,'AVAILABLE')""",
+                (referring_school_id, STAR_VALUE_TZS, referred_school_id,
+                 f"Referral bonus for school #{referred_school_id}'s first completed cycle"))
+    con.commit(); cur.close(); con.close()
+
+    log_star_event(referring_school_id, "REFERRAL_REWARD_AWARDED", reference_id=referred_school_id)
