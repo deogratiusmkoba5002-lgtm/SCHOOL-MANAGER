@@ -338,6 +338,7 @@ const NAV_ADMIN = [
   {id:"admin-analytics", icon:starSVG(), label:"View Admin Analytics"},
   {id:"past",      icon:historySVG(), label:"Past Terms"},
   {id:"parents",   icon:peopleSVG(),  label:"Parents"},
+  {id:"star-system", icon:starSVG(), label:"⭐ Star System"},
   {id:"config",    icon:gearSVG(),    label:"Config"},
 ];
 const NAV_PARENT = [
@@ -430,6 +431,7 @@ function _showPage(id){
   if(id==="ct-analytics") loadCTAnalytics();
   if(id==="teacher-analytics") loadTeacherAnalytics();
   if(id==="parent-subscription") loadParentSubscription();
+  if(id==="star-system") loadStarSystemPage();
 }
 
 // ── LOGOUT ───────────────────────────────────────────────────
