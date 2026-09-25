@@ -75,3 +75,10 @@ PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("RENDER_E
 
 # Schools/teachers/admins use everything free. Set to "1" to bring the old per-school paywall back.
 SCHOOL_SUBSCRIPTION_ENFORCED = os.environ.get("SCHOOL_SUBSCRIPTION_ENFORCED", "0") == "1"
+
+# ── STAR SYSTEM (server-side authority only — never trust client values) ──
+STAR_VALUE_TZS              = _price("STAR_VALUE_TZS", 10000)
+STAR_CYCLE_MIN_PARENTS      = 10
+STAR_WITHDRAWAL_MIN_STARS   = 1
+STAR_WITHDRAWAL_MAX_STARS   = 1000
+STAR_WITHDRAWAL_WINDOW_HOURS = 24

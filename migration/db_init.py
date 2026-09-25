@@ -265,6 +265,98 @@ def init_db():
         expires_at      TIMESTAMP
     );
     """)
+
+     # ── STAR SYSTEM ──────────────────────────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS star_referral_tokens (
+        id         SERIAL PRIMARY KEY,
+        school_id  INTEGER NOT NULL UNIQUE,
+        token      TEXT NOT NULL UNIQUE,
+        revoked    INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS star_referral_relationships (
+        id                   SERIAL PRIMARY KEY,
+        referring_school_id  INTEGER NOT NULL,
+        referred_school_id   INTEGER NOT NULL UNIQUE,
+        created_at           TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS star_cycles (
+        id                       SERIAL PRIMARY KEY,
+        school_id                INTEGER NOT NULL,
+        cycle_number             INTEGER NOT NULL,
+        status                   TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+        qualifying_parent_count  INTEGER NOT NULL DEFAULT 0,
+        started_at               TIMESTAMP DEFAULT NOW(),
+        completed_at             TIMESTAMP,
+        created_at               TIMESTAMP DEFAULT NOW(),
+        updated_at               TIMESTAMP DEFAULT NOW(),
+        UNIQUE(school_id, cycle_number),
+        CHECK (status IN ('IN_PROGRESS','PENDING_VERIFICATION','COMPLETED','REJECTED'))
+    );
+    CREATE TABLE IF NOT EXISTS star_qualifying_parents (
+        id                SERIAL PRIMARY KEY,
+        cycle_id          INTEGER NOT NULL REFERENCES star_cycles(id),
+        school_id         INTEGER NOT NULL,
+        student_id        INTEGER NOT NULL,
+        payment_reference TEXT NOT NULL,
+        qualified_at      TIMESTAMP DEFAULT NOW(),
+        UNIQUE(cycle_id, student_id)
+    );
+    CREATE TABLE IF NOT EXISTS star_transactions (
+        id             SERIAL PRIMARY KEY,
+        school_id      INTEGER NOT NULL,
+        type           TEXT NOT NULL,
+        stars          INTEGER NOT NULL,
+        amount         INTEGER NOT NULL,
+        reference_type TEXT,
+        reference_id   INTEGER,
+        description    TEXT DEFAULT '',
+        status         TEXT NOT NULL DEFAULT 'PENDING',
+        created_at     TIMESTAMP DEFAULT NOW(),
+        CHECK (type IN ('CYCLE_REWARD','REFERRAL_REWARD','WITHDRAWAL','REVERSAL','ADJUSTMENT')),
+        CHECK (status IN ('PENDING','AVAILABLE','WITHDRAWAL_REQUESTED','PROCESSING','WITHDRAWN','FAILED','ON_HOLD','REVERSED'))
+    );
+    CREATE TABLE IF NOT EXISTS star_payout_accounts (
+        id                 SERIAL PRIMARY KEY,
+        school_id          INTEGER NOT NULL,
+        provider           TEXT NOT NULL DEFAULT 'snippe',
+        account_identifier TEXT NOT NULL,
+        verified           INTEGER NOT NULL DEFAULT 0,
+        created_at         TIMESTAMP DEFAULT NOW(),
+        updated_at         TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS star_withdrawals (
+        id                SERIAL PRIMARY KEY,
+        school_id         INTEGER NOT NULL,
+        stars             INTEGER NOT NULL,
+        amount            INTEGER NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'REQUESTED',
+        payout_account_id INTEGER REFERENCES star_payout_accounts(id),
+        idempotency_key   TEXT NOT NULL UNIQUE,
+        requested_at      TIMESTAMP DEFAULT NOW(),
+        decided_at        TIMESTAMP,
+        decided_by        TEXT,
+        note              TEXT DEFAULT '',
+        CHECK (status IN ('REQUESTED','PROCESSING','WITHDRAWN','FAILED','REJECTED'))
+    );
+    CREATE TABLE IF NOT EXISTS star_audit_logs (
+        id              SERIAL PRIMARY KEY,
+        school_id       INTEGER,
+        actor_username  TEXT,
+        event           TEXT NOT NULL,
+        reference_id    INTEGER,
+        old_state       TEXT,
+        new_state       TEXT,
+        ip_address      TEXT,
+        user_agent      TEXT,
+        created_at      TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_star_cycles_school ON star_cycles(school_id);
+    CREATE INDEX IF NOT EXISTS idx_star_transactions_school ON star_transactions(school_id);
+    CREATE INDEX IF NOT EXISTS idx_star_withdrawals_school ON star_withdrawals(school_id);
+    CREATE INDEX IF NOT EXISTS idx_star_qualifying_parents_school ON star_qualifying_parents(school_id);
+    """)
     
 
     # Migrations - add missing columns to existing tables
