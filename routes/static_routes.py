@@ -4,10 +4,11 @@ HTML pages, plus school logo delivery (both the legacy disk path and the
 DB-stored base64 path).
 """
 import base64, io, os
-from flask import Blueprint, send_from_directory, send_file
+from flask import Blueprint, send_from_directory, send_file, redirect
 
 from config import BASE_DIR, UPLOAD_FOLDER
 from core.school import get_config_val
+
 
 static_bp = Blueprint("static_pages", __name__)
 
@@ -22,6 +23,10 @@ def setup_page(): return send_from_directory(BASE_DIR, "setup.html")
 
 @static_bp.route("/register")
 def register_page(): return send_from_directory(BASE_DIR, "register.html")
+
+@static_bp.route("/r/<token>")
+def referral_redirect(token):
+    return redirect(f"/register?ref={token}")
 
 @static_bp.route("/superadmin")
 def superadmin_page(): return send_from_directory(BASE_DIR, "superadmin.html")
