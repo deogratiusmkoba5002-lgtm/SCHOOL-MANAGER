@@ -51,7 +51,7 @@ def api_superadmin_schools():
         cur.close(); con.close()
         return jsonify({"ok":True,"schools":result})
     except Exception as e:
-        current_app.loger.error("Superadmin schools listing failed: %s", e)
+        current_app.logger.error("Superadmin schools listing failed: %s", e)
         return jsonify({"ok":False,"error":"Could not load schools list."}),500
 
 @superadmin_bp.route("/api/superadmin/schools/pending", methods=["GET"])

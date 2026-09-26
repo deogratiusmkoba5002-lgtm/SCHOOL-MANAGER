@@ -213,10 +213,8 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
   try{
     marksSubject = subject; marksClass = class_id; marksStream = stream_id; marksType = type;
     autoSaveTimers = {};
-    const sheetMode = type==="exam" ? "exam" : "ca";
-    const caParam   = type!=="exam" ? `&ca_name=${type}` : "";
     const streamParam = stream_id ? `&stream_id=${stream_id}` : "";
-    const sheet = await api(`/scoresheet?mode=${sheetMode}&class_id=${class_id}${streamParam}${caParam}`);
+    const sheet = await api(`/scoresheet?mode=${sheetMode}&class_id=${class_id}${streamParam}${caParam}${testParam}`);
     const studs = (sheet && sheet.results) ? sheet.results : [];
     if(!studs.length){toast("No students found in this class/stream","error");return;}
     const scoreMap={};

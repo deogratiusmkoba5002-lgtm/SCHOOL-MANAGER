@@ -27,6 +27,7 @@ def api_register_school():
     motto        = data.get("motto","").strip()
     reg_code     = data.get("reg_code","").strip()
     agree_terms  = data.get("agree_terms","").strip()
+    ref_token    = data.get("ref_token","").strip()
     if not school_name: return jsonify({"ok":False,"error":"School name required"}), 400
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
     if agree_terms != "1":
@@ -98,4 +99,8 @@ def api_register_school():
         con.rollback(); cur.close(); con.close()
         return jsonify({"ok":False,"error":str(e)}), 500
     cur.close(); con.close()
-    return jsonify({"ok":True,"school_id":school_id})    
+    if ref_token:
+        referring_school_id = resolve_school_by_referral_token(ref_token)
+        if referring_school_id:
+            record_referral_relationship(referring_school_id, school_id)
+    return jsonify({"ok":True,"school_id":school_id})  

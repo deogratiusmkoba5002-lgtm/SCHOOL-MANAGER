@@ -50,14 +50,18 @@ def has_active_access(school_id, student_id):
 
 def get_latest_completed_payment_reference(school_id, student_id):
     """Used by the Star System to attach a real payment reference to a
-    qualifying-parent record — never trust the caller to supply one."""
+    qualifying-parent record — never trust the caller to supply one.
+    Only PARENT-initiated payments count. An admin paying on a parent's
+    behalf is a legitimate accessibility feature, but it must never let an
+    admin quietly fund 10 accounts out of pocket to manufacture a Star —
+    that's not a qualifying parent, that's a receipt."""
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT reference FROM student_payments
                    WHERE school_id=%s AND student_id=%s AND status='completed' AND applied=1
+                   AND initiated_role='parent'
                    ORDER BY id DESC LIMIT 1""", (school_id, student_id))
     row = cur.fetchone(); cur.close(); con.close()
     return row[0] if row else None
-
 
 # ── SNIPPE CLIENT ─────────────────────────────────────────────
 def normalize_phone(raw):
