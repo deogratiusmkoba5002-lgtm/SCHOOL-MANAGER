@@ -97,6 +97,7 @@ def api_config():
     sid = g.school_id; term = get_active_term(sid)
     subjects = get_subjects(sid); subj_map = get_subject_map(sid)
     info = {k: get_config_val(sid,k,"") for k in ["school_name","phone","email","admin_phone","motto","logo_path"]}
+    onboarding_complete = get_config_val(sid, "onboarding_complete", "1") == "1"
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT verification_status, rejection_reason, approved_notice_pending FROM schools WHERE id=%s",(sid,))
     vrow = cur.fetchone()
@@ -111,8 +112,13 @@ def api_config():
                     "ca_count":term["ca_count"] if term else 2,"school_name":info.get("school_name","School Name"),
                     "school_info":info,"grade_rules":get_grade_rules(sid),
                     "verification_status":verification_status,"rejection_reason":rejection_reason,
-                    "just_approved":approved_notice})
-
+                    "just_approved":approved_notice,"onboarding_complete":onboarding_complete})
+@config_bp.route("/api/config/onboarding_complete", methods=["POST"])
+@require_auth
+@require_role("admin")
+def api_set_onboarding_complete():
+    set_config_val(g.school_id, "onboarding_complete", "1")
+    return jsonify({"ok": True})
 @config_bp.route("/api/config/school_name", methods=["POST"])
 @require_auth
 @require_role("admin")

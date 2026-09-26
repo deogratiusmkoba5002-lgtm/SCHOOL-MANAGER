@@ -260,6 +260,7 @@ document.getElementById("confirm-add-student").addEventListener("click", async()
     closeModal("modal-add-student");
     openCredentialsModal(name, r.parent_username, r.temp_password);
     loadStudents();
+    if(window.onboardingActive) onboardingStudentAdded();
   } else toast(r.error||"Failed","error");
 });
 function openCredentialsModal(studentName, username, tempPassword){
@@ -532,6 +533,7 @@ async function confirmImport(){
         : "");
     toast(data.inserted+" students imported!","success");
     loadStudents();
+    if(data.inserted>0 && window.onboardingActive) onboardingStudentAdded();    
     // Lock out further clicks on this file — prevents the classic "clicked twice, got
     // duplicates" problem. User must explicitly re-open the modal to import again.
     document.getElementById("import-back-btn").style.display="none";

@@ -64,7 +64,7 @@ def api_register_school():
                     (admin_user, hash_password(admin_pass), school_id))
         logo_path = f"api/logo/{school_id}" if logo_b64 else ""
         cfg = {"school_name":school_name,"phone":phone,"email":email,"admin_phone":admin_phone,
-               "motto":motto,"logo_path":logo_path,"registration_complete":"1"}
+               "motto":motto,"logo_path":logo_path,"registration_complete":"1","onboarding_complete":"0"}
         if logo_b64:
             cfg["logo_data"] = logo_b64
             cfg["logo_mime"] = logo_mime

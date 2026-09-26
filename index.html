@@ -561,7 +561,7 @@
               <h2 class="page-title">Students</h2>
               <p class="page-sub">Manage all enrolled students</p>
             </div>
-            <button class="btn btn-outline" onclick="openImportModal()"
+            <button class="btn btn-outline" id="btn-import-excel" onclick="openImportModal()"
               style="border-color:var(--green);color:var(--green)">
               <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
                 <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
@@ -1672,6 +1672,7 @@
   <script src="/js/page-config.js"></script>
   <script src="/js/page-analytics.js"></script>
   <script src="/js/page-stars.js"></script>
+  <script src="/js/onboarding.js"></script>
 
   <!-- ══ IMPORT STUDENTS MODAL ══ -->
   <div class="modal-backdrop" id="modal-import-students" style="display:none"
