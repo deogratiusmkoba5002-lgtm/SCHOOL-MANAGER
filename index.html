@@ -1518,25 +1518,21 @@
 
 
   <div class="modal-backdrop" id="modal-assign-teacher" style="display:none">
-    <div class="modal">
+    <div class="modal" style="width:min(560px,95vw)">
       <div class="modal-title">Assign Teacher to Subject</div>
-      <div class="form-grid single">
-        <div class="form-group">
-          <label class="form-label">Teacher Username</label>
-          <select class="form-select" id="assign-teacher-user"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Subject</label>
-          <select class="form-select" id="assign-teacher-subject"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Class / Stream ("Overall" = all streams)</label>
-          <select class="form-select" id="assign-teacher-class"></select>
-        </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label class="form-label">Teacher</label>
+        <select class="form-select" id="assign-teacher-user"></select>
       </div>
-      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
-        <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Cancel</button>
-        <button class="btn btn-blue" id="confirm-assign-teacher">Assign</button>
+      <div id="assign-rows-list"></div>
+      <button class="btn btn-outline btn-sm" type="button" onclick="addAssignRow()" style="margin-top:4px">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Another Subject / Class
+      </button>
+      <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="closeModal('modal-assign-teacher')">Close</button>
+        <button class="btn btn-outline" id="btn-assign-another-teacher">Assign Another Teacher</button>
+        <button class="btn btn-blue" id="btn-assign-done">Done</button>
       </div>
     </div>
   </div>

@@ -35,8 +35,6 @@ async function loadTeachers(){
   }
   const userSel = document.getElementById("assign-teacher-user");
   userSel.innerHTML=teachers.map(t=>`<option value="${t.username}">${t.username}</option>`).join("");
-  populateSelect(document.getElementById("assign-teacher-subject"), config.allowed_subjects, s=>s, s=>cap(s));
-  populateClassSelect(document.getElementById("assign-teacher-class"), true, true);
 }
 async function deleteTeacher(username){
   if(!confirm(`Delete teacher "${username}"? All their assignments will be removed.`))return;
@@ -57,14 +55,76 @@ function toggleCTClass(){
   const isCT=document.getElementById("ct-is-ct").checked;
   document.getElementById("ct-class-group").style.display=isCT?"block":"none";
 }
-document.getElementById("btn-assign-teacher").addEventListener("click",()=>openModal("modal-assign-teacher"));
-document.getElementById("confirm-assign-teacher").addEventListener("click", async()=>{
-  const u  = document.getElementById("assign-teacher-user").value;
-  const s  = document.getElementById("assign-teacher-subject").value;
-  const {class_id, stream_id} = parseClassStream(document.getElementById("assign-teacher-class").value);
-  const r  = await api("/assign_teacher","POST",{username:u,subject:s,class_id,stream_id});
-  if(r.ok){toast("Teacher assigned!","success");closeModal("modal-assign-teacher");loadTeachers();}
-  else toast(r.error||"Failed","error");
+document.getElementById("btn-assign-teacher").addEventListener("click",()=>openAssignTeacherModal());
+
+function openAssignTeacherModal(){
+  document.getElementById("assign-rows-list").innerHTML = "";
+  addAssignRow();
+  openModal("modal-assign-teacher");
+}
+
+function addAssignRow(){
+  const list = document.getElementById("assign-rows-list");
+  if(list.children.length > 0){
+    const and = document.createElement("div");
+    and.className = "assign-row-and";
+    and.style.cssText = "font-size:.8rem;color:var(--muted);margin:2px 0 8px 4px;font-weight:700";
+    and.textContent = "and";
+    list.appendChild(and);
+  }
+  const row = document.createElement("div");
+  row.className = "assign-row";
+  row.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px";
+  row.innerHTML = `
+    <span style="font-size:.85rem;color:var(--muted);flex-shrink:0">teaches</span>
+    <select class="form-select assign-row-subject" style="flex:1;min-width:130px"></select>
+    <span style="font-size:.85rem;color:var(--muted);flex-shrink:0">in</span>
+    <select class="form-select assign-row-class" style="flex:1;min-width:130px"></select>
+    <button type="button" onclick="removeAssignRow(this)"
+      style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:4px" title="Remove">✕</button>`;
+  list.appendChild(row);
+  populateSelect(row.querySelector(".assign-row-subject"), config.allowed_subjects, s=>s, s=>cap(s));
+  populateClassSelect(row.querySelector(".assign-row-class"), true, true);
+}
+
+function removeAssignRow(btn){
+  const list = document.getElementById("assign-rows-list");
+  if(list.children.length <= 1) return; // keep at least one row
+  const row = btn.closest(".assign-row");
+  const prev = row.previousElementSibling;
+  if(prev && prev.classList.contains("assign-row-and")) prev.remove();
+  else {
+    const next = row.nextElementSibling;
+    if(next && next.classList.contains("assign-row-and")) next.remove();
+  }
+  row.remove();
+}
+
+async function submitAssignRows(){
+  const username = document.getElementById("assign-teacher-user").value;
+  if(!username){ toast("Select a teacher","error"); return false; }
+  const rows = [...document.querySelectorAll("#assign-rows-list .assign-row")];
+  if(!rows.length){ toast("Add at least one subject/class","error"); return false; }
+  let okCount=0, errCount=0;
+  for(const row of rows){
+    const subject = row.querySelector(".assign-row-subject").value;
+    const {class_id, stream_id} = parseClassStream(row.querySelector(".assign-row-class").value);
+    const r = await api("/assign_teacher","POST",{username,subject,class_id,stream_id});
+    if(r.ok) okCount++; else { errCount++; toast(r.error||"Failed for one assignment","error"); }
+  }
+  if(okCount) toast(`${okCount} assignment(s) saved for ${username}!`,"success");
+  loadTeachers();
+  return errCount===0;
+}
+
+document.getElementById("btn-assign-done").addEventListener("click", async()=>{
+  await submitAssignRows();
+  closeModal("modal-assign-teacher");
+});
+document.getElementById("btn-assign-another-teacher").addEventListener("click", async()=>{
+  await submitAssignRows();
+  document.getElementById("assign-rows-list").innerHTML="";
+  addAssignRow();
 });
 document.getElementById("btn-create-teacher").addEventListener("click", async()=>{
   const username=document.getElementById("new-teacher-user").value.trim();
