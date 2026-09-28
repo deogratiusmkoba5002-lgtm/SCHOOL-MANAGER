@@ -172,3 +172,111 @@ def _write_credentials_xlsx(rows, path):
         Font(italic=True, color="888888")
 
     wb.save(path)
+
+# ── FLEXIBLE COLUMN MAPPING ───────────────────────────────────
+import json as _json
+
+def _hclean(s):
+    """Loose header key: lowercase, drop '(...)' notes and non-alphanumerics."""
+    return re.sub(r"\(.*?\)|[^a-z0-9]", "", str(s).lower())
+
+_FULL_NAME_KEYS = {"name","fullname","studentname","studentfullname","student","students",
+                   "jina","jinakamili","jinalamwanafunzi","mwanafunzi"}
+_FIRST_KEYS  = {"firstname","first","givenname","forename","jinalakwanza"}
+_MIDDLE_KEYS = {"middlename","middle","secondname","second","othername","othernames","jinalapili"}
+_LAST_KEYS   = {"surname","lastname","last","familyname","jinalaukoo","jinalamwisho"}
+_FIELD_KEYS = {
+    "class":  {"class","classname","form","formname","grade","level","darasa"},
+    "stream": {"stream","streamname","division","section","mkondo","classstream"},
+    "phone":  {"phone","parentphone","phonenumber","parentphonenumber","guardianphone",
+               "guardianphonenumber","contact","parentcontact","simu","simuyamzazi",
+               "tel","telephone","mobile","nambari","mzazi"},
+}
+
+
+def _parse_with_headers(file_obj, filename):
+    """Like _parse_import_file, but returns (headers, rows) where rows are dicts
+    keyed by the ORIGINAL header text. Blank/duplicate headers are made unique."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext in ("xlsx", "xls"):
+        if not OPENPYXL_AVAILABLE:
+            raise ValueError("openpyxl not installed. Add it to requirements.txt")
+        wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
+        raw = [list(r) for r in wb.active.iter_rows(values_only=True)]
+        wb.close()
+    elif ext == "csv":
+        raw = list(csv.reader(io.StringIO(file_obj.read().decode("utf-8-sig"))))
+    else:
+        raise ValueError("Unsupported file type. Use .xlsx or .csv")
+
+    def cell(v):
+        if v is None: return ""
+        if isinstance(v, float) and v.is_integer(): v = int(v)
+        return str(v).strip()
+
+    raw = [[cell(v) for v in r] for r in raw]
+    raw = [r for r in raw if any(r)]
+    if not raw: return [], []
+    headers, seen = [], set()
+    for i, h in enumerate(raw[0]):
+        h = h or f"Column {i+1}"
+        base, n = h, 2
+        while h in seen:
+            h = f"{base} ({n})"; n += 1
+        seen.add(h); headers.append(h)
+    rows = []
+    for r in raw[1:]:
+        r = r + [""] * (len(headers) - len(r))
+        rows.append(dict(zip(headers, r)))
+    return headers, rows
+
+
+def _guess_column_map(headers):
+    """Best-guess mapping from common header spellings. Admin can override in the wizard."""
+    cleaned = [(h, _hclean(h)) for h in headers]
+    def find(keys): return next((h for h, c in cleaned if c in keys), None)
+    full = find(_FULL_NAME_KEYS)
+    if full:
+        name = [full]
+    else:  # First / Second / Surname style — keep the sheet's own column order
+        parts = _FIRST_KEYS | _MIDDLE_KEYS | _LAST_KEYS
+        name = [h for h, c in cleaned if c in parts]
+    return {"name": name, "class": find(_FIELD_KEYS["class"]),
+            "stream": find(_FIELD_KEYS["stream"]), "phone": find(_FIELD_KEYS["phone"])}
+
+
+def parse_column_map(raw):
+    """Form field (JSON string) -> dict, or None if not supplied."""
+    if not raw: return None
+    try: cm = _json.loads(raw)
+    except Exception: raise ValueError("Invalid column mapping")
+    if not isinstance(cm, dict): raise ValueError("Invalid column mapping")
+    return cm
+
+
+def _validated_column_map(cm, headers):
+    hs = set(headers)
+    name = [h for h in (cm.get("name") or []) if isinstance(h, str) and h in hs]
+    if not name: raise ValueError("Select at least one column for Student Name")
+    def one(k):
+        v = cm.get(k)
+        return v if isinstance(v, str) and v in hs else None
+    if not one("class"): raise ValueError("Select the column that contains the Class")
+    return {"name": name, "class": one("class"), "stream": one("stream"), "phone": one("phone")}
+
+
+def _extract_mapped(row, cm):
+    # Join name columns in the chosen order, collapse extra spaces -> same `name` format as before
+    name = " ".join(" ".join(row.get(h, "") for h in cm["name"]).split())
+    g = lambda k: (row.get(cm[k], "") or "").strip() if cm[k] else ""
+    return name, g("class"), g("stream"), g("phone")
+
+
+def _extract_all(file_obj, filename, column_map=None):
+    """Returns a list of (name, class_name, stream_name, parent_phone) tuples.
+    With no column_map the legacy header/positional detection is used."""
+    if not column_map:
+        return [_extract_fields(r) for r in _parse_import_file(file_obj, filename)]
+    headers, rows = _parse_with_headers(file_obj, filename)
+    cm = _validated_column_map(column_map, headers)
+    return [_extract_mapped(r, cm) for r in rows]

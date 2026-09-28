@@ -363,6 +363,8 @@ function openImportModal(){
   document.getElementById("import-done-btn").style.display="none";
   _importUnmatchedClasses = []; _importUnmatchedStreams = [];
   _importMapping = {classes:{}, streams:{}}; _importPreviewData = null;
+  document.getElementById("import-step-columns").style.display="none";
+  _importColumnMap = null; _importHeaders = []; _importSample = []; _importNameCols = [];
   openModal("modal-import-students");
 }
 
@@ -384,6 +386,10 @@ async function downloadTemplate(){
   btn.textContent="📥 Download Template"; btn.disabled=false;
 }
 
+// ── Column-mapping wizard step ───────────────────────────────
+let _importColumnMap = null, _importHeaders = [], _importSample = [];
+let _importNameCols = [], _importOther = {class:"", stream:"", phone:""};
+
 async function previewImport(){
   const fileInput = document.getElementById("import-file-input");
   if(!fileInput.files.length){ toast("Select a file first","error"); return; }
@@ -391,6 +397,91 @@ async function previewImport(){
   btn.textContent="Reading..."; btn.disabled=true;
   const formData = new FormData();
   formData.append("file", fileInput.files[0]);
+  try {
+    const res = await fetch("/api/students/import/columns", {method:"POST", body:formData, headers:_authHeaders()});
+    const data = await res.json();
+    if(!data.ok){ toast(data.error,"error"); return; }
+    _importHeaders = data.headers; _importSample = data.sample || [];
+    const s = data.suggested || {};
+    _importNameCols = (s.name && s.name.length) ? [...s.name] : [""];
+    _importOther = {class:s.class||"", stream:s.stream||"", phone:s.phone||""};
+    drawImportColumnStep();
+  } catch(e){ toast("Could not read file: "+e,"error"); }
+  finally { btn.textContent="Preview File →"; btn.disabled=false; }
+}
+
+function _importColOptions(selected, noneLabel){
+  return `<option value="">${noneLabel}</option>` +
+    _importHeaders.map((h,i)=>`<option value="${i}" ${h===selected?"selected":""}>${escHtml(h)}</option>`).join("");
+}
+function drawImportColumnStep(){
+  ["upload","mapping","preview"].forEach(k=>document.getElementById("import-step-"+k).style.display="none");
+  const step = document.getElementById("import-step-columns");
+  step.style.display="block";
+  const nameRows = _importNameCols.map((h,k)=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span style="font-size:.78rem;color:var(--muted);width:52px;flex-shrink:0">Part ${k+1}</span>
+      <select class="form-select" style="flex:1" onchange="setImportNameCol(${k},this.value)">${_importColOptions(h,"— Select column —")}</select>
+      ${_importNameCols.length>1?`<button class="btn btn-sm btn-outline btn-icon" onclick="removeImportNameCol(${k})">✕</button>`:""}
+    </div>`).join("");
+  const other = (key,label,req)=>`
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">${label}${req?' <span style="color:var(--red)">*</span>':""}</label>
+      <select class="form-select" onchange="setImportOtherCol('${key}',this.value)">${_importColOptions(_importOther[key], req?"— Select column —":"— None —")}</select>
+    </div>`;
+  step.innerHTML = `
+    <div style="background:#E3F2FD;border-left:3px solid var(--blue);border-radius:8px;padding:12px;font-size:.83rem;color:var(--navy);margin-bottom:16px">
+      Match your Excel columns to DrDemic fields — no need to rearrange your file. We guessed where we could; please check.
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label class="form-label">Student Name <span style="color:var(--red)">*</span></label>
+      ${nameRows}
+      <button class="btn btn-sm btn-outline" onclick="addImportNameCol()">+ Add another name column</button>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:6px">Columns are joined in this order, e.g. John + Paul + Mkapa → John Paul Mkapa.</div>
+      <div style="margin-top:8px;padding:8px 12px;background:var(--pale);border-radius:8px;font-size:.82rem">
+        <div style="font-size:.68rem;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:2px">Preview</div>
+        <div id="import-name-preview"></div>
+      </div>
+    </div>
+    ${other("class","Class",true)}
+    ${other("stream","Stream",false)}
+    ${other("phone","Parent Phone",false)}
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+      <button class="btn btn-outline" onclick="document.getElementById('import-step-columns').style.display='none';document.getElementById('import-step-upload').style.display='block'">← Back</button>
+      <button class="btn btn-blue" id="import-columns-continue-btn" onclick="confirmImportColumns()">Continue →</button>
+    </div>`;
+  updateImportNamePreview();
+}
+function setImportNameCol(k,v){ _importNameCols[k] = v==="" ? "" : _importHeaders[+v]; updateImportNamePreview(); }
+function addImportNameCol(){ _importNameCols.push(""); drawImportColumnStep(); }
+function removeImportNameCol(k){ _importNameCols.splice(k,1); drawImportColumnStep(); }
+function setImportOtherCol(key,v){ _importOther[key] = v==="" ? "" : _importHeaders[+v]; }
+function updateImportNamePreview(){
+  const el = document.getElementById("import-name-preview"); if(!el) return;
+  const idx = _importNameCols.filter(h=>h!=="").map(h=>_importHeaders.indexOf(h));
+  el.innerHTML = idx.length
+    ? _importSample.map(r=>{
+        const t = idx.map(i=>r[i]||"").join(" ").replace(/\s+/g," ").trim();
+        return `<div>${t?escHtml(t):"—"}</div>`;
+      }).join("")
+    : "—";
+}
+function confirmImportColumns(){
+  const nameCols = _importNameCols.filter(h=>h!=="");
+  if(!nameCols.length){ toast("Select at least one column for Student Name","error"); return; }
+  if(!_importOther.class){ toast("Select the Class column","error"); return; }
+  _importColumnMap = {name:nameCols, class:_importOther.class,
+                      stream:_importOther.stream||null, phone:_importOther.phone||null};
+  runImportPreview();
+}
+
+async function runImportPreview(){
+  const fileInput = document.getElementById("import-file-input");
+  const btn = document.getElementById("import-columns-continue-btn");
+  if(btn){ btn.textContent="Checking..."; btn.disabled=true; }
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  formData.append("column_map", JSON.stringify(_importColumnMap));
   try {
     const res = await fetch("/api/students/import/preview", {
       method:"POST", body:formData,
@@ -405,10 +496,11 @@ async function previewImport(){
     if(_importUnmatchedClasses.length || _importUnmatchedStreams.length) renderImportMappingStep();
     else renderImportPreviewTable(data);
   } catch(e){ toast("Preview failed: "+e,"error"); }
-  finally { btn.textContent="Preview File →"; btn.disabled=false; }
+  finally { if(btn){ btn.textContent="Continue →"; btn.disabled=false; } }
 }
 
 function renderImportPreviewTable(data){
+  document.getElementById("import-step-columns").style.display="none";  
   document.getElementById("import-step-upload").style.display="none";
   document.getElementById("import-step-mapping").style.display="none";
   document.getElementById("import-step-preview").style.display="block";
@@ -430,6 +522,7 @@ function renderImportPreviewTable(data){
 }
 
 function renderImportMappingStep(){
+  document.getElementById("import-step-columns").style.display="none";
   document.getElementById("import-step-upload").style.display="none";
   document.getElementById("import-step-preview").style.display="none";
   const step = document.getElementById("import-step-mapping");
@@ -495,6 +588,7 @@ async function confirmImport(){
   const formData = new FormData();
   formData.append("file", fileInput.files[0]);
   formData.append("mapping", JSON.stringify(_importMapping));
+  if(_importColumnMap) formData.append("column_map", JSON.stringify(_importColumnMap));  
   try {
     const res = await fetch("/api/students/import", {
       method:"POST", body:formData,

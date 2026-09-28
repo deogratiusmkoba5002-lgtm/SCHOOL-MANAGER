@@ -7,8 +7,8 @@ from core.security import hash_password_fast
 from services.students_import import (
     OPENPYXL_AVAILABLE, openpyxl, _parse_import_file, _extract_fields,
     _build_class_map, _resolve_class_stream, _write_credentials_xlsx,
+    _extract_all, parse_column_map, _parse_with_headers, _guess_column_map,
 )
-
 import_bp = Blueprint("student_import", __name__)
 
 
@@ -107,6 +107,24 @@ def api_import_template():
                     download_name="student_import_template.xlsx",
                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+@import_bp.route("/api/students/import/columns", methods=["POST"])
+@require_auth
+@require_role("admin")
+def api_import_columns():
+    """Step 1 of the wizard: return the file's headers, a suggested mapping, and sample rows."""
+    if "file" not in request.files:
+        return jsonify({"ok":False,"error":"No file uploaded"}), 400
+    f = request.files["file"]
+    try:
+        headers, rows = _parse_with_headers(f.stream, f.filename)
+    except ValueError as e:
+        return jsonify({"ok":False,"error":str(e)}), 400
+    if not headers or not rows:
+        return jsonify({"ok":False,"error":"File is empty or has no data rows"}), 400
+    return jsonify({"ok":True,"headers":headers,"suggested":_guess_column_map(headers),
+                    "sample":[[r[h] for h in headers] for r in rows[:3]],
+                    "total_rows":len(rows)})
+
 @import_bp.route("/api/students/import/preview", methods=["POST"])
 @require_auth
 @require_role("admin")
@@ -116,7 +134,8 @@ def api_import_preview():
         return jsonify({"ok":False,"error":"No file uploaded"}), 400
     f = request.files["file"]
     try:
-        rows = _parse_import_file(f.stream, f.filename)
+        rows = _extract_all(f.stream,f.filename,
+                            parse_column_map(request.form.get("column_map")))
     except ValueError as e:
         return jsonify({"ok":False,"error":str(e)}), 400
     if not rows:
@@ -127,7 +146,7 @@ def api_import_preview():
     unmatched_streams = {}
     preview = []
     for i, row in enumerate(rows):
-        name, class_name, stream_name, parent_phone = _extract_fields(row)
+        name, class_name, stream_name, parent_phone = row
         cid = sid = err = None
         if class_name:
             cid, sid, err = _resolve_class_stream(class_name, stream_name, cmap)
@@ -147,7 +166,7 @@ def api_import_preview():
                             "parent_phone":parent_phone,"issues":issues})
 
     return jsonify({"ok":True,"total_rows":len(rows),"preview":preview,
-                    "columns_detected":list(rows[0].keys()) if rows else [],
+                    "columns_detected":[],
                     "unmatched_classes": list(unmatched_classes.values()),
                     "unmatched_streams": list(unmatched_streams.values())})
 
@@ -181,7 +200,8 @@ def api_import_students():
     f = request.files["file"]
     import traceback
     try:
-        rows = _parse_import_file(f.stream, f.filename)
+        rows = _extract_all(f.stream, f.filename,
+                            parse_column_map(request.form.get("column_map")))
     except ValueError as e:
         return jsonify({"ok":False,"error":str(e)}),400
     except Exception as e:
@@ -222,9 +242,9 @@ def api_import_students():
 
     for i, row in enumerate(rows):
         row_num = i + 2
-        name, class_name, stream_name, parent_phone = _extract_fields(row)
+        name, class_name, stream_name, parent_phone = row
         if not name:
-            skipped.append({"row":row_num,"reason":"Missing name — can't import a student with no name","data":str(list(row.values())[:4])})
+            skipped.append({"row":row_num,"reason":"Missing name — can't import a student with no na:me","data":str(list(row)[:4])})
             continue
         if not class_name:
             skipped.append({"row":row_num,"reason":"Missing class","data":name})
