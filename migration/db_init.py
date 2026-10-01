@@ -382,9 +382,35 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_star_notifications_school ON star_notifications(school_id, is_read);
     """)
 
+    # ── ERROR MONITORING ────────────────────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS error_events (
+        id             SERIAL PRIMARY KEY,
+        event_id       TEXT NOT NULL UNIQUE,
+        kind           TEXT NOT NULL DEFAULT 'exception',
+        severity       TEXT NOT NULL DEFAULT 'ERROR',
+        created_at     TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+        exception_type TEXT,
+        message        TEXT,
+        http_status    INTEGER,
+        method         TEXT,
+        path           TEXT,
+        endpoint       TEXT,
+        blueprint      TEXT,
+        operation      TEXT,
+        school_id      INTEGER,
+        username       TEXT,
+        role           TEXT,
+        traceback      TEXT,
+        context        JSONB,
+        fingerprint    TEXT,
+        status         TEXT NOT NULL DEFAULT 'new',
+        admin_notes    TEXT DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_error_events_created ON error_events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_error_events_sev_status ON error_events(severity, status);
+    """)
 
-    # Migrations - add missing columns to existing tables
-    
 
     # Migrations - add missing columns to existing tables
     migrations = [

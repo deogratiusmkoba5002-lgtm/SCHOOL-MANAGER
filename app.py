@@ -40,6 +40,9 @@ for bp in (auth_bp, registration_bp, classes_bp, teachers_bp, terms_bp, students
            static_bp):                      # static last: it owns the catch-all route                    # static last: it owns the catch-all route
     app.register_blueprint(bp)
 
+from core.monitoring import init_monitoring
+init_monitoring(app) 
+
 with app.app_context():
     init_db()
 
