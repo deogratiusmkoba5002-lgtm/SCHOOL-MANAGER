@@ -200,6 +200,30 @@ textarea{resize:vertical;min-height:90px}
 .notice-target{font-size:.73rem;background:var(--pale);color:var(--purple);border-radius:4px;padding:1px 7px;margin-top:4px;display:inline-block}
 
 .empty{text-align:center;padding:32px;color:var(--muted);font-size:.9rem}
+/* ── ERROR MONITORING ── */
+.mon-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;align-items:end}
+.mon-filters label{font-size:.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px}
+.mon-filters select,.mon-filters input{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem}
+.mon-row.sev-INFO td{background:#E3F2FD}
+.mon-row.sev-WARNING td{background:#FFF8E1}
+.mon-row.sev-ERROR td{background:#FFE0B2}
+.mon-row.sev-CRITICAL td{background:#C62828;color:#fff;font-weight:600}
+.mon-sev{font-weight:700;font-size:.75rem;letter-spacing:.04em}
+.mon-id{background:none;border:none;color:inherit;font-family:monospace;font-size:.8rem;text-decoration:underline;cursor:pointer;padding:0}
+.mon-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:.82rem;color:var(--muted)}
+.mon-modal{display:none;position:fixed;inset:0;background:rgba(26,5,51,.55);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px}
+.mon-modal-box{background:#fff;border-radius:14px;padding:24px;width:min(820px,100%);box-shadow:var(--shadow2)}
+.mon-detail-head{padding:10px 14px;border-radius:8px;font-weight:700;margin-bottom:14px}
+.mon-detail-head.sev-INFO{background:#E3F2FD;color:#1565C0}
+.mon-detail-head.sev-WARNING{background:#FFF8E1;color:#8D6E00}
+.mon-detail-head.sev-ERROR{background:#FFE0B2;color:#BF360C}
+.mon-detail-head.sev-CRITICAL{background:#C62828;color:#fff}
+.mon-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 18px;margin-bottom:14px}
+.mon-kv span{display:block;font-size:.7rem;text-transform:uppercase;color:var(--muted);font-weight:600}
+.mon-kv b{font-size:.88rem;word-break:break-all}
+.mon-modal pre{background:#1A0533;color:#E1BEE7;padding:12px;border-radius:8px;font-size:.75rem;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:4px 0 14px}
+.mon-modal label.lbl{font-size:.78rem;font-weight:700;color:var(--ink);display:block;margin-top:6px}
+.mon-modal textarea,.mon-modal select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;margin:4px 0 12px}
 </style>
 </head>
 <body>
@@ -252,6 +276,44 @@ textarea{resize:vertical;min-height:90px}
   </div>
 
   <div class="main-content">
+
+    <!-- Error Monitoring -->
+    <div class="section" id="monitoring-section">
+      <div class="section-title">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+        Error Monitoring
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div><div class="stat-val" id="mon-total">—</div><div class="stat-label">Errors (last 24h)</div></div></div>
+        <div class="stat-card" style="border-left-color:#C62828"><div><div class="stat-val" id="mon-critical" style="color:#C62828">—</div><div class="stat-label">Critical (last 24h)</div></div></div>
+        <div class="stat-card" style="border-left-color:#EF6C00"><div><div class="stat-val" id="mon-unresolved" style="color:#EF6C00">—</div><div class="stat-label">Unresolved (all time)</div></div></div>
+        <div class="stat-card"><div><div class="stat-val" id="mon-health" style="font-size:1.2rem">—</div><div class="stat-label" id="mon-health-detail">System health</div></div></div>
+      </div>
+      <div class="card">
+        <div class="mon-filters">
+          <div><label>Severity</label><select id="mon-f-severity" onchange="monFilterChanged()"><option value="">All</option><option>CRITICAL</option><option>ERROR</option><option>WARNING</option><option>INFO</option></select></div>
+          <div><label>Status</label><select id="mon-f-status" onchange="monFilterChanged()"><option value="">All</option><option value="new">New</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="ignored">Ignored</option></select></div>
+          <div><label>School</label><select id="mon-f-school" onchange="monFilterChanged()"><option value="">All schools</option></select></div>
+          <div><label>Operation</label><select id="mon-f-operation" onchange="monFilterChanged()"><option value="">All operations</option></select></div>
+          <div><label>From</label><input type="date" id="mon-f-from" onchange="monFilterChanged()"/></div>
+          <div><label>To</label><input type="date" id="mon-f-to" onchange="monFilterChanged()"/></div>
+          <div><button class="btn btn-danger" style="width:100%" onclick="monClearFilters()">Clear</button></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Severity</th><th>Operation</th><th>School</th><th>Endpoint</th><th>Exception</th><th>Time</th><th>Status</th><th>Event ID</th></tr></thead>
+            <tbody id="mon-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="mon-pager">
+          <span id="mon-pager-info"></span>
+          <span>
+            <button class="btn btn-danger" id="mon-prev" onclick="monPage(-1)">← Prev</button>
+            <button class="btn btn-danger" id="mon-next" onclick="monPage(1)">Next →</button>
+          </span>
+        </div>
+      </div>
+    </div>
 
     <!-- Schools Overview -->
     <div class="section">
@@ -422,6 +484,13 @@ textarea{resize:vertical;min-height:90px}
   </div><!-- /main-content -->
 </div><!-- /app -->
 
+<div class="mon-modal" id="mon-modal" onclick="if(event.target===this)closeMonEvent()">
+  <div class="mon-modal-box">
+    <div id="mon-detail-body"></div>
+    <div style="text-align:right"><button class="btn btn-danger" onclick="closeMonEvent()">Close</button></div>
+  </div>
+</div>
+
 <script>
 "use strict";
 let saToken = null;
@@ -493,7 +562,7 @@ document.addEventListener("keydown", e=>{
 
 // ── LOAD ALL ───────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools(), loadStarWithdrawals()]);
+  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools(), loadStarWithdrawals(), loadMonitoring()]);
 }
 
 // ── STAR WITHDRAWAL QUEUE ────────────────────────────────────
@@ -710,6 +779,120 @@ async function deleteAnnouncement(id){
   if(!data.ok){ toast("Failed to delete","error"); return; }
   toast("Deleted","info");
   loadAnnouncements();
+}
+
+// ── ERROR MONITORING ────────────────────────────────────────
+let monOffset = 0, monTotal = 0, monCurrentId = null;
+const MON_PAGE = 25;
+const MON_STATUS = {new:"New", investigating:"Investigating", resolved:"Resolved", ignored:"Ignored"};
+
+function monTime(s){ return s ? esc(s.replace("T"," ").slice(0,19)) + " UTC" : "—"; }
+
+async function loadMonitoring(){
+  await Promise.all([loadMonSummary(), loadMonFilters(), loadMonEvents()]);
+}
+
+async function loadMonSummary(){
+  const set = (id, v)=>{ document.getElementById(id).textContent = v; };
+  const d = await saApi("/monitoring/summary");
+  if(!d.ok){ set("mon-health","Unavailable"); toast(d.error||"Failed to load monitoring summary","error"); return; }
+  set("mon-total", d.total_recent); set("mon-critical", d.critical_recent); set("mon-unresolved", d.unresolved_total);
+  const map = {healthy:["Healthy","#2E7D32"], warning:["Warning","#EF6C00"], critical:["Critical","#C62828"]};
+  const [label,color] = map[d.health] || ["Unknown","#7E57C2"];
+  const h = document.getElementById("mon-health"); h.textContent = label; h.style.color = color;
+  set("mon-health-detail", d.last_event_at ? "Last event: "+d.last_event_at.replace("T"," ").slice(0,16)+" UTC" : "No events recorded");
+}
+
+async function loadMonFilters(){
+  const d = await saApi("/monitoring/filters");
+  if(!d.ok) return;
+  const fill = (id, items, first)=>{
+    const sel = document.getElementById(id), cur = sel.value;
+    sel.innerHTML = `<option value="">${first}</option>` +
+      items.map(i=>`<option value="${esc(i.value)}">${esc(i.label)}</option>`).join("");
+    if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+  };
+  fill("mon-f-school", d.schools.map(s=>({value:s.id,label:s.name})), "All schools");
+  fill("mon-f-operation", d.operations.map(o=>({value:o,label:o})), "All operations");
+}
+
+function monQuery(){
+  const p = new URLSearchParams();
+  [["severity","mon-f-severity"],["status","mon-f-status"],["school_id","mon-f-school"],
+   ["operation","mon-f-operation"],["date_from","mon-f-from"],["date_to","mon-f-to"]].forEach(([k,id])=>{
+    const v = document.getElementById(id).value; if(v) p.set(k,v);
+  });
+  p.set("limit", MON_PAGE); p.set("offset", monOffset);
+  return p.toString();
+}
+
+async function loadMonEvents(){
+  const tb = document.getElementById("mon-tbody");
+  const d = await saApi("/monitoring/events?" + monQuery());
+  if(!d.ok){ tb.innerHTML = `<tr><td colspan="8" class="empty">${esc(d.error||"Failed to load events")}</td></tr>`; return; }
+  monTotal = d.total;
+  if(!d.events.length){
+    tb.innerHTML = `<tr><td colspan="8" class="empty">No events match.</td></tr>`;
+  } else {
+    tb.innerHTML = d.events.map(e=>`
+      <tr class="mon-row sev-${esc(e.severity)}">
+        <td><span class="mon-sev">${esc(e.severity)}</span></td>
+        <td>${esc(e.operation||"—")}</td>
+        <td>${esc(e.school_name || (e.school_id ? "School #"+e.school_id : "—"))}</td>
+        <td style="font-size:.8rem">${esc(e.method||"")} ${esc(e.endpoint||e.path||"")}</td>
+        <td style="font-size:.8rem">${esc(e.exception_type||"")}</td>
+        <td style="white-space:nowrap;font-size:.8rem">${monTime(e.created_at)}</td>
+        <td>${esc(MON_STATUS[e.status]||e.status)}</td>
+        <td><button class="mon-id" onclick="openMonEvent('${esc(e.event_id)}')">${esc(e.event_id)}</button></td>
+      </tr>`).join("");
+  }
+  const from = d.events.length ? monOffset+1 : 0;
+  document.getElementById("mon-pager-info").textContent = `${from}–${monOffset+d.events.length} of ${d.total}`;
+  document.getElementById("mon-prev").disabled = monOffset === 0;
+  document.getElementById("mon-next").disabled = monOffset + MON_PAGE >= d.total;
+}
+
+function monFilterChanged(){ monOffset = 0; loadMonEvents(); }
+function monClearFilters(){
+  ["mon-f-severity","mon-f-status","mon-f-school","mon-f-operation","mon-f-from","mon-f-to"]
+    .forEach(id=>{ document.getElementById(id).value = ""; });
+  monFilterChanged();
+}
+function monPage(delta){ monOffset = Math.max(0, monOffset + delta*MON_PAGE); loadMonEvents(); }
+
+async function openMonEvent(id){
+  const d = await saApi("/monitoring/events/" + encodeURIComponent(id));
+  if(!d.ok){ toast(d.error||"Could not load event","error"); return; }
+  const e = d.event; monCurrentId = e.event_id;
+  const kv = (k,v)=>`<div class="mon-kv"><span>${k}</span><b>${esc(v==null||v===""?"—":v)}</b></div>`;
+  const statusOpts = Object.entries(MON_STATUS).map(([k,l])=>`<option value="${k}" ${k===e.status?"selected":""}>${l}</option>`).join("");
+  document.getElementById("mon-detail-body").innerHTML = `
+    <div class="mon-detail-head sev-${esc(e.severity)}">${esc(e.severity)} · ${esc(e.event_id)}</div>
+    <div class="mon-grid">
+      ${kv("Status", MON_STATUS[e.status]||e.status)}${kv("Time (UTC)", (e.created_at||"").replace("T"," ").slice(0,19))}
+      ${kv("Operation", e.operation)}${kv("Endpoint", (e.method||"")+" "+(e.endpoint||""))}
+      ${kv("Path", e.path)}${kv("HTTP status", e.http_status)}
+      ${kv("School", e.school_name || (e.school_id?"School #"+e.school_id:""))}${kv("User", e.username ? e.username+" ("+(e.role||"?")+")" : "")}
+      ${kv("Exception type", e.exception_type)}${kv("Kind", e.kind)}
+    </div>
+    <label class="lbl">Message</label><pre>${esc(e.message||"")}</pre>
+    <label class="lbl">Traceback</label><pre>${esc(e.traceback||"(none)")}</pre>
+    <label class="lbl">Diagnostic context</label><pre>${esc(JSON.stringify(e.context||{}, null, 2))}</pre>
+    <label class="lbl">Status</label><select id="mon-d-status">${statusOpts}</select>
+    <label class="lbl">Internal notes (superadmin only)</label>
+    <textarea id="mon-d-notes" rows="4">${esc(e.admin_notes||"")}</textarea>
+    <button class="btn btn-purple" onclick="saveMonEvent()">Save</button>`;
+  document.getElementById("mon-modal").style.display = "flex";
+}
+function closeMonEvent(){ document.getElementById("mon-modal").style.display = "none"; }
+
+async function saveMonEvent(){
+  if(!monCurrentId) return;
+  const status = document.getElementById("mon-d-status").value;
+  const admin_notes = document.getElementById("mon-d-notes").value;
+  const d = await saApi("/monitoring/events/" + encodeURIComponent(monCurrentId), "POST", {status, admin_notes});
+  if(!d.ok){ toast(d.error||"Failed to save","error"); return; }
+  toast("Saved","success"); closeMonEvent(); loadMonSummary(); loadMonEvents();
 }
 
 // ── UTILS ──────────────────────────────────────────────────
