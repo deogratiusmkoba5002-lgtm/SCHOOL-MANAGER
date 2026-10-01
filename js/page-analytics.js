@@ -92,19 +92,19 @@ function renderOverviewAnalytics(prefix, d){
 
   const sections = [];
   sections.push({key:"avg", title:"📊 Average", count: d.average!=null ? d.average+"%" : "—",
-    bodyHtml:`<p style="padding:12px 0;color:var(--muted)">Current average: <strong>${d.average!=null?d.average:"—"}</strong></p>`});
+    bodyHtml:`<p data-i18n="overview-avg" style="padding:12px 0;color:var(--muted)">Current average: <strong>${d.average!=null?d.average:"—"}</strong></p>`});
   sections.push({key:"out", title:"🌟 Outstanding Performers", count:d.outstanding.length,
     bodyHtml: d.outstanding.length ? renderStudentRows(d.outstanding,"value","position")
-      : `<p style="padding:12px 0;color:var(--muted)">No Outstanding Performers identified.</p>`});
+      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="outstanding-performers">No Outstanding Performers identified.</p>`});
   sections.push({key:"support", title:"📉 Students Needing Support", count:d.needs_support.length,
     bodyHtml: d.needs_support.length ? renderStudentRows(d.needs_support,"value","position")
-      : `<p style="padding:12px 0;color:var(--muted)">No Students Needing Support identified.</p>`});
+      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="student-to-support">No Students Needing Support identified.</p>`});
   sections.push({key:"improved", title:"📈 Improved Students", count:d.improved.length,
     bodyHtml: d.improved.length ? renderTrendRows(d.improved)
-      : `<p style="padding:12px 0;color:var(--muted)">No improved students yet.</p>`});
+      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="no-impr-student">No improved students yet.</p>`});
   sections.push({key:"declining", title:"📉 Declining Students", count:d.declining.length,
     bodyHtml: d.declining.length ? renderTrendRows(d.declining)
-      : `<p style="padding:12px 0;color:var(--muted)">No declining students.</p>`});
+      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="no-decl-student">No declining students.</p>`});
   if(d.best_subject !== undefined){
     sections.push({key:"best", title:"📚 Best Subject", count: d.best_subject ? cap(d.best_subject.subject) : "—",
       bodyHtml: d.best_subject ? `<p style="padding:12px 0">${cap(d.best_subject.subject)} — average <strong>${d.best_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)">No data</p>`});
@@ -114,7 +114,7 @@ function renderOverviewAnalytics(prefix, d){
   sections.push({key:"risk", title:"⚠ Students At Risk", count:d.at_risk.length,
     bodyHtml: d.at_risk.length
       ? d.at_risk.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--pale)"><strong>${r.name}</strong> — ${r.value}<div style="font-size:.78rem;color:var(--red)">${r.reason}</div></div>`).join("")
-      : `<p style="padding:12px 0;color:var(--muted)">No students at risk.</p>`});
+      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="student-at-risk">No students at risk.</p>`});
 
   const cardsEl = document.getElementById(prefix+"-cards");
   if(cardsEl) cardsEl.innerHTML = analyticsAccordionHTML(prefix, sections);

@@ -4,7 +4,6 @@
 // placeholder. Then add that key with its English + Swahili strings below.
 // To translate more of the app yourself, just copy this shape.
 const I18N_STRINGS = {
-  "login.title":         { en: "DrDemic School Manager", sw: "Msimamizi wa Shule DrDemic" },
   "login.subtitle":      { en: "Sign in to your account to continue", sw: "Ingia kwenye akaunti yako ili kuendelea" },
   "login.regcode_label": { en: "School Registration Code", sw: "Namba ya Usajili wa Shule" },
   "login.user_label":    { en: "Username", sw: "Jina la Mtumiaji" },
@@ -14,6 +13,8 @@ const I18N_STRINGS = {
   "login.regcode_ph":    { en: "e.g. S1234", sw: "mfano: S1234" },
   "login.user_ph":       { en: "Enter username", sw: "Weka jina la mtumiaji" },
   "login.pass_ph":       { en: "Enter password", sw: "Weka nywila" },
+  "overview-avg":        { en: "Current average", sw: "Wastani wa sasa"},
+  "outstanding-performers": { en: "No Outstanding Performers identified.", sw: ""}
 };
 
 let currentLang = localStorage.getItem("dd_lang") || "en";
