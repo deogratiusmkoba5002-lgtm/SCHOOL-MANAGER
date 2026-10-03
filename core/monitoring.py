@@ -11,6 +11,7 @@ import re
 import secrets
 import smtplib
 import threading
+import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -454,7 +455,42 @@ def record_event(message, severity="INFO", operation=None, exc=None):
     return _record(exc, severity=severity, message=message, operation=operation, kind="event", status=None)
 
 
+SLOW_IGNORED_ENDPOINTS = {"health.health"}
+
+
+def _slow_threshold():
+    """Seconds. 0 disables. Read on every request so it can be changed without code edits."""
+    try:
+        return max(float(os.environ.get("SLOW_REQUEST_SECONDS", "5")), 0.0)
+    except (TypeError, ValueError):
+        return 5.0
+
+
 def init_monitoring(app):
+    @app.before_request
+    def _start_timer():
+        g._mon_t0 = time.perf_counter()
+
+    @app.after_request
+    def _check_slow(response):
+        try:
+            t0 = getattr(g, "_mon_t0", None)
+            # 5xx already produced an exception event; don't double-report it as "slow".
+            if t0 is None or response.status_code >= 500 or request.endpoint in SLOW_IGNORED_ENDPOINTS:
+                return response
+            threshold = _slow_threshold()
+            if not threshold:
+                return response
+            duration = time.perf_counter() - t0
+            if duration >= threshold:
+                record_event(f"Slow request: {duration:.1f}s (threshold {threshold:g}s)", severity="WARNING")
+        except Exception:
+            try:
+                log.error("slow-request check failed", exc_info=True)
+            except Exception:
+                pass
+        return response
+
     @app.errorhandler(Exception)
     def _on_exception(exc):
         try:

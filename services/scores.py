@@ -15,6 +15,14 @@ def teacher_can_access(school_id, username, subject, class_id, stream_id=None):
     row = cur.fetchone(); cur.close(); con.close()
     return row is not None
 
+def student_in_class(school_id, student_id, class_id, stream_id=None):
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT 1 FROM students WHERE id=%s AND school_id=%s AND class_id=%s
+                   AND (%s IS NULL OR stream_id=%s)""",
+                (student_id, school_id, class_id, stream_id, stream_id))
+    ok = cur.fetchone() is not None; cur.close(); con.close()
+    return ok
+
 
 # ── SUBJECTS ──────────────────────────────────────────────────
 def get_subjects(school_id):

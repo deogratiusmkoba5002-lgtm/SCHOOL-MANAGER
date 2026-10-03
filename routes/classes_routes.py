@@ -59,6 +59,9 @@ def api_add_stream(cid):
     sid = g.school_id; name = request.json.get("stream_name","").strip()
     if not name: return jsonify({"ok":False,"error":"Stream name required"}),400
     con = get_db(); cur = con.cursor()
+    cur.execute("SELECT 1 FROM classes WHERE id=%s AND school_id=%s",(cid,sid))
+    if not cur.fetchone():
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Class not found"}),404
     try:
         cur.execute("INSERT INTO streams(school_id,class_id,stream_name) VALUES(%s,%s,%s) RETURNING id",(sid,cid,name))
         new_id = cur.fetchone()[0]; con.commit()

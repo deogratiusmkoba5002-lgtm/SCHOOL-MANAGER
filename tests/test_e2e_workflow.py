@@ -189,7 +189,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
 
     # the other four subjects arrive via the factory (keeps this test fast)
     for name, (cas, exam) in scores.items():
-        for subject in ("english", "kiswahili", "biology", "chemistry"):
+        for subject in ("english", "kiswahili", "biology", "chemistry", "physics", "geography"):
             make_marks({"id": school_id}, {"id": term_id}, {"id": ids[name]}, subject, ca=cas, exam=exam)
 
     # ── remarks ─────────────────────────────────────────────────
@@ -200,31 +200,31 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
 
     # ── report cards ────────────────────────────────────────────
     rep = _json(client.get(f"/api/report/{ids['Asha Juma']}", headers=admin), "report card: Asha")
-    assert rep["average"] == pytest.approx(74.5) and rep["grade"] == "B" and len(rep["rows"]) == 5
+    assert rep["average"] == pytest.approx(74.5) and rep["grade"] == "B" and len(rep["rows"]) == 7
     assert (rep["class_position"], rep["class_total"], rep["stream_position"], rep["stream_total"]) == (1, 3, 1, 2)
-    assert (rep["division"], rep["division_points"]) == ("I", 10)
+    assert (rep["division"], rep["division_points"]) == ("I", 14)
     maths = next(r for r in rep["rows"] if r["subject"] == "mathematics")
     assert maths["ca"] == {"CA1": 80, "CA2": 90} and maths["exam"] == 70            # CA1 correction took effect
     assert (maths["final"], maths["grade"], maths["position"]) == (pytest.approx(74.5), "B", 1)
     assert (rep["class_teacher_remark"], rep["head_remark"]) == ("Excellent work", "Keep it up")   # weekly test did not change the final
 
     bar = _json(client.get(f"/api/report/{ids['Baraka Mussa']}", headers=admin), "report card: Baraka")
-    assert (bar["grade"], bar["class_position"], bar["stream_position"], bar["division"], bar["division_points"]) == ("C", 2, 2, "I", 15)
+    assert (bar["grade"], bar["class_position"], bar["stream_position"], bar["division"], bar["division_points"]) == ("C", 2, 2, "II", 21)
     nee = _json(client.get(f"/api/report/{ids['Neema Peter']}", headers=admin), "report card: Neema")
     assert (nee["grade"], nee["class_position"], nee["stream_position"], nee["stream_total"], nee["division"],
-            nee["division_points"]) == ("F", 3, 1, 1, "III", 25)
+            nee["division_points"]) == ("F", 3, 1, 1, "0", 35)
 
     # ── score sheets ────────────────────────────────────────────
     ts = _json(client.get(f"/api/scoresheet?mode=terminal&class_id={f1}", headers=admin), "score sheet: terminal")
     assert [(r["name"], r["position"], r["grade"]) for r in ts["results"]] == \
         [("Asha Juma", 1, "B"), ("Baraka Mussa", 2, "C"), ("Neema Peter", 3, "F")]
     assert [r["average"] for r in ts["results"]] == [pytest.approx(74.5), pytest.approx(60.0), pytest.approx(34.5)]
-    assert len(ts["subjects"]) == 5
+    assert len(ts["subjects"]) == 7
     ca1 = _json(client.get(f"/api/scoresheet?mode=ca&ca_name=CA1&class_id={f1}", headers=admin), "score sheet: CA1")
     assert next(r for r in ca1["results"] if r["name"] == "Asha Juma")["scores"]["mathematics"] == 80
     gs = _json(client.get(f"/api/scoresheet?mode=terminal&sheet_type=grade&class_id={f1}", headers=admin), "score sheet: grades")
     assert [(r["name"], r["points"], r["division"]) for r in gs["results"]] == \
-        [("Asha Juma", 10, "I"), ("Baraka Mussa", 15, "I"), ("Neema Peter", 25, "III")]
+        [("Asha Juma", 14, "I"), ("Baraka Mussa", 21, "II"), ("Neema Peter", 35, "0")]
 
     for path, label in [(f"/api/pdf/terminal_sheet?class_id={f1}", "PDF: terminal sheet"),
                         (f"/api/pdf/ca_sheet?class_id={f1}&ca_name=CA1", "PDF: CA sheet"),
@@ -270,7 +270,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
     exam = _json(client.get(f"/api/parent/results?student_id={asha}&term_id={term_id}&assess=exam", headers=p_h), "parent: exam results")
     assert exam["average"] == pytest.approx(70.0) and exam["grade"] == "B"
     assert (exam["class_position"], exam["class_total"]) == (1, 3)
-    assert len(exam["results"]) == 5 and all(r["score"] == 70 for r in exam["results"])
+    assert len(exam["results"]) == 7 and all(r["score"] == 70 for r in exam["results"])
     assert client.get(f"/api/parent/results?student_id={asha}&term_id={term_id}&assess=test:{test_id}", headers=p_h).status_code == 403   # unpublished
     assert client.get(f"/api/parent/results?student_id={ids['Baraka Mussa']}&term_id={term_id}&assess=exam", headers=p_h).status_code == 403   # not their child
     prc = _json(client.get(f"/api/report/{asha}?term_id={term_id}", headers=p_h), "parent: report card")

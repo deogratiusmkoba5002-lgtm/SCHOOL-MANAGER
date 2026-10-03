@@ -390,6 +390,7 @@ def request_withdrawal(school_id, username, stars, idempotency_key):
         raise ValueError(f"Minimum withdrawal is {STAR_WITHDRAWAL_MIN_STARS} star(s)")
     if stars > STAR_WITHDRAWAL_MAX_STARS:
         raise ValueError(f"Maximum withdrawal is {STAR_WITHDRAWAL_MAX_STARS} star(s) per request")
+    idem = f"{school_id}:{idempotency_key}"
 
     con = get_db(); cur = con.cursor()
     wid = None
@@ -398,7 +399,7 @@ def request_withdrawal(school_id, username, stars, idempotency_key):
         if not cur.fetchone():
             raise ValueError("School not found")
 
-        cur.execute("SELECT id, stars, amount, status FROM star_withdrawals WHERE idempotency_key=%s", (idempotency_key,))
+        cur.execute("SELECT id, stars, amount, status FROM star_withdrawals WHERE idempotency_key=%s", (idem,))
         existing = cur.fetchone()
         if existing:
             con.commit()
@@ -433,7 +434,7 @@ def request_withdrawal(school_id, username, stars, idempotency_key):
         amount = stars * STAR_VALUE_TZS
         cur.execute("""INSERT INTO star_withdrawals(school_id, stars, amount, status, payout_account_id, idempotency_key)
                        VALUES(%s,%s,%s,'REQUESTED',%s,%s) RETURNING id""",
-                    (school_id, stars, amount, payout["id"], idempotency_key))
+                    (school_id, stars, amount, payout["id"], idem))
         wid = cur.fetchone()[0]
         cur.execute("""INSERT INTO star_transactions(school_id, type, stars, amount, reference_type,
                                                        reference_id, description, status)

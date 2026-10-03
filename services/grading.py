@@ -106,7 +106,7 @@ def compute_division_from_finals(school_id, finals, grading_system=None, divisio
         min_required = 3
     else:
         use_subjects = list(finals.keys())
-        min_required = 5
+        min_required = 7
 
     use_subjects = [s for s in use_subjects if s not in noncredit]
 

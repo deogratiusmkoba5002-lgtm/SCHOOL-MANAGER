@@ -302,28 +302,30 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
     loadBtn.disabled=false;
   }
 });
-document.getElementById("marks-save-all-btn").addEventListener("click", async()=>{
-  let saved=0, errors=0;
+document.getElementById("marks-save-all-btn").addEventListener("click", async () => {
+  let saved = 0, errors = 0;
   const btn = document.getElementById("marks-save-all-btn");
-  btn.textContent="Saving..."; btn.disabled=true;
-  for(const s of marksStudents){
+  btn.textContent = "Saving..."; btn.disabled = true;
+  for (const s of marksStudents) {
     const inp = document.getElementById(`mscore-${s.id}`);
     const raw = inp.value.trim();
-    if(raw==="") continue;
+    if (raw === "") continue;
     const score = parseFloat(raw);
-    if(isNaN(score)||score<0||score>100){ inp.classList.add("error"); toast(`Invalid score for ${s.name}(must be 0–100)`,"error"); errors++; continue; }
+    if (isNaN(score) || score < 0 || score > 100) { inp.classList.add("error"); toast(`Invalid score for ${s.name}(must be 0–100)`, "error"); errors++; continue; }
     inp.classList.remove("error");
     let r;
-    if(marksType==="exam"){
-      r=await api("/marks/exam","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:s.id,score});
+    if (marksType.startsWith("test:")) {
+      r = await api("/marks/test", "POST", { username: currentUser.username, subject: marksSubject, class_id: marksClass, stream_id: marksStream, student_id: s.id, test_id: marksType.split(":")[1], score });
+    } else if (marksType === "exam") {
+      r = await api("/marks/exam", "POST", { username: currentUser.username, subject: marksSubject, class_id: marksClass, stream_id: marksStream, student_id: s.id, score });
     } else {
-      r=await api("/marks/ca","POST",{username:currentUser.username,subject:marksSubject,class_id:marksClass,stream_id:marksStream,student_id:s.id,ca_name:marksType,score});
+      r = await api("/marks/ca", "POST", { username: currentUser.username, subject: marksSubject, class_id: marksClass, stream_id: marksStream, student_id: s.id, ca_name: marksType, score });
     }
-    if(r.ok){ const badge=document.getElementById(`msaved-${s.id}`); badge.textContent="✓ saved"; badge.style.color="var(--green)"; saved++; }
-    else { toast(`${s.name}: ${r.error}`,"error"); errors++; }
+    if (r.ok) { const badge = document.getElementById(`msaved-${s.id}`); badge.textContent = "✓ saved"; badge.style.color = "var(--green)"; saved++; }
+    else { toast(`${s.name}: ${r.error}`, "error"); errors++; }
   }
-  btn.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Save All Marks`;
-  btn.disabled=false;
-  if(saved>0) toast(`${saved} mark(s) saved!`,"success");
-  if(errors===0&&saved===0) toast("All marks already saved","info");
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .89-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Save All Marks`;
+  btn.disabled = false;
+  if (saved > 0) toast(`${saved} mark(s) saved!`, "success");
+  if (errors === 0 && saved === 0) toast("All marks already saved", "info");
 });

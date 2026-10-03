@@ -47,6 +47,7 @@ def _configure_environment():
     os.environ["ALERT_EMAIL_TO"] = ""
     os.environ["ALERT_EMAIL_API_KEY"] = ""
     os.environ["ALERT_SMTP_HOST"] = ""
+    os.environ["SLOW_REQUEST_SECONDS"] = "0"
     return url
 
 
@@ -121,3 +122,74 @@ def login(client):
         assert r.status_code == 200 and body and body.get("ok"), f"login failed: {r.status_code} {body}"
         return {"Authorization": f"Bearer {body['token']}"}
     return _login
+
+# ══ Phase 9: auto-markers + "what broke" summary ═════════════════
+from collections import defaultdict
+
+_AREA_BY_FILE = {
+    "test_foundation.py": "foundation",
+    "test_health_and_slow.py": "monitoring",
+    "test_workflows.py": "workflows",
+    "test_e2e_workflow.py": "workflows",
+    "test_security.py": "security",
+}
+_AREAS = ["foundation", "monitoring", "workflows", "security"]
+_COLS = ["passed", "failed", "error", "xfailed", "XPASS", "skipped"]
+_RESULTS = defaultdict(lambda: defaultdict(int))
+_BROKEN = []
+
+
+def _area_of(nodeid):
+    fname = nodeid.split("::")[0].replace("\\", "/").rsplit("/", 1)[-1]
+    if fname in _AREA_BY_FILE:
+        return _AREA_BY_FILE[fname]
+    if fname.startswith("test_monitoring"):
+        return "monitoring"
+    return "other"
+
+
+def pytest_collection_modifyitems(items):
+    """Every test gets its area marker from its file name, so `pytest -m security` just works."""
+    for item in items:
+        area = _area_of(item.nodeid)
+        if area in _AREAS:
+            item.add_marker(getattr(pytest.mark, area))
+
+
+def pytest_runtest_logreport(report):
+    area = _area_of(report.nodeid)
+    if report.when == "call":
+        if hasattr(report, "wasxfail"):
+            outcome = "xfailed" if report.skipped else "XPASS"
+        else:
+            outcome = report.outcome
+    elif report.outcome == "failed":
+        outcome = "error"                      # setup/teardown blew up
+    elif report.outcome == "skipped" and report.when == "setup":
+        outcome = "skipped"
+    else:
+        return
+    _RESULTS[area][outcome] += 1
+    if outcome in ("failed", "error"):
+        _BROKEN.append((area, report.nodeid.split("::", 1)[-1]))
+
+
+def pytest_terminal_summary(terminalreporter):
+    if not _RESULTS:
+        return
+    tr = terminalreporter
+    tr.section("DrDemic regression summary")
+    tr.write_line(f"{'AREA':<13}" + "".join(f"{c:>9}" for c in _COLS))
+    for area in _AREAS + ["other"]:
+        if area in _RESULTS:
+            tr.write_line(f"{area:<13}" + "".join(f"{_RESULTS[area][c]:>9}" for c in _COLS))
+    tr.write_line("")
+    if _BROKEN:
+        tr.write_line("VERDICT: BROKEN. What failed:", red=True, bold=True)
+        for area, name in _BROKEN:
+            tr.write_line(f"  [{area}] {name}", red=True)
+    else:
+        tr.write_line("VERDICT: ALL CLEAR", green=True, bold=True)
+    stale = sum(r["XPASS"] for r in _RESULTS.values())
+    if stale:
+        tr.write_line(f"NOTE: {stale} XPASS = a known bug got fixed; delete that test's xfail marker.", yellow=True)

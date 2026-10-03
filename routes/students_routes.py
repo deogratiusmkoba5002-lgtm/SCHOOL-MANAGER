@@ -15,6 +15,7 @@ students_bp = Blueprint("students", __name__)
 
 @students_bp.route("/api/students", methods=["GET"])
 @require_auth
+@require_role("admin","teacher")
 def api_students():
     sid = g.school_id
     con = get_db(); cur = con.cursor()
@@ -113,6 +114,9 @@ def api_bulk_delete_students():
 def api_delete_student(student_id):
     sid = g.school_id
     con = get_db(); cur = con.cursor()
+    cur.execute("SELECT 1 FROM students WHERE id=%s AND school_id=%s",(student_id,sid))
+    if not cur.fetchone():
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Student not found"}),404
     cur.execute("DELETE FROM announcement_reads WHERE student_id=%s",(student_id,))
     cur.execute("DELETE FROM remarks WHERE school_id=%s AND student_id=%s",(sid,student_id))
     cur.execute("DELETE FROM ca_scores WHERE school_id=%s AND student_id=%s",(sid,student_id))

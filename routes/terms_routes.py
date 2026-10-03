@@ -54,6 +54,9 @@ def api_create_test():
 def api_delete_test(tid):
     sid = g.school_id
     con=get_db(); cur=con.cursor()
+    cur.execute("SELECT 1 FROM term_tests WHERE id=%s AND school_id=%s",(tid,sid))
+    if not cur.fetchone():
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"Not found"}),404
     cur.execute("DELETE FROM test_scores WHERE school_id=%s AND test_id=%s",(sid,tid))
     cur.execute("DELETE FROM published_assessments WHERE school_id=%s AND assess_key=%s",(sid,f"test:{tid}"))
     cur.execute("DELETE FROM test_classes WHERE test_id=%s",(tid,))

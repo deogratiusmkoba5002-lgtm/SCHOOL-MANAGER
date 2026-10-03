@@ -13,6 +13,7 @@ teachers_bp = Blueprint("teachers", __name__)
 
 @teachers_bp.route("/api/teachers", methods=["GET"])
 @require_auth
+@require_role("admin","teacher")
 def api_get_teachers():
     sid = g.school_id
     con = get_db(); cur = con.cursor()
