@@ -224,6 +224,20 @@ textarea{resize:vertical;min-height:90px}
 .mon-modal pre{background:#1A0533;color:#E1BEE7;padding:12px;border-radius:8px;font-size:.75rem;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:4px 0 14px}
 .mon-modal label.lbl{font-size:.78rem;font-weight:700;color:var(--ink);display:block;margin-top:6px}
 .mon-modal textarea,.mon-modal select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;margin:4px 0 12px}
+
+/* ── TABS / BELL ── */
+.tabbar{display:flex;gap:4px;overflow-x:auto;background:#fff;border-bottom:1px solid rgba(206,147,216,.45);padding:0 24px}
+.tab-btn{background:none;border:none;padding:14px 16px;font-size:.9rem;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+.tab-btn:hover{color:var(--purple)}
+.tab-btn.active{color:var(--purple);border-bottom-color:var(--purple)}
+.tab-badge{display:inline-block;min-width:18px;padding:1px 6px;margin-left:4px;border-radius:999px;background:#C62828;color:#fff;font-size:.7rem;font-weight:700;text-align:center}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+.bell-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px}
+.bell-btn:hover,.bell-btn.active{background:rgba(255,255,255,.35)}
+.list-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.list-toolbar input,.list-toolbar select{padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem}
+.list-toolbar input{flex:1;min-width:200px}
 </style>
 </head>
 <body>
@@ -270,39 +284,89 @@ textarea{resize:vertical;min-height:90px}
       <span class="badge-superadmin">SUPER ADMIN</span>
     </div>
     <div class="topbar-right">
+      <button class="bell-btn" id="bell-btn" title="Announcements" onclick="showTab('announcements')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      </button>
       <span class="topbar-user" id="sa-topbar-user"></span>
       <button class="btn-logout" onclick="doLogout()">Sign Out</button>
     </div>
   </div>
 
+  <div class="tabbar">
+    <button class="tab-btn active" data-tab="overview" onclick="showTab('overview')">Schools</button>
+    <button class="tab-btn" data-tab="monitoring" onclick="showTab('monitoring')">Monitoring <span class="tab-badge" id="badge-monitoring" style="display:none"></span></button>
+    <button class="tab-btn" data-tab="verification" onclick="showTab('verification')">Verification <span class="tab-badge" id="badge-verification" style="display:none"></span></button>
+    <button class="tab-btn" data-tab="withdrawals" onclick="showTab('withdrawals')">Star Withdrawals <span class="tab-badge" id="badge-withdrawals" style="display:none"></span></button>
+    <button class="tab-btn" data-tab="settings" onclick="showTab('settings')">Settings</button>
+  </div>
+
   <div class="main-content">
 
-    <!-- Error Monitoring -->
-    <div class="section" id="monitoring-section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-        Error Monitoring
-      </div>
+    <!-- ═══ SCHOOLS ═══ -->
+    <div class="tab-panel active" data-tab="overview">
       <div class="stats-grid">
-        <div class="stat-card"><div><div class="stat-val" id="mon-total">—</div><div class="stat-label">Errors (last 24h)</div></div></div>
-        <div class="stat-card" style="border-left-color:#C62828"><div><div class="stat-val" id="mon-critical" style="color:#C62828">—</div><div class="stat-label">Critical (last 24h)</div></div></div>
-        <div class="stat-card" style="border-left-color:#EF6C00"><div><div class="stat-val" id="mon-unresolved" style="color:#EF6C00">—</div><div class="stat-label">Unresolved (all time)</div></div></div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#F3E5F5"><svg viewBox="0 0 24 24" width="22" height="22" fill="#6A1B9A"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg></div>
+          <div><div class="stat-val" id="stat-schools">—</div><div class="stat-label">Registered Schools</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#E8F5E9"><svg viewBox="0 0 24 24" width="22" height="22" fill="#2E7D32"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div>
+          <div><div class="stat-val" id="stat-students">—</div><div class="stat-label">Total Students</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#E3F2FD"><svg viewBox="0 0 24 24" width="22" height="22" fill="#1565C0"><path d="M20 17V7c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-3.5v-7l6 3.5-6 3.5z"/></svg></div>
+          <div><div class="stat-val" id="stat-teachers">—</div><div class="stat-label">Total Teachers</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="list-toolbar">
+          <input type="text" id="sa-school-search" placeholder="Search schools by name…" oninput="schoolsFilterChanged()"/>
+          <select id="sa-school-status" onchange="schoolsFilterChanged()">
+            <option value="">All payment statuses</option>
+            <option value="active">Active</option><option value="demo">Demo</option>
+            <option value="pending">Pending</option><option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>School Name</th><th>Registered</th><th>Students</th><th>Teachers</th><th>Active Term</th><th>Plan</th><th>Expires</th><th>Payment</th></tr></thead>
+            <tbody id="sa-schools-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="mon-pager">
+          <span id="sa-schools-pager-info"></span>
+          <span>
+            <button class="btn btn-danger" id="sa-schools-prev" onclick="schoolsPage(-1)">← Prev</button>
+            <button class="btn btn-danger" id="sa-schools-next" onclick="schoolsPage(1)">Next →</button>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MONITORING ═══ -->
+    <div class="tab-panel" data-tab="monitoring">
+      <div class="stats-grid">
+        <div class="stat-card"><div><div class="stat-val" id="mon-total">—</div><div class="stat-label">Active error groups (24h)</div></div></div>
+        <div class="stat-card" style="border-left-color:#C62828"><div><div class="stat-val" id="mon-critical" style="color:#C62828">—</div><div class="stat-label">Critical groups (24h)</div></div></div>
+        <div class="stat-card" style="border-left-color:#EF6C00"><div><div class="stat-val" id="mon-unresolved" style="color:#EF6C00">—</div><div class="stat-label">Unresolved groups</div></div></div>
         <div class="stat-card"><div><div class="stat-val" id="mon-health" style="font-size:1.2rem">—</div><div class="stat-label" id="mon-health-detail">System health</div></div></div>
       </div>
       <div class="card">
         <div class="mon-filters">
+          <div><label>Search</label><input type="text" id="mon-f-q" placeholder="exception, endpoint…" oninput="monSearchDebounced()"/></div>
           <div><label>Severity</label><select id="mon-f-severity" onchange="monFilterChanged()"><option value="">All</option><option>CRITICAL</option><option>ERROR</option><option>WARNING</option><option>INFO</option></select></div>
           <div><label>Status</label><select id="mon-f-status" onchange="monFilterChanged()"><option value="">All</option><option value="new">New</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="ignored">Ignored</option></select></div>
           <div><label>School</label><select id="mon-f-school" onchange="monFilterChanged()"><option value="">All schools</option></select></div>
           <div><label>Operation</label><select id="mon-f-operation" onchange="monFilterChanged()"><option value="">All operations</option></select></div>
-          <div><label>From</label><input type="date" id="mon-f-from" onchange="monFilterChanged()"/></div>
-          <div><label>To</label><input type="date" id="mon-f-to" onchange="monFilterChanged()"/></div>
+          <div><label>Last seen from</label><input type="date" id="mon-f-from" onchange="monFilterChanged()"/></div>
+          <div><label>Last seen to</label><input type="date" id="mon-f-to" onchange="monFilterChanged()"/></div>
+          <div><label>Sort by</label><select id="mon-f-sort" onchange="monFilterChanged()"><option value="last_seen">Last seen</option><option value="severity">Severity</option><option value="occurrences">Most occurrences</option><option value="first_seen">First seen</option></select></div>
           <div><button class="btn btn-danger" style="width:100%" onclick="monClearFilters()">Clear</button></div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Severity</th><th>Operation</th><th>School</th><th>Endpoint</th><th>Exception</th><th>Time</th><th>Status</th><th>Event ID</th></tr></thead>
-            <tbody id="mon-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+            <thead><tr><th>Severity</th><th>Operation</th><th>School</th><th>Endpoint</th><th>Occurrences</th><th>First seen</th><th>Last seen</th><th>Status</th><th>Last event</th></tr></thead>
+            <tbody id="mon-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
           </table>
         </div>
         <div class="mon-pager">
@@ -315,170 +379,65 @@ textarea{resize:vertical;min-height:90px}
       </div>
     </div>
 
-    <!-- Schools Overview -->
-    <div class="section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
-        Schools Overview
-      </div>
-      <div class="stats-grid" id="sa-stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#F3E5F5">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="#6A1B9A"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg>
-          </div>
-          <div><div class="stat-val" id="stat-schools">—</div><div class="stat-label">Registered Schools</div></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#E8F5E9">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="#2E7D32"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-          </div>
-          <div><div class="stat-val" id="stat-students">—</div><div class="stat-label">Total Students</div></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#E3F2FD">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="#1565C0"><path d="M20 17V7c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-3.5v-7l6 3.5-6 3.5z"/></svg>
-          </div>
-          <div><div class="stat-val" id="stat-teachers">—</div><div class="stat-label">Total Teachers</div></div>
-        </div>
-      </div>
+    <!-- ═══ VERIFICATION ═══ -->
+    <div class="tab-panel" data-tab="verification">
+      <div class="section-title">School Verification Queue</div>
+      <div class="card"><div id="sa-pending-schools"><div class="empty">Loading…</div></div></div>
+    </div>
 
+    <!-- ═══ STAR WITHDRAWALS ═══ -->
+    <div class="tab-panel" data-tab="withdrawals">
+      <div class="section-title">⭐ Star Withdrawal Queue</div>
       <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>School Name</th>
-                <th>Registered</th>
-                <th>Students</th>
-                <th>Teachers</th>
-                <th>Active Term</th>
-                <th>Plan</th>
-                <th>Expires</th>
-                <th>Payment</th>
-              </tr>
-            </thead>
-            <tbody id="sa-schools-tbody">
-              <tr><td colspan="7" class="empty">Loading…</td></tr>
-            </tbody>
-          </table>
+        <div class="form-row" style="margin-bottom:14px">
+          <div class="form-group">
+            <label>Filter</label>
+            <select id="sw-status-filter" onchange="loadStarWithdrawals()">
+              <option value="REQUESTED">Requested</option><option value="PROCESSING">Processing</option>
+              <option value="WITHDRAWN">Withdrawn</option><option value="REJECTED">Rejected</option><option value="all">All</option>
+            </select>
+          </div>
         </div>
+        <div id="sw-list"><div class="empty">Loading…</div></div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-        School Verification Queue
-      </div>
-      <div class="card">
-        <div id="sa-pending-schools"><div class="empty">Loading…</div></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-        Payment Verification Queue
-      </div>
-  <div class="card">
-    <div class="form-row" style="margin-bottom:14px">
-      <div class="form-group">
-        <label>Filter</label>
-        <select id="pr-status-filter" onchange="loadPaymentRequests()">
-          <option value="pending">Pending</option>
-          <option value="expired">Expired</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-    </div>
-    <div id="pr-list"><div class="empty">Loading…</div></div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-title">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1zm-6-5a3 3 0 00-3 3v2h6V6a3 3 0 00-3-3z"/></svg>
-    ⭐ Star Withdrawal Queue
-  </div>
-  <div class="card">
-    <div class="form-row" style="margin-bottom:14px">
-      <div class="form-group">
-        <label>Filter</label>
-        <select id="sw-status-filter" onchange="loadStarWithdrawals()">
-          <option value="REQUESTED">Requested</option>
-          <option value="PROCESSING">Processing</option>
-          <option value="WITHDRAWN">Withdrawn</option>
-          <option value="REJECTED">Rejected</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-    </div>
-    <div id="sw-list"><div class="empty">Loading…</div></div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-title">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 17a2 2 0 002-2 2 2 0 00-2-2 2 2 0 00-2 2 2 2 0 002 2zm6-9a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h1V6a5 5 0 0110 0v2h1z"/></svg>
-    Payment Settings
-  </div>
-  <div class="card">
-    <div class="announce-form">
-      <div class="form-group"><label>Business Name</label><input type="text" id="pc-business-name"/></div>
-      <div class="form-group"><label>Payment Number</label><input type="text" id="pc-payment-number" placeholder="07XXXXXXXX"/></div>
-      <div class="form-group"><label>Supported Networks (comma separated)</label><input type="text" id="pc-networks" placeholder="M-Pesa,Airtel Money,Mixx,HaloPesa"/></div>
-      <button class="btn btn-purple" onclick="savePaymentConfig()">Save Payment Settings</button>
-    </div>
-  </div>
-</div>
-
-    <!-- Send Announcement -->
-    <div class="section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-        Send Platform Announcement
-      </div>
+    <!-- ═══ SETTINGS ═══ -->
+    <div class="tab-panel" data-tab="settings">
+      <div class="section-title">Payment Settings</div>
       <div class="card">
         <div class="announce-form">
-          <div class="form-group">
-            <label>Title</label>
-            <input type="text" id="ann-title" placeholder="e.g. System maintenance on Saturday"/>
-          </div>
-          <div class="form-group">
-            <label>Message</label>
-            <textarea id="ann-body" placeholder="Write your message to school admins…"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Target</label>
-              <select id="ann-target">
-                <option value="all">All Schools</option>
-              </select>
-            </div>
-            <div style="display:flex;align-items:flex-end">
-              <button class="btn btn-purple" onclick="sendAnnouncement()" style="width:100%">
-                Send Notice →
-              </button>
-            </div>
-          </div>
-          <p style="font-size:.78rem;color:var(--muted)">⚠ One-way only. School admins will see this with a "Platform Notice" badge. They cannot reply.</p>
+          <div class="form-group"><label>Business Name</label><input type="text" id="pc-business-name"/></div>
+          <div class="form-group"><label>Payment Number</label><input type="text" id="pc-payment-number" placeholder="07XXXXXXXX"/></div>
+          <div class="form-group"><label>Supported Networks (comma separated)</label><input type="text" id="pc-networks" placeholder="M-Pesa,Airtel Money,Mixx,HaloPesa"/></div>
+          <button class="btn btn-purple" onclick="savePaymentConfig()">Save Payment Settings</button>
         </div>
       </div>
     </div>
 
-    <!-- Past Announcements -->
-    <div class="section">
-      <div class="section-title">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 18h12v-2H3v2zm0-5h12v-2H3v2zm0-7v2h12V6H3zm14 9.83V7.17L21.83 12 17 15.83z"/></svg>
-        Sent Announcements
+    <!-- ═══ ANNOUNCEMENTS (opened from the bell) ═══ -->
+    <div class="tab-panel" data-tab="announcements">
+      <div style="margin-bottom:14px"><button class="btn btn-danger" onclick="showTab('overview')">← Back</button></div>
+      <div class="section-title">Send Platform Announcement</div>
+      <div class="card" style="margin-bottom:24px">
+        <div class="announce-form">
+          <div class="form-group"><label>Title</label><input type="text" id="ann-title" placeholder="e.g. System maintenance on Saturday"/></div>
+          <div class="form-group"><label>Message</label><textarea id="ann-body" placeholder="Write your message to school admins…"></textarea></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Send to</label>
+              <input type="text" id="ann-target-input" list="ann-target-list" placeholder="All schools (or type a school name)" autocomplete="off"/>
+              <datalist id="ann-target-list"></datalist>
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button class="btn btn-purple" onclick="sendAnnouncement()" style="width:100%">Send Notice →</button>
+            </div>
+          </div>
+          <p style="font-size:.78rem;color:var(--muted)">⚠ One-way only. School admins see this as a "Platform Notice". They cannot reply.</p>
+        </div>
       </div>
-      <div class="card">
-        <div id="past-announcements"><div class="empty">Loading…</div></div>
-      </div>
+      <div class="section-title">Sent Announcements</div>
+      <div class="card"><div id="past-announcements"><div class="empty">Loading…</div></div></div>
     </div>
 
   </div><!-- /main-content -->
@@ -562,7 +521,8 @@ document.addEventListener("keydown", e=>{
 
 // ── LOAD ALL ───────────────────────────────────────────────
 async function loadAll(){
-  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentRequests(), loadPaymentConfig(), loadPendingSchools(), loadStarWithdrawals(), loadMonitoring()]);
+  showTab("overview");
+  await Promise.all([loadSchools(), loadAnnouncements(), loadPaymentConfig(), loadPendingSchools(), loadStarWithdrawals(), loadMonitoring()]);
 }
 
 // ── STAR WITHDRAWAL QUEUE ────────────────────────────────────
@@ -641,44 +601,6 @@ async function rejectSchool(id){
 }
 
 // —————————PAYMENTS OVERVIEW——————————————————————————————————
-async function loadPaymentRequests(){
-  const status = document.getElementById("pr-status-filter").value;
-  const data = await saApi("/payment_requests?status="+status);
-  const list = document.getElementById("pr-list");
-  if(!data.ok || !data.requests.length){ list.innerHTML = `<div class="empty">No requests.</div>`; return; }
-  list.innerHTML = data.requests.map(r=>`
-  <div class="notice-item">
-    <div class="notice-meta">
-      <span class="notice-title">${esc(r.school_name)} — ${esc(r.plan)} (${r.claimed_amount} TZS)</span>
-      <span class="notice-date">${r.submitted_at ? r.submitted_at.slice(0,16) : ""}</span>
-    </div>
-    <div class="notice-body">
-      Txn ID: <strong>${esc(r.transaction_id)}</strong> · Phone: ${esc(r.phone_used)} · Paid: ${esc(r.payment_date)}
-      ${r.note ? "<br>Note: "+esc(r.note) : ""}
-      ${r.decision_note ? "<br>Decision note: "+esc(r.decision_note) : ""}
-    </div>
-    <span class="notice-target" style="${r.status==='expired'?'background:#FFF3E0;color:#E65100':''}">Status: ${esc(r.status)}</span>
-    ${(r.status==="pending"||r.status==="expired") ? `
-      <div style="margin-top:8px;display:flex;gap:8px">
-        <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="approveRequest(${r.id})">Approve${r.status==='expired'?' (override expiry)':''}</button>
-        <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="rejectRequest(${r.id})">Reject</button>
-      </div>` : ""}
-  </div>`).join("");
-}
-async function approveRequest(id){
-  if(!confirm("Approve this payment and activate the subscription?")) return;
-  const data = await saApi("/payment_requests/"+id+"/approve","POST",{});
-  if(!data.ok){ toast(data.error||"Failed","error"); return; }
-  toast("Approved and activated","success"); loadPaymentRequests(); loadSchools();
-}
-async function rejectRequest(id){
-  const note = prompt("Reason for rejecting this payment (shown to the school):");
-  if(note===null) return;
-  if(!note.trim()){ toast("A reason is required","error"); return; }
-  const data = await saApi("/payment_requests/"+id+"/reject","POST",{note});
-  if(!data.ok){ toast(data.error||"Failed","error"); return; }
-  toast("Rejected","info"); loadPaymentRequests();
-}
 async function loadPaymentConfig(){
   const data = await saApi("/payment_config");
   if(!data.ok) return;
@@ -696,80 +618,127 @@ async function savePaymentConfig(){
 }
 
 // ── SCHOOLS OVERVIEW ────────────────────────────────────────
+// ── TABS ────────────────────────────────────────────────────
+function setBadge(id, n){
+  const el = document.getElementById(id); if(!el) return;
+  el.textContent = n > 99 ? "99+" : n; el.style.display = n > 0 ? "inline-block" : "none";
+}
+function showTab(name){
+  document.querySelectorAll(".tab-panel").forEach(p=>p.classList.toggle("active", p.dataset.tab===name));
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
+  document.getElementById("bell-btn").classList.toggle("active", name==="announcements");
+  window.scrollTo({top:0});
+  refreshBadges();
+}
+async function refreshBadges(){
+  if(!saToken) return;
+  try {
+    const [p, w, m] = await Promise.all([saApi("/schools/pending"), saApi("/star_withdrawals?status=REQUESTED"),
+                                         saApi("/monitoring/groups/summary")]);
+    setBadge("badge-verification", p.ok ? p.schools.filter(s=>s.verification_status==="pending").length : 0);
+    setBadge("badge-withdrawals", w.ok ? w.withdrawals.length : 0);
+    setBadge("badge-monitoring", m.ok ? m.unresolved_critical : 0);
+  } catch(_){}
+}
+
+// ── SCHOOLS (search + pagination, client-side) ──────────────
+let saSchools = [], saSchoolPage = 0;
+const SCHOOL_PAGE = 15;
+
 async function loadSchools(){
   const data = await saApi("/schools");
   if(!data.ok){ toast("Failed to load schools","error"); return; }
-  const schools = data.schools || [];
-
-  const totalStudents = schools.reduce((a,s)=>a+s.student_count,0);
-  const totalTeachers = schools.reduce((a,s)=>a+s.teacher_count,0);
-  document.getElementById("stat-schools").textContent  = schools.length;
-  document.getElementById("stat-students").textContent = totalStudents;
-  document.getElementById("stat-teachers").textContent = totalTeachers;
-
+  saSchools = data.schools || [];
+  document.getElementById("stat-schools").textContent  = saSchools.length;
+  document.getElementById("stat-students").textContent = saSchools.reduce((a,s)=>a+s.student_count,0);
+  document.getElementById("stat-teachers").textContent = saSchools.reduce((a,s)=>a+s.teacher_count,0);
+  populateAnnounceTargets(saSchools);
+  renderSchools();
+  if(typeof renderAnnouncements === "function") renderAnnouncements();
+}
+function schoolsFiltered(){
+  const q = (document.getElementById("sa-school-search").value||"").trim().toLowerCase();
+  const st = document.getElementById("sa-school-status").value;
+  return saSchools.filter(s=>(!q || (s.school_name||"").toLowerCase().includes(q)) && (!st || s.payment_status===st));
+}
+function renderSchools(){
+  const list = schoolsFiltered();
+  const maxPage = Math.max(0, Math.ceil(list.length/SCHOOL_PAGE)-1);
+  saSchoolPage = Math.min(saSchoolPage, maxPage);
+  const start = saSchoolPage*SCHOOL_PAGE, rows = list.slice(start, start+SCHOOL_PAGE);
   const tbody = document.getElementById("sa-schools-tbody");
-  if(!schools.length){
-    tbody.innerHTML = `<tr><td colspan="7" class="empty">No schools registered yet.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = schools.map((s,i) => `
+  tbody.innerHTML = rows.length ? rows.map(s=>`
     <tr>
-      <td>${i+1}</td>
+      <td>${s.id}</td>
       <td><strong>${esc(s.school_name)}</strong></td>
-      <td style="font-size:.82rem;color:#777">${s.registered_at || "—"}</td>
-      <td>${s.student_count}</td>
-      <td>${s.teacher_count}</td>
+      <td style="font-size:.82rem;color:#777">${esc(s.registered_at || "—")}</td>
+      <td>${s.student_count}</td><td>${s.teacher_count}</td>
       <td><span style="font-size:.82rem;color:#555">${esc(s.active_term || "—")}</span></td>
       <td>${esc(s.subscription_plan || "-")}</td>
       <td style="font-size:.82rem;color:#555">${s.subscription_expires_at ? new Date(s.subscription_expires_at).toLocaleDateString() : "-"}</td>
-      <td><span class="badge ${s.payment_status==='active'?'badge-active':s.payment_status==='demo'?'badge-active':'badge-pending'}">${esc(s.payment_status)}</span></td>
-    </tr>`).join("");
-
-  populateAnnounceTargets(schools);
+      <td><span class="badge ${s.payment_status==='active'||s.payment_status==='demo'?'badge-active':'badge-pending'}">${esc(s.payment_status)}</span></td>
+    </tr>`).join("") : `<tr><td colspan="9" class="empty">${saSchools.length ? "No schools match." : "No schools registered yet."}</td></tr>`;
+  document.getElementById("sa-schools-pager-info").textContent =
+    list.length ? `${start+1}–${start+rows.length} of ${list.length}` : "0 schools";
+  document.getElementById("sa-schools-prev").disabled = saSchoolPage === 0;
+  document.getElementById("sa-schools-next").disabled = saSchoolPage >= maxPage;
 }
-
-function populateAnnounceTargets(schools){
-  const sel = document.getElementById("ann-target");
-  const current = sel.value;
-  sel.innerHTML = `<option value="all">All Schools</option>` +
-    schools.map(s=>`<option value="${s.id}">${esc(s.school_name)}</option>`).join("");
-  if([...sel.options].some(o=>o.value===current)) sel.value = current;
-}
+function schoolsFilterChanged(){ saSchoolPage = 0; renderSchools(); }
+function schoolsPage(d){ saSchoolPage = Math.max(0, saSchoolPage + d); renderSchools(); }
 
 // ── ANNOUNCEMENTS ───────────────────────────────────────────
+let saAnnAll = [], saAnnShowAll = false, saAnnTargetMap = {};
+function populateAnnounceTargets(schools){
+  saAnnTargetMap = {};
+  document.getElementById("ann-target-list").innerHTML = schools.map(s=>{
+    const key = s.school_name + " (#" + s.id + ")"; saAnnTargetMap[key] = s.id;
+    return `<option value="${esc(key)}"></option>`;
+  }).join("");
+}
 async function loadAnnouncements(){
   const data = await saApi("/announce");
   if(!data.ok){ toast("Failed to load announcements","error"); return; }
-  const ann = data.announcements || [];
-  const container = document.getElementById("past-announcements");
-  if(!ann.length){
-    container.innerHTML = `<div class="empty">No announcements sent yet.</div>`;
-    return;
-  }
-  container.innerHTML = ann.map(a => `
-    <div class="notice-item">
+  saAnnAll = data.announcements || [];
+  renderAnnouncements();
+}
+function renderAnnouncements(){
+  const c = document.getElementById("past-announcements");
+  if(!saAnnAll.length){ c.innerHTML = `<div class="empty">No announcements sent yet.</div>`; return; }
+  const shown = saAnnShowAll ? saAnnAll : saAnnAll.slice(0,15);
+  c.innerHTML = shown.map(a=>{
+    let target = "All schools";
+    if(a.target !== "all"){
+      const sc = saSchools.find(s=>String(s.id)===String(a.target));
+      target = sc ? sc.school_name : "School #" + a.target;
+    }
+    return `<div class="notice-item">
       <div class="notice-meta">
         <span class="notice-title">${esc(a.title)}</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span class="notice-date">${a.posted_at ? a.posted_at.slice(0,16) : ""}</span>
+          <span class="notice-date">${a.posted_at ? esc(a.posted_at.slice(0,16)) : ""}</span>
           <button class="btn btn-danger" style="padding:3px 10px;font-size:.72rem" onclick="deleteAnnouncement(${a.id})">Delete</button>
         </div>
       </div>
       <div class="notice-body">${esc(a.body)}</div>
-      <span class="notice-target">Target: ${a.target === "all" ? "All schools" : "School #" + a.target}</span>
-    </div>`).join("");
+      <span class="notice-target">To: ${esc(target)}</span>
+    </div>`;
+  }).join("") + (saAnnAll.length > 15
+    ? `<div style="text-align:center;margin-top:12px"><button class="btn btn-danger" onclick="saAnnShowAll=!saAnnShowAll;renderAnnouncements()">${saAnnShowAll ? "Show fewer" : "Show all "+saAnnAll.length}</button></div>` : "");
 }
-
 async function sendAnnouncement(){
-  const title  = document.getElementById("ann-title").value.trim();
-  const body   = document.getElementById("ann-body").value.trim();
-  const target = document.getElementById("ann-target").value;
+  const title = document.getElementById("ann-title").value.trim();
+  const body  = document.getElementById("ann-body").value.trim();
+  const raw   = document.getElementById("ann-target-input").value.trim();
   if(!title || !body){ toast("Title and message are required","error"); return; }
+  let target = "all";
+  if(raw && raw.toLowerCase() !== "all schools"){
+    if(!(raw in saAnnTargetMap)){ toast("Pick a school from the suggestions, or leave empty for all schools","error"); return; }
+    target = String(saAnnTargetMap[raw]);
+  }
   const data = await saApi("/announce","POST",{title, body, target});
   if(!data.ok){ toast(data.error || "Failed to send","error"); return; }
   toast("Announcement sent!","success");
-  document.getElementById("ann-title").value = "";
-  document.getElementById("ann-body").value  = "";
+  ["ann-title","ann-body","ann-target-input"].forEach(id=>{ document.getElementById(id).value = ""; });
   loadAnnouncements();
 }
 
@@ -781,26 +750,27 @@ async function deleteAnnouncement(id){
   loadAnnouncements();
 }
 
-// ── ERROR MONITORING ────────────────────────────────────────
-let monOffset = 0, monTotal = 0, monCurrentId = null;
+
+// ── ERROR MONITORING (grouped) ──────────────────────────────
+let monOffset = 0, monCurrentGid = null, monDebounce = null;
 const MON_PAGE = 25;
 const MON_STATUS = {new:"New", investigating:"Investigating", resolved:"Resolved", ignored:"Ignored"};
 
-function monTime(s){ return s ? esc(s.replace("T"," ").slice(0,19)) + " UTC" : "—"; }
+function monTime(s){ return s ? esc(s.replace("T"," ").slice(0,16)) + " UTC" : "—"; }
 
-async function loadMonitoring(){
-  await Promise.all([loadMonSummary(), loadMonFilters(), loadMonEvents()]);
-}
+async function loadMonitoring(){ await Promise.all([loadMonSummary(), loadMonFilters(), loadMonGroups()]); }
 
 async function loadMonSummary(){
   const set = (id, v)=>{ document.getElementById(id).textContent = v; };
-  const d = await saApi("/monitoring/summary");
+  const d = await saApi("/monitoring/groups/summary");
   if(!d.ok){ set("mon-health","Unavailable"); toast(d.error||"Failed to load monitoring summary","error"); return; }
-  set("mon-total", d.total_recent); set("mon-critical", d.critical_recent); set("mon-unresolved", d.unresolved_total);
+  set("mon-total", d.active_recent); set("mon-critical", d.critical_recent); set("mon-unresolved", d.unresolved_total);
   const map = {healthy:["Healthy","#2E7D32"], warning:["Warning","#EF6C00"], critical:["Critical","#C62828"]};
   const [label,color] = map[d.health] || ["Unknown","#7E57C2"];
   const h = document.getElementById("mon-health"); h.textContent = label; h.style.color = color;
-  set("mon-health-detail", d.last_event_at ? "Last event: "+d.last_event_at.replace("T"," ").slice(0,16)+" UTC" : "No events recorded");
+  set("mon-health-detail", (d.alerts_enabled ? "Email alerts ON" : "Email alerts OFF") +
+      (d.last_event_at ? " · last event " + d.last_event_at.replace("T"," ").slice(0,16) + " UTC" : " · no events"));
+  setBadge("badge-monitoring", d.unresolved_critical);
 }
 
 async function loadMonFilters(){
@@ -808,8 +778,7 @@ async function loadMonFilters(){
   if(!d.ok) return;
   const fill = (id, items, first)=>{
     const sel = document.getElementById(id), cur = sel.value;
-    sel.innerHTML = `<option value="">${first}</option>` +
-      items.map(i=>`<option value="${esc(i.value)}">${esc(i.label)}</option>`).join("");
+    sel.innerHTML = `<option value="">${first}</option>` + items.map(i=>`<option value="${esc(i.value)}">${esc(i.label)}</option>`).join("");
     if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
   };
   fill("mon-f-school", d.schools.map(s=>({value:s.id,label:s.name})), "All schools");
@@ -818,85 +787,89 @@ async function loadMonFilters(){
 
 function monQuery(){
   const p = new URLSearchParams();
-  [["severity","mon-f-severity"],["status","mon-f-status"],["school_id","mon-f-school"],
-   ["operation","mon-f-operation"],["date_from","mon-f-from"],["date_to","mon-f-to"]].forEach(([k,id])=>{
-    const v = document.getElementById(id).value; if(v) p.set(k,v);
+  [["severity","mon-f-severity"],["status","mon-f-status"],["school_id","mon-f-school"],["operation","mon-f-operation"],
+   ["date_from","mon-f-from"],["date_to","mon-f-to"],["q","mon-f-q"],["sort","mon-f-sort"]].forEach(([k,id])=>{
+    const v = document.getElementById(id).value.trim(); if(v) p.set(k,v);
   });
   p.set("limit", MON_PAGE); p.set("offset", monOffset);
   return p.toString();
 }
 
-async function loadMonEvents(){
+async function loadMonGroups(){
   const tb = document.getElementById("mon-tbody");
-  const d = await saApi("/monitoring/events?" + monQuery());
-  if(!d.ok){ tb.innerHTML = `<tr><td colspan="8" class="empty">${esc(d.error||"Failed to load events")}</td></tr>`; return; }
-  monTotal = d.total;
-  if(!d.events.length){
-    tb.innerHTML = `<tr><td colspan="8" class="empty">No events match.</td></tr>`;
-  } else {
-    tb.innerHTML = d.events.map(e=>`
-      <tr class="mon-row sev-${esc(e.severity)}">
-        <td><span class="mon-sev">${esc(e.severity)}</span></td>
-        <td>${esc(e.operation||"—")}</td>
-        <td>${esc(e.school_name || (e.school_id ? "School #"+e.school_id : "—"))}</td>
-        <td style="font-size:.8rem">${esc(e.method||"")} ${esc(e.endpoint||e.path||"")}</td>
-        <td style="font-size:.8rem">${esc(e.exception_type||"")}</td>
-        <td style="white-space:nowrap;font-size:.8rem">${monTime(e.created_at)}</td>
-        <td>${esc(MON_STATUS[e.status]||e.status)}</td>
-        <td><button class="mon-id" onclick="openMonEvent('${esc(e.event_id)}')">${esc(e.event_id)}</button></td>
-      </tr>`).join("");
-  }
-  const from = d.events.length ? monOffset+1 : 0;
-  document.getElementById("mon-pager-info").textContent = `${from}–${monOffset+d.events.length} of ${d.total}`;
+  const d = await saApi("/monitoring/groups?" + monQuery());
+  if(!d.ok){ tb.innerHTML = `<tr><td colspan="9" class="empty">${esc(d.error||"Failed to load")}</td></tr>`; return; }
+  tb.innerHTML = d.groups.length ? d.groups.map(g=>`
+    <tr class="mon-row sev-${esc(g.severity)}" style="cursor:pointer" onclick="openMonGroup(${g.id})">
+      <td><span class="mon-sev">${esc(g.severity)}</span></td>
+      <td>${esc(g.operation||"—")}</td>
+      <td>${esc(g.school_name || (g.last_school_id ? "School #"+g.last_school_id : "—"))}</td>
+      <td style="font-size:.8rem">${esc(g.endpoint||"—")}<div style="opacity:.8">${esc(g.exception_type||"")}</div></td>
+      <td><b>${g.occurrence_count}</b></td>
+      <td style="white-space:nowrap;font-size:.78rem">${monTime(g.first_seen)}</td>
+      <td style="white-space:nowrap;font-size:.78rem">${monTime(g.last_seen)}</td>
+      <td>${esc(MON_STATUS[g.status]||g.status)}</td>
+      <td style="font-family:monospace;font-size:.76rem">${esc(g.last_event_id||"")}</td>
+    </tr>`).join("") : `<tr><td colspan="9" class="empty">No error groups match.</td></tr>`;
+  const from = d.groups.length ? monOffset+1 : 0;
+  document.getElementById("mon-pager-info").textContent = `${from}–${monOffset+d.groups.length} of ${d.total}`;
   document.getElementById("mon-prev").disabled = monOffset === 0;
   document.getElementById("mon-next").disabled = monOffset + MON_PAGE >= d.total;
 }
-
-function monFilterChanged(){ monOffset = 0; loadMonEvents(); }
+function monFilterChanged(){ monOffset = 0; loadMonGroups(); }
+function monSearchDebounced(){ clearTimeout(monDebounce); monDebounce = setTimeout(monFilterChanged, 350); }
 function monClearFilters(){
-  ["mon-f-severity","mon-f-status","mon-f-school","mon-f-operation","mon-f-from","mon-f-to"]
-    .forEach(id=>{ document.getElementById(id).value = ""; });
+  ["mon-f-q","mon-f-severity","mon-f-status","mon-f-school","mon-f-operation","mon-f-from","mon-f-to"].forEach(id=>{ document.getElementById(id).value = ""; });
+  document.getElementById("mon-f-sort").value = "last_seen";
   monFilterChanged();
 }
-function monPage(delta){ monOffset = Math.max(0, monOffset + delta*MON_PAGE); loadMonEvents(); }
+function monPage(delta){ monOffset = Math.max(0, monOffset + delta*MON_PAGE); loadMonGroups(); }
 
-async function openMonEvent(id){
-  const d = await saApi("/monitoring/events/" + encodeURIComponent(id));
-  if(!d.ok){ toast(d.error||"Could not load event","error"); return; }
-  const e = d.event; monCurrentId = e.event_id;
+async function openMonGroup(gid){
+  const d = await saApi("/monitoring/groups/" + gid);
+  if(!d.ok){ toast(d.error||"Could not load group","error"); return; }
+  const g = d.group, l = d.latest; monCurrentGid = g.id;
   const kv = (k,v)=>`<div class="mon-kv"><span>${k}</span><b>${esc(v==null||v===""?"—":v)}</b></div>`;
-  const statusOpts = Object.entries(MON_STATUS).map(([k,l])=>`<option value="${k}" ${k===e.status?"selected":""}>${l}</option>`).join("");
+  const when = s=>s ? s.replace("T"," ").slice(0,19) + " UTC" : "";
+  const statusOpts = Object.entries(MON_STATUS).map(([k,lb])=>`<option value="${k}" ${k===g.status?"selected":""}>${lb}</option>`).join("");
+  const occ = d.occurrences.map(o=>`<tr><td style="font-family:monospace;font-size:.76rem">${esc(o.event_id)}</td>
+      <td style="font-size:.78rem">${esc(when(o.created_at))}</td><td>${esc(o.school_name || (o.school_id?"School #"+o.school_id:"—"))}</td>
+      <td>${esc(o.username ? o.username+" ("+(o.role||"?")+")" : "—")}</td></tr>`).join("");
   document.getElementById("mon-detail-body").innerHTML = `
-    <div class="mon-detail-head sev-${esc(e.severity)}">${esc(e.severity)} · ${esc(e.event_id)}</div>
+    <div class="mon-detail-head sev-${esc(g.severity)}">${esc(g.severity)} · ${g.occurrence_count} occurrence${g.occurrence_count===1?"":"s"}</div>
     <div class="mon-grid">
-      ${kv("Status", MON_STATUS[e.status]||e.status)}${kv("Time (UTC)", (e.created_at||"").replace("T"," ").slice(0,19))}
-      ${kv("Operation", e.operation)}${kv("Endpoint", (e.method||"")+" "+(e.endpoint||""))}
-      ${kv("Path", e.path)}${kv("HTTP status", e.http_status)}
-      ${kv("School", e.school_name || (e.school_id?"School #"+e.school_id:""))}${kv("User", e.username ? e.username+" ("+(e.role||"?")+")" : "")}
-      ${kv("Exception type", e.exception_type)}${kv("Kind", e.kind)}
+      ${kv("Status", MON_STATUS[g.status]||g.status)}${kv("Operation", g.operation)}
+      ${kv("Endpoint", g.endpoint)}${kv("Exception type", g.exception_type)}
+      ${kv("First seen", when(g.first_seen))}${kv("Last seen", when(g.last_seen))}
+      ${kv("Latest school", g.school_name || (g.last_school_id?"School #"+g.last_school_id:""))}${kv("Latest event", g.last_event_id)}
+      ${kv("Last alert email", g.last_alert_at ? when(g.last_alert_at) : "never")}${kv("Suppressed since last alert", g.suppressed_since_alert)}
     </div>
-    <label class="lbl">Message</label><pre>${esc(e.message||"")}</pre>
-    <label class="lbl">Traceback</label><pre>${esc(e.traceback||"(none)")}</pre>
-    <label class="lbl">Diagnostic context</label><pre>${esc(JSON.stringify(e.context||{}, null, 2))}</pre>
+    ${l ? `<label class="lbl">Latest message</label><pre>${esc(l.message||"")}</pre>
+    <label class="lbl">Latest traceback</label><pre>${esc(l.traceback||"(none)")}</pre>
+    <label class="lbl">Diagnostic context (latest)</label><pre>${esc(JSON.stringify(l.context||{}, null, 2))}</pre>`
+    : `<p style="color:var(--muted);font-size:.85rem">Latest event details are no longer stored.</p>`}
+    <label class="lbl">Recent occurrences (newest ${d.occurrences.length} kept)</label>
+    <div class="table-wrap" style="margin:4px 0 14px"><table><thead><tr><th>Event</th><th>Time</th><th>School</th><th>User</th></tr></thead><tbody>${occ}</tbody></table></div>
     <label class="lbl">Status</label><select id="mon-d-status">${statusOpts}</select>
     <label class="lbl">Internal notes (superadmin only)</label>
-    <textarea id="mon-d-notes" rows="4">${esc(e.admin_notes||"")}</textarea>
-    <button class="btn btn-purple" onclick="saveMonEvent()">Save</button>`;
+    <textarea id="mon-d-notes" rows="4">${esc(g.admin_notes||"")}</textarea>
+    <button class="btn btn-purple" onclick="saveMonGroup()">Save</button>`;
   document.getElementById("mon-modal").style.display = "flex";
 }
 function closeMonEvent(){ document.getElementById("mon-modal").style.display = "none"; }
 
-async function saveMonEvent(){
-  if(!monCurrentId) return;
+async function saveMonGroup(){
+  if(!monCurrentGid) return;
   const status = document.getElementById("mon-d-status").value;
   const admin_notes = document.getElementById("mon-d-notes").value;
-  const d = await saApi("/monitoring/events/" + encodeURIComponent(monCurrentId), "POST", {status, admin_notes});
+  const d = await saApi("/monitoring/groups/" + monCurrentGid, "POST", {status, admin_notes});
   if(!d.ok){ toast(d.error||"Failed to save","error"); return; }
-  toast("Saved","success"); closeMonEvent(); loadMonSummary(); loadMonEvents();
+  toast("Saved","success"); closeMonEvent(); loadMonSummary(); loadMonGroups(); refreshBadges();
 }
 
+
 // ── UTILS ──────────────────────────────────────────────────
-function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 </script>
 </body>
 </html>

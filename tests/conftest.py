@@ -44,6 +44,9 @@ def _configure_environment():
     os.environ["SCHOOL_SUBSCRIPTION_ENFORCED"] = "0"
     os.environ["SUPERADMIN_USERNAME"] = "test_superadmin"
     os.environ["SUPERADMIN_PASSWORD"] = "test_superadmin_pw"
+    os.environ["ALERT_EMAIL_TO"] = ""
+    os.environ["ALERT_EMAIL_API_KEY"] = ""
+    os.environ["ALERT_SMTP_HOST"] = ""
     return url
 
 
@@ -57,7 +60,11 @@ def app():
     return app_module.app
 
 
+_RESETTABLE = None   # the table list is fixed for the whole session
+
+
 def _reset_database():
+    global _RESETTABLE
     from core.db import get_db
     con = get_db(); cur = con.cursor()
     try:
@@ -65,10 +72,15 @@ def _reset_database():
         name = cur.fetchone()[0]
         if not name.endswith("_test"):
             raise RuntimeError(f"SAFETY STOP: connected to '{name}', not a test database")
-        cur.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
-        tables = [r[0] for r in cur.fetchall() if r[0] not in KEEP_TABLES]
-        if tables:
-            cur.execute("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE")
+        if _RESETTABLE is None:
+            cur.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+            _RESETTABLE = [r[0] for r in cur.fetchall() if r[0] not in KEEP_TABLES]
+        if _RESETTABLE:
+            cur.execute(" UNION ALL ".join(
+                f"SELECT '{t}' WHERE EXISTS (SELECT 1 FROM \"{t}\")" for t in _RESETTABLE))
+            dirty = [r[0] for r in cur.fetchall()]
+            if dirty:
+                cur.execute("TRUNCATE " + ", ".join(f'"{t}"' for t in dirty) + " RESTART IDENTITY CASCADE")
         con.commit()
     except Exception:
         con.rollback(); raise

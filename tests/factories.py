@@ -65,79 +65,7 @@ def query(sql, params=()):
         con.close()
 
 
-def make_school(name=None, reg_code=None, with_defaults=True, grading_system="o_level"):
-    n = next(_n)
-    name = name or f"Test School {n}"
-    reg_code = reg_code or f"T{1000 + n}"
 
-    con = get_db()
-    cur = con.cursor()
-
-    try:
-        cur.execute(
-            """INSERT INTO schools(
-                   school_name, reg_code, necta_code, verification_status,
-                   subscription_exempt, grading_system, division_source
-               )
-               VALUES(%s,%s,%s,'approved',1,%s,'school')
-               RETURNING id""",
-            (name, reg_code, reg_code, grading_system),
-        )
-        sid = cur.fetchone()[0]
-
-        for k, v in {
-            "school_name": name,
-            "registration_complete": "1",
-            "onboarding_complete": "1",
-            "phone": "",
-            "email": "",
-            "motto": "",
-            "logo_path": "",
-            "admin_phone": "",
-        }.items():
-            cur.execute(
-                "INSERT INTO school_config(school_id,key,value) VALUES(%s,%s,%s)",
-                (sid, k, v),
-            )
-
-        if with_defaults:
-            cur.executemany(
-                """INSERT INTO school_subjects(
-                       school_id,name,abbreviation,sort_order
-                   )
-                   VALUES(%s,%s,%s,%s)""",
-                [
-                    (sid, subj, ab, i)
-                    for i, (subj, ab) in enumerate(DEFAULT_SUBJECTS)
-                ],
-            )
-
-            cur.executemany(
-                """INSERT INTO grade_config(
-                       school_id,min_score,max_score,grade,points,sort_order
-                   )
-                   VALUES(%s,%s,%s,%s,%s,%s)""",
-                [
-                    (sid, lo, hi, g, p, i)
-                    for i, (lo, hi, g, p) in enumerate(DEFAULT_GRADES)
-                ],
-            )
-
-        con.commit()
-
-        return {
-            "id": sid,
-            "name": name,
-            "reg_code": reg_code,
-        }
-
-    except Exception:
-        con.rollback()
-        raise
-
-    finally:
-        cur.close()
-        con.close()
 
 
 def make_term(
@@ -341,38 +269,49 @@ def make_student(school, class_, stream=None, name=None, phone="0712345678"):
         cur.close()
         con.close()
 
+def make_school(name=None, reg_code=None, with_defaults=True, grading_system="o_level"):
+    n = next(_n)
+    name = name or f"Test School {n}"
+    reg_code = reg_code or f"T{1000 + n}"
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("""INSERT INTO schools(school_name, reg_code, necta_code, verification_status,
+                                           subscription_exempt, grading_system, division_source)
+                       VALUES(%s,%s,%s,'approved',1,%s,'school') RETURNING id""",
+                    (name, reg_code, reg_code, grading_system))
+        sid = cur.fetchone()[0]
+        cfg = {"school_name": name, "registration_complete": "1", "onboarding_complete": "1",
+               "phone": "", "email": "", "motto": "", "logo_path": "", "admin_phone": ""}
+        cur.executemany("INSERT INTO school_config(school_id,key,value) VALUES(%s,%s,%s)",
+                        [(sid, k, v) for k, v in cfg.items()])
+        if with_defaults:
+            cur.executemany("INSERT INTO school_subjects(school_id,name,abbreviation,sort_order) VALUES(%s,%s,%s,%s)",
+                            [(sid, subj, ab, i) for i, (subj, ab) in enumerate(DEFAULT_SUBJECTS)])
+            cur.executemany("""INSERT INTO grade_config(school_id,min_score,max_score,grade,points,sort_order)
+                               VALUES(%s,%s,%s,%s,%s,%s)""",
+                            [(sid, lo, hi, g, p, i) for i, (lo, hi, g, p) in enumerate(DEFAULT_GRADES)])
+        con.commit()
+    except Exception:
+        con.rollback(); raise
+    finally:
+        cur.close(); con.close()
+    return {"id": sid, "name": name, "reg_code": reg_code}
+
 
 def make_marks(school, term, student, subject, ca=None, exam=None):
-    """ca: {"CA1": 60, "CA2": 80}; exam: number."""
-    for ca_name, score in (ca or {}).items():
-        run(
-            """INSERT INTO ca_scores(
-                   school_id,student_id,subject,ca_name,
-                   score,entered_by,term_id
-               )
-               VALUES(%s,%s,%s,%s,%s,'factory',%s)""",
-            (
-                school["id"],
-                student["id"],
-                subject,
-                ca_name,
-                score,
-                term["id"],
-            ),
-        )
-
-    if exam is not None:
-        run(
-            """INSERT INTO exam_scores(
-                   school_id,student_id,subject,score,
-                   entered_by,term_id
-               )
-               VALUES(%s,%s,%s,%s,'factory',%s)""",
-            (
-                school["id"],
-                student["id"],
-                subject,
-                exam,
-                term["id"],
-            ),
-        )
+    """ca: {"CA1": 60, "CA2": 80}; exam: number. One connection for all rows."""
+    con = get_db(); cur = con.cursor()
+    try:
+        for ca_name, score in (ca or {}).items():
+            cur.execute("""INSERT INTO ca_scores(school_id,student_id,subject,ca_name,score,entered_by,term_id)
+                           VALUES(%s,%s,%s,%s,%s,'factory',%s)""",
+                        (school["id"], student["id"], subject, ca_name, score, term["id"]))
+        if exam is not None:
+            cur.execute("""INSERT INTO exam_scores(school_id,student_id,subject,score,entered_by,term_id)
+                           VALUES(%s,%s,%s,%s,'factory',%s)""",
+                        (school["id"], student["id"], subject, exam, term["id"]))
+        con.commit()
+    except Exception:
+        con.rollback(); raise
+    finally:
+        cur.close(); con.close()

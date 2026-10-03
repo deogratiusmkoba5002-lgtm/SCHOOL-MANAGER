@@ -411,6 +411,38 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_error_events_sev_status ON error_events(severity, status);
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS error_groups (
+        id                     SERIAL PRIMARY KEY,
+        fingerprint            TEXT NOT NULL UNIQUE,
+        severity               TEXT NOT NULL,
+        kind                   TEXT NOT NULL DEFAULT 'exception',
+        exception_type         TEXT,
+        endpoint               TEXT,
+        operation              TEXT,
+        sample_message         TEXT,
+        occurrence_count       INTEGER NOT NULL DEFAULT 1,
+        first_seen             TIMESTAMP NOT NULL,
+        last_seen              TIMESTAMP NOT NULL,
+        last_event_id          TEXT,
+        last_school_id         INTEGER,
+        status                 TEXT NOT NULL DEFAULT 'new',
+        admin_notes            TEXT DEFAULT '',
+        last_alert_at          TIMESTAMP,
+        suppressed_since_alert INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_error_groups_last_seen ON error_groups(last_seen DESC);
+    CREATE INDEX IF NOT EXISTS idx_error_groups_status ON error_groups(status, severity);
+    CREATE INDEX IF NOT EXISTS idx_error_events_fingerprint ON error_events(fingerprint);
+    CREATE TABLE IF NOT EXISTS error_alerts (
+        id        SERIAL PRIMARY KEY,
+        group_id  INTEGER NOT NULL,
+        sent_at   TIMESTAMP NOT NULL,
+        delivered BOOLEAN,
+        error     TEXT
+    );
+    """)
+
 
     # Migrations - add missing columns to existing tables
     migrations = [
