@@ -107,9 +107,9 @@ function renderOverviewAnalytics(prefix, d){
       : `<p style="padding:12px 0;color:var(--muted)" data-i18n="no-decl-student">No declining students.</p>`});
   if(d.best_subject !== undefined){
     sections.push({key:"best", title:"📚 Best Subject", count: d.best_subject ? cap(d.best_subject.subject) : "—",
-      bodyHtml: d.best_subject ? `<p style="padding:12px 0">${cap(d.best_subject.subject)} — average <strong>${d.best_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)">No data</p>`});
+      bodyHtml: d.best_subject ? `<p style="padding:12px 0" data-i18n="analytics-best-subject">${cap(d.best_subject.subject)} — average <strong>${d.best_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)" data-i18n="analytics-no-data">No data</p>`});
     sections.push({key:"weak", title:"📚 Weakest Subject", count: d.weakest_subject ? cap(d.weakest_subject.subject) : "—",
-      bodyHtml: d.weakest_subject ? `<p style="padding:12px 0">${cap(d.weakest_subject.subject)} — average <strong>${d.weakest_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)">No data</p>`});
+      bodyHtml: d.weakest_subject ? `<p style="padding:12px 0" data-i18n="analytics-weakest-subject">${cap(d.weakest_subject.subject)} — average <strong>${d.weakest_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)" data-i18n="analytics-no-data>No data</p>`});
   }
   sections.push({key:"risk", title:"⚠ Students At Risk", count:d.at_risk.length,
     bodyHtml: d.at_risk.length

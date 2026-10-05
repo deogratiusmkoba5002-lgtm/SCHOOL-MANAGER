@@ -20,7 +20,7 @@ async function loadPlatformNotices(){
           <div style="font-size:.76rem;color:#9E9E9E">${n.posted_at ? n.posted_at.slice(0,16) : ''}</div>
         </div>
         <div style="margin-top:6px;font-size:.87rem;color:#37474F;white-space:pre-wrap">${escHtml(n.body)}</div>
-        ${!n.is_read ? `<button onclick="markPlatformNoticeRead(${n.id})" style="margin-top:8px;background:none;border:1px solid #7B1FA2;color:#7B1FA2;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer">Mark as read</button>` : ''}
+        ${!n.is_read ? `<button onclick="markPlatformNoticeRead(${n.id})" style="margin-top:8px;background:none;border:1px solid #7B1FA2;color:#7B1FA2;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer" data-i18n="mark-as-read-btn">Mark as read</button>` : ''}
       </div>`).join("");
   } catch(e){}
 }
@@ -50,23 +50,23 @@ async function loadSubscriptionTicket(){
   card.style.display="block";
   if(s.pending_request){
     body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span class="badge badge-orange">🟡 Pending Verification</span>
-      <span style="color:var(--muted);font-size:.85rem">Plan: ${cap(s.pending_request.plan)}</span>
+      <span class="badge badge-orange" data-i18n="pend-verif">🟡 Pending Verification</span>
+      <span style="color:var(--muted);font-size:.85rem" data-i18n="plan">Plan: ${cap(s.pending_request.plan)}</span>
     </div>`;
     return;
   }
   if(!s.active){
-    body.innerHTML = `<div style="color:var(--red);font-weight:600">🔒 No active subscription</div>
-      <button class="btn btn-blue btn-sm" style="margin-top:8px" onclick="goToSubscriptionPage()">Subscribe Now</button>`;
+    body.innerHTML = `<div style="color:var(--red);font-weight:600" data-i18n="no-sub">🔒 No active subscription</div>
+      <button class="btn btn-blue btn-sm" style="margin-top:8px" onclick="goToSubscriptionPage()" data-i18n="sub-now-btn">Subscribe Now</button>`;
     return;
   }
   const daysLeft = Math.ceil((new Date(s.expires_at) - new Date()) / 86400000);
   body.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
     <div>
-      <div style="font-weight:700;color:var(--navy)">${cap(s.plan||"")} Plan</div>
-      <div style="font-size:.82rem;color:var(--muted)">Expires ${new Date(s.expires_at).toLocaleDateString()} (${daysLeft} day${daysLeft===1?"":"s"} left)</div>
+      <div style="font-weight:700;color:var(--navy)" data-i18n="plan">${cap(s.plan||"")} Plan</div>
+      <div style="font-size:.82rem;color:var(--muted)" data-i18n="expires">Expires ${new Date(s.expires_at).toLocaleDateString()} (${daysLeft} day${daysLeft===1?"":"s"} left)</div>
     </div>
-    <span class="badge ${daysLeft<=7?'badge-red':'badge-green'}">${daysLeft<=7?'Renew soon':'Active'}</span>
+    <span class="badge ${daysLeft<=7?'badge-red':'badge-green'}" data-i18n="renew-soon">${daysLeft<=7?'Renew soon':'Active'}</span>
   </div>`;
 }
 
@@ -95,7 +95,7 @@ async function loadDashboard(){
     ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Class</th></tr></thead><tbody>
        ${recent.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td><span class="badge badge-blue">${cap(s.class_name)}</span></td></tr>`).join("")}
        </tbody></table></div>`
-    : `<div class="empty-state">${emptySVG()}<p>No students yet</p></div>`;
+    : `<div class="empty-state" data-i18n="no-studs">${emptySVG()}<p>No students yet</p></div>`;
 }
 
 async function loadClassAnalyticsCard(){
@@ -108,13 +108,13 @@ async function loadClassAnalyticsCard(){
   card.style.display="block";
   body.innerHTML = `
     <div style="background:#E8F5E9;border-radius:10px;padding:14px">
-      <div style="font-size:.75rem;font-weight:700;color:#2E7D32;text-transform:uppercase">🏆 Best Performing Class</div>
+      <div style="font-size:.75rem;font-weight:700;color:#2E7D32;text-transform:uppercase" data-i18n="best-perf-class">🏆 Best Performing Class</div>
       <div style="font-size:1.1rem;font-weight:800;color:var(--navy);margin-top:4px">${d.best?d.best.class_name:"—"}</div>
       <div style="font-size:.85rem;color:var(--muted)">${d.best?d.best.average+"% average":""}</div>
     </div>
     <div style="background:#FFEBEE;border-radius:10px;padding:14px">
-      <div style="font-size:.75rem;font-weight:700;color:#C62828;text-transform:uppercase">⚠ Weakest Performing Class</div>
+      <div style="font-size:.75rem;font-weight:700;color:#C62828;text-transform:uppercase" data-i18n="weakest-perf-class">⚠ Weakest Performing Class</div>
       <div style="font-size:1.1rem;font-weight:800;color:var(--navy);margin-top:4px">${d.weakest?d.weakest.class_name:"—"}</div>
-      <div style="font-size:.85rem;color:var(--muted)">${d.weakest?d.weakest.average+"% average":""}</div>
+      <div style="font-size:.85rem;color:var(--muted)" data-i18n="average">${d.weakest?d.weakest.average+"% average":""}</div>
     </div>`;
 }
