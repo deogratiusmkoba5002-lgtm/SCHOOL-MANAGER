@@ -85,7 +85,7 @@ def reg_form(**over):
 
 @pytest.mark.parametrize("over,why", [
     ({"school_name": ""}, "no school name"), ({"agree_terms": "0"}, "terms not accepted"),
-    ({"reg_code": "BAD"}, "invalid NECTA code"), ({"subjects": "[]"}, "no subjects"),
+    ({"reg_code": "bad code!"}, "invalid registration code"), ({"subjects": "[]"}, "no subjects"),
     ({"grades": "[]"}, "no grades"), ({"classes": "not json"}, "malformed JSON")])
 def test_registration_rejects_bad_input(client, over, why):
     assert client.post("/api/register/school", data=reg_form(**over)).status_code == 400, why

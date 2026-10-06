@@ -62,7 +62,8 @@ def test_non_superadmin_tokens_are_rejected(client, login, sa):
     school = make_school(); cls = make_class(school)
     admin = make_admin(school); teacher = make_teacher(school); student = make_student(school, cls)
     eid = add_event()
-    tampered = sa["Authorization"][:-1] + ("A" if sa["Authorization"][-1] != "A" else "B")
+    head, sig = sa["Authorization"].rsplit(".", 1)
+    tampered = head + "." + ("A" if sig[0] != "A" else "B") + sig[1:]
     attackers = {
         "school admin": login(school, admin["username"]),
         "teacher": login(school, teacher["username"]),

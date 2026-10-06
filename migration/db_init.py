@@ -653,6 +653,21 @@ def init_db():
     except Exception as e:
         print(f"Index creation note: {e}")
 
+    # Whole-class assignments have stream_id NULL, and Postgres treats NULLs as
+    # distinct in UNIQUE, so duplicates slipped through. Remove existing dupes
+    # (keep the oldest), then enforce uniqueness with NULL treated as 0.
+    try:
+        cur.execute("SAVEPOINT sp_assign_unique")
+        cur.execute("""DELETE FROM subject_assignments a USING subject_assignments b
+                       WHERE a.id > b.id AND a.school_id=b.school_id AND a.username=b.username
+                         AND a.subject=b.subject AND a.class_id=b.class_id
+                         AND COALESCE(a.stream_id,0)=COALESCE(b.stream_id,0)""")
+        cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_subject_assignments_unique
+                       ON subject_assignments (school_id, username, subject, class_id, COALESCE(stream_id,0))""")
+        cur.execute("RELEASE SAVEPOINT sp_assign_unique")
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_assign_unique")
+        print(f"assignment unique-index note: {e}")
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 

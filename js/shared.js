@@ -320,14 +320,12 @@ async function bootApp(){
   const classData = await api("/classes");
   allClasses = classData;
   await refreshTermBanner();
-  const needsOnboarding = currentUser.role==="admin" && config.onboarding_complete===false;
-  const defaultPage = currentUser.role==="admin" ? (needsOnboarding ? "students" : "dashboard") : "marks";
+  const defaultPage = currentUser.role==="admin" ? "dashboard" : "marks";
   showPage(defaultPage);
-  if(!needsOnboarding) loadDashboard();
+  loadDashboard();
   checkSubscriptionExpiryBadge();
   if(typeof refreshStarNotifBadge==="function") refreshStarNotifBadge();
-  if(currentUser.must_change_password) openModal("modal-change-password");
-  if(needsOnboarding && typeof startOnboarding==="function") startOnboarding();
+  if(currentUser.must_change_password) openModal("modal-change-password");  
 }
 // ── NAV ──────────────────────────────────────────────────────
 const NAV_ADMIN = [

@@ -1,13 +1,13 @@
 // ── PARENT DASHBOARD ─────────────────────────────────────────
 async function loadParentDashboard(){
   const conf = await api("/config");
-  const schoolName = conf.school_name || "our school";
+  const schoolName = conf.school_name || t("our-school");
   const raw = currentUser.username.replace(/_/g," ");
   const studentName = raw.charAt(0).toUpperCase() + raw.slice(1);
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? t("greet-morning") : hour < 17 ? t("greet-afternoon") : t("greet-evening");
   document.getElementById("parent-greeting-text").textContent = greeting + ", " + studentName + "!";
-  document.getElementById("parent-greeting-sub").textContent  = "Welcome to " + schoolName + " Student Portal";
+  document.getElementById("parent-greeting-sub").textContent  = t("Welcome-portal",{school:schoolName});
   checkAnnouncementDot();
 }
 
@@ -23,7 +23,7 @@ function showParentSection(section){
 }
 function populateParentTermSel(selId, loadAssessments=false){
   const sel = document.getElementById(selId);
-  if(!parentPublishedTerms.length){ sel.innerHTML="<option value=''>No published results yet</option>"; return; }
+  if(!parentPublishedTerms.length){ sel.innerHTML=`<option value=''>${t("no-pub-results")}</option>`; return; }
   sel.innerHTML = parentPublishedTerms.map(t=>`<option value="${t.id}">${t.label}</option>`).join("");
   if(loadAssessments) loadResAssessments();
 }
@@ -49,15 +49,15 @@ async function loadResAssessments(){
   const pub = await api(`/results/assessments?term_id=${term_id}`);
   if(!pub.ok) return;
   pub.assessments.filter(a=>a.published).forEach(a=>{
-    const o=document.createElement("option"); o.value=a.assess_key; o.textContent=a.label; assessSel.appendChild(o);
+    const o=document.createElement("option"); o.value=a.assess_key; o.textContent=a.assess_key==="exam"? t("final-exam"):a.label; assessSel.appendChild(o);
   });
-  if(!assessSel.options.length){ const o=document.createElement("option"); o.value=""; o.textContent="No published assessments yet"; assessSel.appendChild(o); }
+  if(!assessSel.options.length){ const o=document.createElement("option"); o.value=""; o.textContent=t("No-pub-assess"); assessSel.appendChild(o); }
 }
 document.getElementById("parent-view-rc-btn").addEventListener("click", async()=>{
   const term_id = document.getElementById("parent-rc-term-sel").value;
-  if(!term_id){toast("Select a term","error");return;}
+  if(!term_id){toast(t("select-term"),"error");return;}
   const sid = currentUser.student_id;
-  if(!sid){toast("No student linked to this account","error");return;}
+  if(!sid){toast(t("no-student-linked"),"error");return;}
   const out = document.getElementById("parent-rc-output");
   out.innerHTML=`<div class="spinner"></div>`;
   const d = await api(`/report/${sid}?term_id=${term_id}`);
@@ -69,9 +69,9 @@ document.getElementById("parent-view-res-btn").addEventListener("click", async()
   const assessSel = document.getElementById("parent-res-assess-sel");
   const assess  = assessSel.value;
   const assessLabel = assessSel.options[assessSel.selectedIndex] ? assessSel.options[assessSel.selectedIndex].textContent : assess;
-  if(!term_id||!assess){toast("Select term and assessment","error");return;}
+  if(!term_id||!assess){toast(t("select-term-assess"),"error");return;}
   const sid = currentUser.student_id;
-  if(!sid){toast("No student linked to this account","error");return;}
+  if(!sid){toast(t("no-student-linked"),"error");return;}
   const out = document.getElementById("parent-res-output");
   out.innerHTML=`<div class="spinner"></div>`;
   const d = await api(`/parent/results?student_id=${sid}&term_id=${term_id}&assess=${assess}`);
@@ -79,8 +79,8 @@ document.getElementById("parent-view-res-btn").addEventListener("click", async()
   renderParentSingleResults(out, d, assess, assessLabel);
 });
 function renderParentSingleResults(out, d, assess, assessLabel){
-  assessLabel = assessLabel || (assess==="exam" ? "Final Exam" : assess);
-  const streamPos = d.stream_position!=null ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">Stream Pos</div></div>` : "";
+  assessLabel = assessLabel || (assess==="exam" ? t("final-exam") : assess);
+  const streamPos = d.stream_position!=null ? `<div class="summary-cell"><div class="val">${d.stream_position}/${d.stream_total}</div><div class="lbl">${t("stream-pos")}</div></div>` : "";
   const sorted = [...d.results].filter(r=>{ const score = r.score; return score!==null && score!==undefined; })
     .sort((a,b)=>{ const pa = typeof a.position==="number" ? a.position : 9999; const pb = typeof b.position==="number" ? b.position : 9999; return pa - pb; });
   const rows = sorted.map(r=>{
@@ -99,14 +99,14 @@ function renderParentSingleResults(out, d, assess, assessLabel){
       <div style="font-size:.82rem;color:var(--muted)">${d.student.class_name}${d.student.stream_name?" "+d.student.stream_name:""} · ${d.term.label} · ${assessLabel}</div>
     </div>
     <div class="summary-band" style="margin-bottom:16px">
-      <div class="summary-cell"><div class="val">${d.average.toFixed(1)}</div><div class="lbl">Average</div></div>
-      <div class="summary-cell"><div class="val">${get_grade_js(d.average)}</div><div class="lbl">Grade</div></div>
-      <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">Class Pos</div></div>
+      <div class="summary-cell"><div class="val">${d.average.toFixed(1)}</div><div class="lbl">${t("avg-lbl")}</div></div>
+      <div class="summary-cell"><div class="val">${get_grade_js(d.average)}</div><div class="lbl">${t("grade-lbl")}</div></div>
+      <div class="summary-cell"><div class="val">${d.class_position}/${d.class_total}</div><div class="lbl">${t("class-pos")}</div></div>
       ${streamPos}   
     </div>
     <div class="table-wrap">
-      <table><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Position</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">No marks entered yet for this assessment</td></tr>'}</tbody></table>
+      <table><thead><tr><th>${t("th-subject")}</th><th>${t("th-score")}</th><th>${t("grade-lbl")}</th><th>${t("th-position")}</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">${t("no-marks-yet")}</td></tr>'}</tbody></table>
     </div>
   </div>`;
 }
@@ -304,8 +304,8 @@ function showAnalyticsNoData(){
   document.getElementById("analytics-no-data").style.display="block";
   document.getElementById("analytics-summary-grid").style.display="grid";
   document.getElementById("analytics-insights-card").style.display="block";
-  document.getElementById("analytics-best").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
-  document.getElementById("analytics-weak").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet.</p>`;
+  document.getElementById("analytics-best").innerHTML=`<p style="color:var(--muted);font-size:.85rem">${t("no-pub-short")}</p>`;
+  document.getElementById("analytics-weak").innerHTML=`<p style="color:var(--muted);font-size:.85rem">${t("no-pub-long")}</p>`;
   document.getElementById("analytics-insights").innerHTML=`<p style="color:var(--muted);font-size:.85rem">No published results yet. Results will appear here once published by the school.</p>`;
 }
 function showAnalyticsLocked(){
@@ -315,7 +315,7 @@ function showAnalyticsLocked(){
   document.getElementById("analytics-summary-grid").style.display = "grid";
   document.getElementById("analytics-insights-card").style.display = "block";
   drawTrendChart("analytics-chart", [], []);   // empty axes, "Not enough data yet"
-  const lockedMsg = `<p style="color:var(--muted);font-size:.85rem">🔒 Subscribe to see this</p>`;
+  const lockedMsg = `<p style="color:var(--muted);font-size:.85rem">🔒 ${t("sub-to-see")}</p>`;
   document.getElementById("analytics-best").innerHTML = lockedMsg;
   document.getElementById("analytics-weak").innerHTML = lockedMsg;
   document.getElementById("analytics-insights").innerHTML = lockedMsg;
@@ -367,13 +367,14 @@ function renderAnalyticsSummary(){
   const capS = s=>s.charAt(0).toUpperCase()+s.slice(1);
   document.getElementById("analytics-best").innerHTML = best.length
     ? best.map(([s,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--pale)"><span style="font-size:.85rem">${capS(s)}</span><span style="font-weight:700;color:var(--green)">${v.toFixed(1)}</span></div>`).join("")
-    : `<p style="color:var(--muted);font-size:.85rem">Not enough data</p>`;
+    : `<p style="color:var(--muted);font-size:.85rem">${t("not-enough-data")}</p>`;
   document.getElementById("analytics-weak").innerHTML = weak.length
     ? weak.map(([s,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--pale)"><span style="font-size:.85rem">${capS(s)}</span><span style="font-weight:700;color:var(--red)">${v.toFixed(1)}</span></div>`).join("")
-    : `<p style="color:var(--muted);font-size:.85rem">Not enough data</p>`;
+    : `<p style="color:var(--muted);font-size:.85rem">${t("not-enough-data")}</p>`;
 }
 function renderAnalyticsInsights(){
-  if(!analyticsData||analyticsData.length<2){ document.getElementById("analytics-insights").innerHTML=`<p style="color:var(--muted);font-size:.85rem">Need at least 2 published results to generate insights.</p>`; return; }
+  const box = document.getElementById("analytics-insights");
+  if(!analyticsData||analyticsData.length<2){ box.innerHTML=`<p style="color:var(--muted);font-size:.85rem">${t("need-two")}</p>`; return; }
   const studentName = (currentUser.username||"").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
   const last = analyticsData[analyticsData.length-1]; const prev = analyticsData[analyticsData.length-2];
   const capS = s=>s.charAt(0).toUpperCase()+s.slice(1);
@@ -383,27 +384,28 @@ function renderAnalyticsInsights(){
     if(cur===undefined||cur===null) return;
     const allScores = analyticsData.map(d=>d.subjectScores[s]).filter(v=>v!==undefined&&v!==null);
     const avg = allScores.reduce((a,b)=>a+b,0)/allScores.length;
-    if(avg>=85){ insights.push({type:"success", text:`Outstanding performance in ${capS(s)}! ${studentName} consistently excels here — keep maintaining this exceptional standard.`}); }
-    else if(avg<40){ insights.push({type:"danger", text:`${capS(s)} requires urgent attention. ${studentName} is scoring below expectations — increased focus, revision and support are strongly recommended.`}); }
+    const v = {student:studentName, subject:capS(s)};
+    if(avg>=85) insights.push({type:"success", text:t("ins-outstanding",v)});
+    else if(avg<40) insights.push({type:"danger", text:t("ins-urgent",v)});
     else if(pre!==undefined&&pre!==null){
       const diff = cur-pre;
-      if(diff>=15){ insights.push({type:"success", text:`Excellent improvement in ${capS(s)}! ${studentName} has made significant progress — keep up this momentum.`}); }
-      else if(diff<=-15){ insights.push({type:"warning", text:`A noticeable decline has been observed in ${capS(s)}. ${studentName} is encouraged to dedicate more time to revision.`}); }
-      else { insights.push({type:"info", text:`${studentName} is maintaining consistent performance in ${capS(s)}. Steady progress — a little extra push could move results to the next grade.`}); }
+      if(diff>=15) insights.push({type:"success", text:t("ins-improved",v)});
+      else if(diff<=-15) insights.push({type:"warning", text:t("ins-declined",v)});
+      else insights.push({type:"info", text:t("ins-steady",v)});
     }
   });
-  const curAvg = last.avg; const prevAvg = prev.avg;
-  if(curAvg>prevAvg){ insights.unshift({type:"success", text:`📈 Overall average improved from ${prevAvg} to ${curAvg}. Great work, ${studentName}!`}); }
-  else if(curAvg<prevAvg){ insights.unshift({type:"warning", text:`📉 Overall average dropped from ${prevAvg} to ${curAvg}. ${studentName} should focus on weaker areas.`}); }
+  const v2 = {student:studentName, prev:prev.avg, cur:last.avg};
+  if(last.avg>prev.avg) insights.unshift({type:"success", text:t("ins-avg-up",v2)});
+  else if(last.avg<prev.avg) insights.unshift({type:"warning", text:t("ins-avg-down",v2)});
   if(last.class_total>0){
     const pct = last.class_position/last.class_total;
-    if(pct<=0.25){ insights.unshift({type:"success", text:`🏆 ${studentName} is among the top 25% of students in the class — an outstanding achievement!`}); }
-    else if(last.stream_position&&last.stream_total&&last.stream_position/last.stream_total<=0.25){ insights.unshift({type:"success", text:`⭐ ${studentName} is among the top 25% performers in the class stream. Aim for the top of the whole class!`}); }
+    if(pct<=0.25) insights.unshift({type:"success", text:t("ins-top-class",{student:studentName})});
+    else if(last.stream_position&&last.stream_total&&last.stream_position/last.stream_total<=0.25) insights.unshift({type:"success", text:t("ins-top-stream",{student:studentName})});
   }
   const colors={success:"var(--green)",warning:"var(--orange)",danger:"var(--red)",info:"var(--blue)"};
   const bgcol ={success:"#E8F5E9",warning:"#FFF3E0",danger:"#FFEBEE",info:"#E3F2FD"};
   const icons ={success:"✅",warning:"⚠️",danger:"🚨",info:"💡"};
-  document.getElementById("analytics-insights").innerHTML = insights.length
+  box.innerHTML = insights.length
     ? insights.map(ins=>`<div style="display:flex;gap:10px;padding:10px 12px;border-radius:8px;background:${bgcol[ins.type]};margin-bottom:8px;border-left:3px solid ${colors[ins.type]}"><span style="flex-shrink:0;font-size:1rem">${icons[ins.type]}</span><span style="font-size:.84rem;color:#333;line-height:1.5">${ins.text}</span></div>`).join("")
-    : `<p style="color:var(--muted);font-size:.85rem">No insights available yet.</p>`;
+    : `<p style="color:var(--muted);font-size:.85rem">${t("no-insights")}</p>`;
 }

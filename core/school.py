@@ -83,14 +83,6 @@ def get_school_name(school_id):
 def is_registration_complete(school_id):
     return get_config_val(school_id, "registration_complete", "0") == "1"
 
-_NECTA_CODE_RE = re.compile(r'^[A-Za-z]\d{3,6}$')
-
-def valid_necta_code(code):
-    # Placeholder pattern (one letter + 3–6 digits, e.g. S1234). Swap this
-    # regex for the real NECTA format once you confirm it exactly.
-    return bool(code) and bool(_NECTA_CODE_RE.match(code.strip()))
-
-
 def purge_expired_rejected_schools():
     """Deletes schools rejected more than 6 hours ago that were never
     re-verified. Called lazily (no scheduler needed) whenever superadmin

@@ -43,7 +43,7 @@ function drawTrendChart(canvasId, labels, values){
 
   if(!values.length){
     ctx.fillStyle="#546E7A"; ctx.textAlign="center"; ctx.font="13px Arial";
-    ctx.fillText("Not enough data yet", PAD.left+cW/2, PAD.top+cH/2);
+    ctx.fillText(t("no-trend-data"), PAD.left+cW/2, PAD.top+cH/2);
     return;
   }
 
@@ -81,7 +81,7 @@ function renderTrendRows(list){
   return list.map(r=>`
     <div style="padding:8px 0;border-bottom:1px solid var(--pale)">
       <strong>${r.name}</strong>
-      <div style="font-size:.85rem;color:var(--muted)">${r.prev_value} → ${r.current_value} &nbsp;|&nbsp; Pos ${r.prev_position} → ${r.current_position}</div>
+      <div style="font-size:.85rem;color:var(--muted)">${r.prev_value} → ${r.current_value} &nbsp;|&nbsp; ${t("pos-short")} ${r.prev_position} → ${r.current_position}</div>
     </div>`).join("");
 }
 
@@ -89,32 +89,29 @@ function renderOverviewAnalytics(prefix, d){
   drawTrendChart(prefix+"-chart", d.graph.map(g=>g.label), d.graph.map(g=>g.value));
   const lblEl = document.getElementById(prefix+"-current-label");
   if(lblEl) lblEl.textContent = d.current_label || "—";
+  const empty = key => `<p style="padding:12px 0;color:var(--muted)">${t(key)}</p>`;
 
   const sections = [];
-  sections.push({key:"avg", title:"📊 Average", count: d.average!=null ? d.average+"%" : "—",
-    bodyHtml:`<p data-i18n="overview-avg" style="padding:12px 0;color:var(--muted)">Current average: <strong>${d.average!=null?d.average:"—"}</strong></p>`});
-  sections.push({key:"out", title:"🌟 Outstanding Performers", count:d.outstanding.length,
-    bodyHtml: d.outstanding.length ? renderStudentRows(d.outstanding,"value","position")
-      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="outstanding-performers">No Outstanding Performers identified.</p>`});
-  sections.push({key:"support", title:"📉 Students Needing Support", count:d.needs_support.length,
-    bodyHtml: d.needs_support.length ? renderStudentRows(d.needs_support,"value","position")
-      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="student-to-support">No Students Needing Support identified.</p>`});
-  sections.push({key:"improved", title:"📈 Improved Students", count:d.improved.length,
-    bodyHtml: d.improved.length ? renderTrendRows(d.improved)
-      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="no-impr-student">No improved students yet.</p>`});
-  sections.push({key:"declining", title:"📉 Declining Students", count:d.declining.length,
-    bodyHtml: d.declining.length ? renderTrendRows(d.declining)
-      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="no-decl-student">No declining students.</p>`});
+  sections.push({key:"avg", title:t("an-avg"), count: d.average!=null ? d.average+"%" : "—",
+    bodyHtml:`<p style="padding:12px 0;color:var(--muted)">${t("current-avg",{v: d.average!=null?d.average:"—"})}</p>`});
+  sections.push({key:"out", title:t("an-outstanding"), count:d.outstanding.length,
+    bodyHtml: d.outstanding.length ? renderStudentRows(d.outstanding,"value","position") : empty("outstanding-performers")});
+  sections.push({key:"support", title:t("an-support"), count:d.needs_support.length,
+    bodyHtml: d.needs_support.length ? renderStudentRows(d.needs_support,"value","position") : empty("student-to-support")});
+  sections.push({key:"improved", title:t("an-improved"), count:d.improved.length,
+    bodyHtml: d.improved.length ? renderTrendRows(d.improved) : empty("no-impr-student")});
+  sections.push({key:"declining", title:t("an-declining"), count:d.declining.length,
+    bodyHtml: d.declining.length ? renderTrendRows(d.declining) : empty("no-decl-student")});
   if(d.best_subject !== undefined){
-    sections.push({key:"best", title:"📚 Best Subject", count: d.best_subject ? cap(d.best_subject.subject) : "—",
-      bodyHtml: d.best_subject ? `<p style="padding:12px 0" data-i18n="analytics-best-subject">${cap(d.best_subject.subject)} — average <strong>${d.best_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)" data-i18n="analytics-no-data">No data</p>`});
-    sections.push({key:"weak", title:"📚 Weakest Subject", count: d.weakest_subject ? cap(d.weakest_subject.subject) : "—",
-      bodyHtml: d.weakest_subject ? `<p style="padding:12px 0" data-i18n="analytics-weakest-subject">${cap(d.weakest_subject.subject)} — average <strong>${d.weakest_subject.average}</strong></p>` : `<p style="padding:12px 0;color:var(--muted)" data-i18n="analytics-no-data>No data</p>`});
+    sections.push({key:"best", title:t("an-best"), count: d.best_subject ? cap(d.best_subject.subject) : "—",
+      bodyHtml: d.best_subject ? `<p style="padding:12px 0">${t("subj-avg",{s:cap(d.best_subject.subject), v:d.best_subject.average})}</p>` : empty("analytics-no-data")});
+    sections.push({key:"weak", title:t("an-weak"), count: d.weakest_subject ? cap(d.weakest_subject.subject) : "—",
+      bodyHtml: d.weakest_subject ? `<p style="padding:12px 0">${t("subj-avg",{s:cap(d.weakest_subject.subject), v:d.weakest_subject.average})}</p>` : empty("analytics-no-data")});
   }
-  sections.push({key:"risk", title:"⚠ Students At Risk", count:d.at_risk.length,
+  sections.push({key:"risk", title:t("an-risk"), count:d.at_risk.length,
     bodyHtml: d.at_risk.length
-      ? d.at_risk.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--pale)"><strong>${r.name}</strong> — ${r.value}<div style="font-size:.78rem;color:var(--red)">${r.reason}</div></div>`).join("")
-      : `<p style="padding:12px 0;color:var(--muted)" data-i18n="student-at-risk">No students at risk.</p>`});
+      ? d.at_risk.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--pale)"><strong>${r.name}</strong> — ${r.value}<div style="font-size:.78rem;color:var(--red)">${t("risk-reason")}</div></div>`).join("")
+      : empty("student-at-risk")});
 
   const cardsEl = document.getElementById(prefix+"-cards");
   if(cardsEl) cardsEl.innerHTML = analyticsAccordionHTML(prefix, sections);
@@ -127,7 +124,7 @@ async function loadAdminAnalytics(){
   const prevVal = classSel.value;
   // Always rebuild the options — allClasses may have changed (new class added
   // in Config) since the last time this page was opened.
-  classSel.innerHTML = `<option value="">Overall School</option>` +
+  classSel.innerHTML = `<option value="">${t("overall-school")}</option>` +
     allClasses.map(c=>`<option value="${c.id}">${c.class_name}</option>`).join("");
   if([...classSel.options].some(o=>o.value===prevVal)) classSel.value = prevVal;
   if(!classSel._boundChange){
@@ -148,7 +145,7 @@ function onAdminAnalyticsClassChange(){
   const c = classId ? getClassById(parseInt(classId)) : null;
   if(c && c.streams.length){
     streamSel.style.display="inline-block";
-    streamSel.innerHTML = `<option value="">All Streams</option>` +
+    streamSel.innerHTML = `<option value="">${t("all-streams")}</option>` +
       c.streams.map(s=>`<option value="${s.id}">${s.stream_name}</option>`).join("");
   } else { streamSel.style.display="none"; streamSel.innerHTML=""; }
   fetchAndRenderAdminAnalytics();
@@ -161,7 +158,7 @@ async function fetchAndRenderAdminAnalytics(){
   if(classId) url += "&class_id="+classId;
   if(streamId) url += "&stream_id="+streamId;
   const d = await api(url);
-  if(!d.ok){ toast(d.error||"Failed to load analytics","error"); return; }
+  if(!d.ok){ toast(d.error||t("an-load-fail"),"error"); return; }
   renderOverviewAnalytics("admin-an", d);
 }
 
@@ -186,7 +183,7 @@ async function loadTeacherAnalytics(){
   if(!teacherAssignments.length){
     sel.innerHTML = "";
     const cardsEl = document.getElementById("teacher-an-cards");
-    if(cardsEl) cardsEl.innerHTML = `<p style="color:var(--muted)">No subject assignments yet.</p>`;
+    if(cardsEl) cardsEl.innerHTML = `<p style="color:var(--muted)">${t("no-assign")}</p>`;
     return;
   }
   sel.innerHTML = teacherAssignments.map((a,i)=>
@@ -202,6 +199,6 @@ async function fetchAndRenderTeacherAnalytics(){
   let url = `/analytics/subject?role=teacher&username=${encodeURIComponent(currentUser.username)}&subject=${encodeURIComponent(a.subject)}&class_id=${a.class_id}`;
   if(a.stream_id) url += "&stream_id="+a.stream_id;
   const d = await api(url);
-  if(!d.ok){ toast(d.error||"Failed to load analytics","error"); return; }
+  if(!d.ok){ toast(d.error||t("an-load-fail"),"error"); return; }
   renderOverviewAnalytics("teacher-an", d);
 }

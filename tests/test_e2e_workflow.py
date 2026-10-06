@@ -77,7 +77,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
             "subjects": json.dumps([{"name": n, "abbreviation": a} for n, a in SUBJECTS]),
             "grades": json.dumps([{"min_score": lo, "max_score": hi, "grade": g} for lo, hi, g in GRADES])}
     assert client.post("/api/register/school", data=dict(form, agree_terms="0")).status_code == 400
-    assert client.post("/api/register/school", data=dict(form, reg_code="BAD")).status_code == 400
+    assert client.post("/api/register/school", data=dict(form, reg_code="bad code!")).status_code == 400
     school_id = _json(client.post("/api/register/school", data=form), "register school")["school_id"]
     assert client.post("/api/register/school", data=form).status_code == 409        # duplicate code
 

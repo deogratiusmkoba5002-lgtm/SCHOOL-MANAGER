@@ -2,11 +2,12 @@
 School self-registration route (the multi-step wizard in register.html).
 """
 import base64, json
+import psycopg2
 from flask import Blueprint, request, jsonify
 
 from core.db import get_db
 from core.security import hash_password
-from core.school import valid_necta_code, get_school_id_by_reg_code
+from core.school import valid_reg_code, get_school_id_by_reg_code
 from config import ALLOWED_LOGO_EXT, _mime_for_ext
 from services.stars import resolve_school_by_referral_token, record_referral_relationship
 from core.ratelimit import rate_limit
@@ -32,8 +33,8 @@ def api_register_school():
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
     if agree_terms != "1":
         return jsonify({"ok":False,"error":"You must agree to the Terms & Conditions and Privacy Policy"}), 400
-    if not valid_necta_code(reg_code):
-        return jsonify({"ok":False,"error":"Enter your school's official NECTA code (e.g. S1234) so we can verify your school before activating full access."}), 400
+    if not valid_reg_code(reg_code):
+        return jsonify({"ok":False,"error":"School registration code must be 3-32 characters: letters, numbers, underscore or hyphen only."}), 400
     if get_school_id_by_reg_code(reg_code):
         return jsonify({"ok":False,"error":f"School code '{reg_code}' is already registered. If this is your school, contact support."}), 409
     logo_b64 = ""; logo_mime = ""
@@ -51,6 +52,9 @@ def api_register_school():
         classes_data  = json.loads(data.get("classes","[]"))
         subjects_data = json.loads(data.get("subjects","[]"))
         grades_data   = json.loads(data.get("grades","[]"))
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close()
+        return jsonify({"ok":False,"error":f"School code '{reg_code}' is already registered. If this is your school, contact support."}), 409    
     except Exception as e:
         return jsonify({"ok":False,"error":f"Invalid JSON: {e}"}), 400
     if not subjects_data: return jsonify({"ok":False,"error":"At least one subject required"}), 400
