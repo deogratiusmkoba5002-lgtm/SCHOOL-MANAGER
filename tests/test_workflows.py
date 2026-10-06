@@ -219,8 +219,6 @@ def test_teacher_management(client, login):
     assert ok(client.get("/api/teachers", headers=a), "list") == []
 
 
-@pytest.mark.xfail(strict=False, reason="BUG: UNIQUE(school,user,subject,class,stream_id) never fires when stream_id "
-                                        "is NULL (Postgres treats NULLs as distinct), so whole-class assignments duplicate")
 def test_duplicate_whole_class_assignment_is_rejected(client, login):
     school, term, cls, admin, _ = classroom(0)
     teacher = make_teacher(school); a = login(school, admin["username"])
