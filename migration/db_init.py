@@ -488,6 +488,7 @@ def init_db():
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS approved_notice_pending INTEGER DEFAULT 0",
+        "ALTER TABLE star_withdrawals ADD COLUMN IF NOT EXISTS payout_reference TEXT",
     ]
     
     for m in migrations:
@@ -668,6 +669,12 @@ def init_db():
     except Exception as e:
         cur.execute("ROLLBACK TO SAVEPOINT sp_assign_unique")
         print(f"assignment unique-index note: {e}")
+    # One payment can qualify a parent exactly once, ever. Without this, the same paid
+    # parents re-qualify in every new cycle and mint free stars.
+    try:
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_star_qp_payment_ref ON star_qualifying_parents(payment_reference)")
+    except Exception as e:
+        print(f"star payment-reference index note: {e}")
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 

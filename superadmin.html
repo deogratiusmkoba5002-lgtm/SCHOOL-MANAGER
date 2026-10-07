@@ -670,7 +670,9 @@ function renderSchools(){
   tbody.innerHTML = rows.length ? rows.map(s=>`
     <tr>
       <td>${s.id}</td>
-      <td><strong>${esc(s.school_name)}</strong></td>
+      <td><strong>${esc(s.school_name)}</strong><br>
+        <button class="btn btn-danger" style="padding:2px 8px;font-size:.7rem;margin-top:4px"
+          data-id="${s.id}" data-name="${esc(s.school_name)}" onclick="resetAdminPassword(this)">Reset admin password</button></td>
       <td style="font-size:.82rem;color:#777">${esc(s.registered_at || "—")}</td>
       <td>${s.student_count}</td><td>${s.teacher_count}</td>
       <td><span style="font-size:.82rem;color:#555">${esc(s.active_term || "—")}</span></td>
@@ -865,6 +867,22 @@ async function saveMonGroup(){
   const d = await saApi("/monitoring/groups/" + monCurrentGid, "POST", {status, admin_notes});
   if(!d.ok){ toast(d.error||"Failed to save","error"); return; }
   toast("Saved","success"); closeMonEvent(); loadMonSummary(); loadMonGroups(); refreshBadges();
+}
+
+async function resetAdminPassword(btn){
+  const id = btn.dataset.id, name = btn.dataset.name;
+  const a = await saApi(`/schools/${id}/admins`);
+  if(!a.ok || !a.admins.length){ toast("No admin accounts found","error"); return; }
+  let username = a.admins[0];
+  if(a.admins.length > 1){
+    username = prompt("Which account?\n" + a.admins.join("\n"), a.admins[0]);
+    if(!username) return;
+  }
+  const c = a.contact || {};
+  if(!confirm(`Reset password for "${username}" at ${name}?\n\nVerify who is asking BEFORE you do this.\nPhone on file: ${c.admin_phone || c.phone || "none"}\nEmail on file: ${c.email || "none"}`)) return;
+  const r = await saApi(`/schools/${id}/reset_password`, "POST", {username});
+  if(!r.ok){ toast(r.error || "Failed", "error"); return; }
+  prompt("Temporary password (shown once). Send it through a verified channel:", r.temp_password);
 }
 
 

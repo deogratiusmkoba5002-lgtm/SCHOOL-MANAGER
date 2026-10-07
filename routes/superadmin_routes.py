@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
 
+import secrets
+from core.ratelimit import rate_limit
 from config import SUBSCRIPTION_PLANS
 from core.db import get_db, to_dicts
-from core.security import verify_password
+from core.security import verify_password, hash_password
 from core.auth import _require_superadmin, _sa_serializer
 from core.school import purge_expired_rejected_schools
 from services.subscriptions import _expire_stale_payment_requests, _platform_payment_config
@@ -11,8 +13,9 @@ from services.subscriptions import _expire_stale_payment_requests, _platform_pay
 superadmin_bp = Blueprint("superadmin", __name__)
 
 @superadmin_bp.route("/api/superadmin/login", methods=["POST"])
+@rate_limit("superadmin_login", max_attempts=10, window_minutes=15, by="ip")
 def api_superadmin_login():
-    d=request.json; u=d.get("username","").strip(); p=d.get("password","")
+    d = request.get_json(silent=True) or {}; u = (d.get("username") or "").strip(); p = d.get("password") or ""
     if not u or not p: return jsonify({"ok":False,"error":"Username and password required"}),400
     con=get_db(); cur=con.cursor()
     cur.execute("SELECT password FROM superadmins WHERE username=%s",(u,))
@@ -236,10 +239,13 @@ def api_sa_approve_withdrawal(wid):
     if err: return err
     note = (request.json or {}).get("note", "")
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT school_id, status FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
+    cur.execute("SELECT school_id, status, payout_reference FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
     row = cur.fetchone()
     if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
-    school_id, status = row
+    school_id, status, payout_ref = row
+    if payout_ref:
+        cur.close(); con.close()
+        return jsonify({"ok": False, "error": "Already sent through Snippe; status updates automatically"}), 409
     if status not in ("REQUESTED", "PROCESSING"):
         cur.close(); con.close(); return jsonify({"ok": False, "error": "Already decided"}), 409
     cur.execute("""UPDATE star_withdrawals SET status='WITHDRAWN', decided_by=%s, decided_at=NOW(), note=%s
@@ -260,10 +266,13 @@ def api_sa_reject_withdrawal(wid):
     note = (request.json or {}).get("note", "").strip()
     if not note: return jsonify({"ok": False, "error": "A reason is required"}), 400
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT school_id, status FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
+    cur.execute("SELECT school_id, status, payout_reference FROM star_withdrawals WHERE id=%s FOR UPDATE", (wid,))
     row = cur.fetchone()
     if not row: cur.close(); con.close(); return jsonify({"ok": False, "error": "Not found"}), 404
-    school_id, status = row
+    school_id, status, payout_ref = row
+    if payout_ref:
+        cur.close(); con.close()
+        return jsonify({"ok": False, "error": "Already sent through Snippe; status updates automatically"}), 409
     if status not in ("REQUESTED", "PROCESSING"):
         cur.close(); con.close(); return jsonify({"ok": False, "error": "Already decided"}), 409
     cur.execute("""UPDATE star_withdrawals SET status='REJECTED', decided_by=%s, decided_at=NOW(), note=%s
@@ -276,3 +285,37 @@ def api_sa_reject_withdrawal(wid):
     create_star_notification(school_id, "WITHDRAWAL_REJECTED", "Withdrawal rejected",
                               f"Your withdrawal request #{wid} was rejected. Reason: {note}", wid)
     return jsonify({"ok": True})
+
+@superadmin_bp.route("/api/superadmin/schools/<int:sid>/admins", methods=["GET"])
+def api_sa_school_admins(sid):
+    sa, err = _require_superadmin()
+    if err: return err
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT username FROM users WHERE school_id=%s AND role='admin' ORDER BY username", (sid,))
+    admins = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT key,value FROM school_config WHERE school_id=%s AND key IN ('admin_phone','phone','email')", (sid,))
+    contact = dict(cur.fetchall()); cur.close(); con.close()
+    return jsonify({"ok": True, "admins": admins, "contact": contact})
+
+
+@superadmin_bp.route("/api/superadmin/schools/<int:sid>/reset_password", methods=["POST"])
+@rate_limit("superadmin_reset_pw", max_attempts=10, window_minutes=60, by="ip")
+def api_sa_reset_password(sid):
+    sa, err = _require_superadmin()
+    if err: return err
+    username = ((request.get_json(silent=True) or {}).get("username") or "").strip()
+    if not username:
+        return jsonify({"ok": False, "error": "username required"}), 400
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    temp = "".join(secrets.choice(alphabet) for _ in range(10))
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE users SET password=%s, must_change_password=1,
+                   token_version=COALESCE(token_version,0)+1
+                   WHERE username=%s AND school_id=%s AND role IN ('admin','teacher')""",
+                (hash_password(temp), username, sid))
+    found = cur.rowcount > 0
+    con.commit(); cur.close(); con.close()
+    if not found:
+        return jsonify({"ok": False, "error": "No admin or teacher with that username in this school"}), 404
+    current_app.logger.warning("superadmin %s reset password for %s at school %s", sa, username, sid)
+    return jsonify({"ok": True, "temp_password": temp})

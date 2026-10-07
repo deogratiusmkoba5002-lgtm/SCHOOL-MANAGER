@@ -5,7 +5,9 @@ from services/stars.py; nothing here accepts stars/amount/balance from
 the client. Withdrawal and payout-account changes are rate-limited.
 """
 from flask import Blueprint, jsonify, g, request
-
+import logging
+from services.payouts import try_auto_payout, reconcile_school_payouts
+log = logging.getLogger(__name__)
 from config import STAR_VALUE_TZS, STAR_CYCLE_MIN_PARENTS
 from core.auth import require_auth, require_role
 from core.ratelimit import rate_limit
@@ -33,6 +35,10 @@ def _masked(acc):
 @require_role("admin")
 def api_stars_dashboard():
     sid = g.school_id
+    try:
+        reconcile_school_payouts(sid)
+    except Exception:
+        log.exception("payout reconcile failed")
     token = get_or_create_referral_token(sid)
     balance = get_star_balance(sid)
     cycle = get_current_cycle(sid)
@@ -100,6 +106,11 @@ def api_request_withdrawal():
         result = request_withdrawal(g.school_id, g.username, d.get("stars"), idem)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    if not result.get("already_existed"):
+        try:
+            result["status"] = try_auto_payout(result["id"]) or result["status"]
+        except Exception:
+            log.exception("auto payout failed for withdrawal %s", result["id"])
     return jsonify({"ok": True, **result})
 
 

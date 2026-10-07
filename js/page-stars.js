@@ -56,7 +56,7 @@ async function loadStarSystemPage(){
       ${payout ? `
         <div style="font-size:.88rem;margin-bottom:10px">Current: <strong>${escHtml(payout.account_identifier)}</strong>
           ${payout.verified ? '<span class="badge badge-green" style="margin-left:8px">Verified</span>' : '<span class="badge badge-orange" style="margin-left:8px">Unverified</span>'}
-        </div>` : `<p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">No payout number on file yet — add one before requesting a withdrawal.</p>`}
+        </div>` : `<p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Withdrawals are paid straight to your payout number once it has been on file for 24 hours, for amounts within the automatic limit. Anything else is reviewed manually. Requesting reserves the stars immediately.</p>`}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <input class="form-input" id="star-payout-phone" placeholder="e.g. 0712345678" style="flex:1;min-width:200px">
         <button class="btn btn-outline btn-sm" onclick="savePayoutAccount()">${payout ? "Update Number" : "Save Number"}</button>
@@ -123,7 +123,10 @@ async function requestStarWithdrawal(){
   const r = await api("/stars/withdraw","POST",{stars:parseInt(stars), idempotency_key:_starIdemKey()});
   btn.disabled = false; btn.textContent = "Request Withdrawal";
   if(r.ok){
-    toast(r.already_existed ? "Request already submitted" : "Withdrawal requested — pending review","success");
+    toast(r.already_existed ? "Request already submitted"
+      : r.status==="WITHDRAWN" ? "Paid out. Check your phone."
+      : r.status==="PROCESSING" ? "Payout on its way. It should reach your phone shortly."
+      : "Withdrawal queued. It will be released automatically or reviewed.", "success");
     loadStarSystemPage();
   } else toast(r.error||"Failed","error");
 }

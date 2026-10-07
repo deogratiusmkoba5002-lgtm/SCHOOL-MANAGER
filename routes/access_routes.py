@@ -4,6 +4,7 @@ Parent-access routes: status, start a payment, manual re-check, Snippe webhook.
 import json
 from flask import Blueprint, request, jsonify, g
 
+from services.payouts import check_payout
 from core.db import get_db, to_dicts
 from core.auth import require_auth, require_role
 from services.access import (
@@ -98,6 +99,12 @@ def api_access_webhook():
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM student_payments WHERE reference=%s", (ref,))
         row = cur.fetchone(); cur.close(); con.close()
-        if row:                                  # unknown references are ignored
-            finalize_payment(row[0])             # re-verifies with Snippe; body isn't trusted
+        if row:
+            finalize_payment(row[0])
+    elif etype.startswith("payout.") and ref:
+        con = get_db(); cur = con.cursor()
+        cur.execute("SELECT id FROM star_withdrawals WHERE payout_reference=%s", (ref,))
+        row = cur.fetchone(); cur.close(); con.close()
+        if row:
+            check_payout(row[0], ref)           # re-verifies with Snippe; body isn't trusted
     return "OK", 200
