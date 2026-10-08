@@ -1,3 +1,5 @@
+import xml.etree.ElementTree as ET
+
 def test_robots_txt(client):
     response = client.get("/robots.txt")
 
@@ -19,6 +21,9 @@ def test_sitemap_xml(client):
     assert response.content_type.startswith("application/xml")
 
     body = response.get_data(as_text=True)
+
+    root = ET.fromstring(body)
+    assert root.tag.endswith("urlset")
 
     assert "<urlset" in body
     assert "https://drdemic.co.tz/" in body

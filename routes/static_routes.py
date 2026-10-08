@@ -62,15 +62,15 @@ def sitemap_xml():
         f"{base_url}/terms",
     ]
 
-    items = "\\n".join(
+    items = "\n".join(
         f"  <url><loc>{url}</loc></url>" for url in urls
     )
 
     body = (
-        '<?xml version="1.0" encoding="UTF-8"?>\\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\\n'
-        f"{items}\\n"
-        "</urlset>\\n"
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{items}\n"
+        "</urlset>\n"
     )
 
     return Response(body, mimetype="application/xml")
