@@ -8,8 +8,10 @@ except ImportError:
 from flask import Flask
 from flask_cors import CORS
 from migration.db_init import init_db
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  
 CORS(app)
 
 from routes.auth_routes import auth_bp
