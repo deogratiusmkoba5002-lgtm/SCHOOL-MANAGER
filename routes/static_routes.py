@@ -4,9 +4,9 @@ HTML pages, plus school logo delivery (both the legacy disk path and the
 DB-stored base64 path).
 """
 import base64, io, os
-from flask import Blueprint, send_from_directory, send_file, redirect
+from flask import Blueprint, send_from_directory, send_file, redirect, Response
 
-from config import BASE_DIR, UPLOAD_FOLDER
+from config import BASE_DIR, UPLOAD_FOLDER, PUBLIC_BASE_URL
 from core.school import get_config_val
 
 
@@ -34,8 +34,46 @@ def superadmin_page(): return send_from_directory(BASE_DIR, "superadmin.html")
 @static_bp.route("/privacy")
 def privacy_page(): return send_from_directory(BASE_DIR, "privacy.html")
 
+
 @static_bp.route("/terms")
 def terms_page(): return send_from_directory(BASE_DIR, "terms.html")
+
+
+@static_bp.route("/robots.txt")
+def robots_txt():
+    base_url = (PUBLIC_BASE_URL or "https://drdemic.co.tz").rstrip("/")
+    body = (
+        "User-agent: *\\n"
+        "Allow: /\\n"
+        "Disallow: /setup\\n"
+        "Disallow: /superadmin\\n"
+        f"Sitemap: {base_url}/sitemap.xml\\n"
+    )
+    return Response(body, mimetype="text/plain")
+
+
+@static_bp.route("/sitemap.xml")
+def sitemap_xml():
+    base_url = (PUBLIC_BASE_URL or "https://drdemic.co.tz").rstrip("/")
+    urls = [
+        f"{base_url}/",
+        f"{base_url}/register",
+        f"{base_url}/privacy",
+        f"{base_url}/terms",
+    ]
+
+    items = "\\n".join(
+        f"  <url><loc>{url}</loc></url>" for url in urls
+    )
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\\n'
+        f"{items}\\n"
+        "</urlset>\\n"
+    )
+
+    return Response(body, mimetype="application/xml")
 
 @static_bp.route("/uploads/logos/<filename>")
 def serve_logo(filename):
