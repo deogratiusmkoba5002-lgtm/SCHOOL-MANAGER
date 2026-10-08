@@ -23,17 +23,28 @@ def test_sitemap_xml(client):
     body = response.get_data(as_text=True)
 
     root = ET.fromstring(body)
-    assert root.tag.endswith("urlset")
 
-    assert "<urlset" in body
-    assert "https://drdemic.co.tz/" in body
-    assert "https://drdemic.co.tz/register" in body
-    assert "https://drdemic.co.tz/privacy" in body
-    assert "https://drdemic.co.tz/terms" in body
+    assert root.tag == "{http://www.sitemaps.org/schemas/sitemap/0.9}urlset"
 
-    assert "/setup</loc>" not in body
-    assert "/superadmin</loc>" not in body
+    namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    urls = root.findall("sm:url", namespace)
 
+    assert len(urls) == 4
+
+    locs = [
+        url.find("sm:loc", namespace).text
+        for url in urls
+    ]
+
+    assert locs == [
+        "https://drdemic.co.tz/",
+        "https://drdemic.co.tz/register",
+        "https://drdemic.co.tz/privacy",
+        "https://drdemic.co.tz/terms",
+    ]
+
+    assert "/setup" not in body
+    assert "/superadmin" not in body
 
 def test_homepage_contains_seo_metadata(client):
     response = client.get("/")

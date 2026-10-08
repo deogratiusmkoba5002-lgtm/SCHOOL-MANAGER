@@ -9,6 +9,7 @@ from flask import Blueprint, send_from_directory, send_file, redirect, Response
 from config import BASE_DIR, UPLOAD_FOLDER, PUBLIC_BASE_URL
 from core.school import get_config_val
 
+import xml.etree.ElementTree as ET
 
 static_bp = Blueprint("static_pages", __name__)
 
@@ -55,6 +56,7 @@ def robots_txt():
 @static_bp.route("/sitemap.xml")
 def sitemap_xml():
     base_url = (PUBLIC_BASE_URL or "https://drdemic.co.tz").rstrip("/")
+
     urls = [
         f"{base_url}/",
         f"{base_url}/register",
@@ -63,7 +65,10 @@ def sitemap_xml():
     ]
 
     items = "\n".join(
-        f"  <url><loc>{url}</loc></url>" for url in urls
+        f"  <url>\n"
+        f"    <loc>{url}</loc>\n"
+        f"  </url>"
+        for url in urls
     )
 
     body = (
@@ -73,7 +78,11 @@ def sitemap_xml():
         "</urlset>\n"
     )
 
-    return Response(body, mimetype="application/xml")
+    return Response(
+        body,
+        status=200,
+        content_type="application/xml; charset=utf-8",
+    )
 
 @static_bp.route("/uploads/logos/<filename>")
 def serve_logo(filename):
