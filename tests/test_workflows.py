@@ -233,22 +233,22 @@ def test_student_add_edit_reset_delete(client, login):
     a = login(school, admin["username"])
     r = ok(client.post("/api/students", headers=a, json={"name": "Neema Peter", "class_id": cls["id"],
                                                          "phone_number": "0755123456"}), "add")
-    assert (r["parent_username"], r["temp_password"]) == ("neema_peter", "3456")
-    old_token = login(school, "neema_peter", "3456")
+    assert (r["parent_username"], r["temp_password"]) == ("neema_peter", "0755123456")
+    old_token = login(school, "neema_peter", "0755123456")
     sid = ok(client.get("/api/students", headers=a), "list")[0]["id"]
 
     r = ok(client.patch(f"/api/students/{sid}", headers=a,
                         json={"name": "Neema Peter Jr", "phone_number": "0755999999"}), "edit name+phone")
-    assert (r["new_username"], r["new_password"]) == ("neema_peter_jr", "9999")
-    assert login_status(client, school, "neema_peter", "3456") == 401                  # old credentials die
+    assert (r["new_username"], r["new_password"]) == ("neema_peter_jr", "0755999999")
+    assert login_status(client, school, "neema_peter", "0755123456") == 401                  # old credentials die
     assert client.get("/api/access/status", headers=old_token).status_code == 401      # ...and so does the old session
-    assert login_status(client, school, "neema_peter_jr", "9999") == 200
+    assert login_status(client, school, "neema_peter_jr", "0755999999") == 200
 
     r = ok(client.post(f"/api/students/{sid}/reset_parent_credentials", json={}, headers=a), "reset")
-    assert (r["username"], r["temp_password"]) == ("neema_peter_jr", "9999")
+    assert (r["username"], r["temp_password"]) == ("neema_peter_jr", "0755999999")
 
     ok(client.delete(f"/api/students/{sid}", headers=a), "delete")
-    assert login_status(client, school, "neema_peter_jr", "9999") == 401
+    assert login_status(client, school, "neema_peter_jr", "0755999999") == 401
     assert query("SELECT COUNT(*) FROM students")[0][0] == 0
 
 

@@ -137,7 +137,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
         body = _json(client.post("/api/students", json={"name": name, "class_id": f1, "stream_id": stream[stream_name],
                                                         "phone_number": phone}, headers=admin), f"add student {name}")
         people[name] = {"stream_id": stream[stream_name], "user": body["parent_username"], "pw": body["temp_password"]}
-    assert (people["Asha Juma"]["user"], people["Asha Juma"]["pw"]) == ("asha_juma", "0001")
+    assert (people["Asha Juma"]["user"], people["Asha Juma"]["pw"]) == ("asha_juma", "0711110001")
     assert client.post("/api/students", json={"name": "Asha Juma", "class_id": f1, "stream_id": stream["A"],
                                               "phone_number": "0711110001"}, headers=admin).status_code == 409
     assert client.post("/api/students", json={"name": "No Phone", "class_id": f1}, headers=admin).status_code == 400
@@ -161,7 +161,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
     assert xlsx[:2] == b"PK"
     again = _json(client.post("/api/students/import", data=imp_data(), headers=admin), "import: re-run")
     assert (again["inserted"], again["duplicates"]) == (0, 2)                            # safe to click twice
-    login(school, "salma_ali", "0001")                                                    # imported parent can sign in
+    login(school, "salma_ali", "0722220001")                                                    # imported parent can sign in
     assert len(_json(client.get("/api/students", headers=admin), "list students after import")) == 5
 
     # ── a weekly test, scoped to Form 1 only ────────────────────
@@ -244,7 +244,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
 
     # ── parent: locked until they pay ───────────────────────────
     asha = ids["Asha Juma"]
-    p_h = login(school, "asha_juma", "0001")
+    p_h = login(school, "asha_juma", "0711110001")
     r = client.get(f"/api/report/{asha}?term_id={term_id}", headers=p_h)
     assert r.status_code == 402 and r.get_json()["code"] == "parent_access_required"
     assert client.get("/api/parent/terms", headers=p_h).get_json() == []
@@ -280,7 +280,7 @@ def test_school_lifecycle_end_to_end(client, login, snippe):
     assert _bytes(client.get(f"/api/pdf/report/{asha}?term_id={term_id}", headers=admin), "admin: report PDF after access",
                   "application/pdf").startswith(b"%PDF")
 
-    other = login(school, "baraka_mussa", "0002")                                         # access is per student
+    other = login(school, "baraka_mussa", "0711110002")                                         # access is per student
     assert client.get(f"/api/report/{ids['Baraka Mussa']}?term_id={term_id}", headers=other).status_code == 402
 
     # ── star system + superadmin visibility ─────────────────────

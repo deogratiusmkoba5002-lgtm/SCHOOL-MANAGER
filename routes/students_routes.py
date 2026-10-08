@@ -8,8 +8,9 @@ from core.db import get_db, to_dicts
 from core.auth import require_auth, require_role
 from core.security import hash_password
 from core.school import format_student_display_id
-from services.students import gen_parent_creds
+from services.students import gen_parent_creds, parent_temp_password
 from datetime import datetime
+
 
 students_bp = Blueprint("students", __name__)
 
@@ -42,7 +43,7 @@ def api_add_student():
     name=d.get("name","").strip(); class_id=d.get("class_id"); stream_id=d.get("stream_id") or None
     phone=d.get("phone_number","").strip()
     if not name or not class_id: return jsonify({"ok":False,"error":"Name and class required"}),400
-    if not phone or len(phone)<4: return jsonify({"ok":False,"error":"Parent phone required"}),400
+    if len(parent_temp_password(phone)) < 9: return jsonify({"ok":False,"error":"Enter the parent's full phone number"}),400
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id FROM classes WHERE id=%s AND school_id=%s",(class_id,sid))
     if not cur.fetchone(): cur.close(); con.close(); return jsonify({"ok":False,"error":"Invalid class"}),400
@@ -178,13 +179,7 @@ def api_update_student(student_id):
         old_username, must_change = parent_row
         if phone:
             gen_username = name.strip().lower().replace(" ", "_")
-            last4 = phone[-4:]
-            cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
-                           WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
-                        (gen_username, sid, student_id))
-            other_phones = [r[0] or "" for r in cur.fetchall()]
-            needs_suffix = any(ph.strip()!=phone and ph.strip()[-4:]==last4 for ph in other_phones)
-            new_password = f"{last4}-{student_id}" if needs_suffix else last4
+            new_password = parent_temp_password(phone)
             new_username = gen_username
             try:
                 cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1,
@@ -234,13 +229,7 @@ def api_reset_parent_credentials(student_id):
     cur.execute("SELECT username FROM users WHERE school_id=%s AND student_id=%s AND role='parent'",(sid,student_id))
     parent_row = cur.fetchone()
     gen_username = name.lower().replace(" ","_")
-    last4 = phone.strip()[-4:]
-    cur.execute("""SELECT s.phone_number FROM users u JOIN students s ON u.student_id=s.id
-                   WHERE u.username=%s AND u.school_id=%s AND u.role='parent' AND u.student_id!=%s""",
-                (gen_username, sid, student_id))
-    other_phones = [r[0] or "" for r in cur.fetchall()]
-    needs_suffix = any(ph.strip()!=phone.strip() and ph.strip()[-4:]==last4 for ph in other_phones)
-    new_password = f"{last4}-{student_id}" if needs_suffix else last4
+    new_password = parent_temp_password(phone)
     try:
         if parent_row:
             cur.execute("""UPDATE users SET username=%s, password=%s, must_change_password=1,

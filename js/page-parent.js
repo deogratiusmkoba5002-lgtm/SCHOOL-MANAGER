@@ -7,7 +7,7 @@ async function loadParentDashboard(){
   const hour = new Date().getHours();
   const greeting = hour < 12 ? t("greet-morning") : hour < 17 ? t("greet-afternoon") : t("greet-evening");
   document.getElementById("parent-greeting-text").textContent = greeting + ", " + studentName + "!";
-  document.getElementById("parent-greeting-sub").textContent  = t("Welcome-portal",{school:schoolName});
+  document.getElementById("parent-greeting-sub").textContent  = t("welcome-portal",{school:schoolName});
   checkAnnouncementDot();
 }
 
@@ -51,7 +51,7 @@ async function loadResAssessments(){
   pub.assessments.filter(a=>a.published).forEach(a=>{
     const o=document.createElement("option"); o.value=a.assess_key; o.textContent=a.assess_key==="exam"? t("final-exam"):a.label; assessSel.appendChild(o);
   });
-  if(!assessSel.options.length){ const o=document.createElement("option"); o.value=""; o.textContent=t("No-pub-assess"); assessSel.appendChild(o); }
+  if(!assessSel.options.length){ const o=document.createElement("option"); o.value=""; o.textContent=t("no-pub-assess"); assessSel.appendChild(o); }
 }
 document.getElementById("parent-view-rc-btn").addEventListener("click", async()=>{
   const term_id = document.getElementById("parent-rc-term-sel").value;
@@ -106,7 +106,7 @@ function renderParentSingleResults(out, d, assess, assessLabel){
     </div>
     <div class="table-wrap">
       <table><thead><tr><th>${t("th-subject")}</th><th>${t("th-score")}</th><th>${t("grade-lbl")}</th><th>${t("th-position")}</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">${t("no-marks-yet")}</td></tr>'}</tbody></table>
+      <tbody>  ${rows||`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">${t("no-marks-yet")}</td></tr>`}</tbody></table>
     </div>
   </div>`;
 }
@@ -216,7 +216,7 @@ async function loadParentAnnouncements(){
   if(!anns.length){
     list.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
       <svg viewBox="0 0 24 24" fill="var(--border)" width="48" height="48" style="margin-bottom:12px"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-      <div>No announcements yet</div></div>`;
+      <div>${t("no-ann")}</div></div>`;
     return;
   }
   const unread = anns.filter(a=>!a.is_read);

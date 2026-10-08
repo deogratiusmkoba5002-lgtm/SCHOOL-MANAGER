@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, g, send_file, current_app
 from core.db import get_db
 from core.auth import require_auth, require_role
 from core.security import hash_password_fast
+from services.students import parent_temp_password
 from services.students_import import (
     OPENPYXL_AVAILABLE, openpyxl, _parse_import_file, _extract_fields,
     _build_class_map, _resolve_class_stream, _write_credentials_xlsx,
@@ -275,10 +276,7 @@ def api_import_students():
                 if inserted % 200 == 0: con.commit()
                 continue
             username_base = name.strip().lower().replace(" ","_")
-            last4 = phone_clean[-4:]
-            existing_phones_for_username = username_phone_map.get(username_base, [])
-            needs_suffix = any(ph.strip() != phone_clean and ph.strip()[-4:] == last4 for ph in existing_phones_for_username)
-            temp_pw = f"{last4}-{student_id}" if needs_suffix else last4
+            temp_pw = parent_temp_password(phone_clean)
             cur.execute("INSERT INTO users(username,password,role,school_id,must_change_password,student_id) VALUES(%s,%s,'parent',%s,1,%s) ON CONFLICT(username,school_id) DO NOTHING",
                         (username_base,hash_password_fast(temp_pw),school_id,student_id))
             login_created = cur.rowcount > 0

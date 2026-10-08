@@ -86,6 +86,39 @@ const I18N_STRINGS = {
   "renew-soon":      { en: "Renew soon", sw: "Upyaisha hivi karibuni" },
   "active-badge":    { en: "Active", sw: "Inatumika" },
   "avg-pct":         { en: "{v}% average", sw: "Wastani wa {v}%" },
+  // ── nav + shared ──
+  "back":            { en: "Back", sw: "Rudi" },
+  "back-arrow":      { en: "← Back", sw: "← Rudi" },
+  "nav-dashboard":   { en: "Dashboard", sw: "Dashibodi" },
+  "nav-reports":     { en: "View Reports", sw: "Tazama Ripoti" },
+  "nav-analytics":   { en: "Academic Analytics", sw: "Uchambuzi wa Masomo" },
+  "nav-ann":         { en: "Announcements", sw: "Matangazo" },
+  "nav-sub":         { en: "Subscription", sw: "Usajili" },
+  "lbl-term":        { en: "Select Term", sw: "Chagua Muhula" },
+  "lbl-assess":      { en: "Select Assessment", sw: "Chagua Mtihani" },
+  // ── parent dashboard ──
+  "p-dash-reports-sub":   { en: "See your child's report cards", sw: "Tazama ripoti za mtoto wako" },
+  "p-dash-analytics-sub": { en: "Track academic performance", sw: "Fuatilia maendeleo ya kitaaluma" },
+  "p-dash-ann-sub":       { en: "School news and notices", sw: "Habari na taarifa za shule" },
+  // ── parent reports ──
+  "rep-title":       { en: "View Results & Reports", sw: "Tazama Matokeo na Ripoti" },
+  "rep-sub":         { en: "Choose what you would like to view", sw: "Chagua unachotaka kutazama" },
+  "rep-cards":       { en: "Report Cards", sw: "Ripoti za Mwanafunzi" },
+  "rep-cards-sub":   { en: "Full official report card with all marks, grades and remarks", sw: "Ripoti kamili rasmi yenye alama zote, madaraja na maoni" },
+  "rep-results":     { en: "View Results", sw: "Tazama Matokeo" },
+  "rep-results-sub": { en: "Marks for a specific CA or exam — see scores and position per subject", sw: "Alama za CA au mtihani maalum — tazama alama na nafasi kwa kila somo" },
+  "btn-view-rc":     { en: "View Report Card", sw: "Tazama Ripoti" },
+  // ── parent analytics ──
+  "an-sub":          { en: "Performance trends, insights and recommendations", sw: "Mwelekeo wa ufaulu, uchambuzi na mapendekezo" },
+  "an-tab-avg":      { en: "Overall Average Trend", sw: "Mwelekeo wa Wastani" },
+  "an-tab-subj":     { en: "Subject Trend", sw: "Mwelekeo wa Somo" },
+  "an-sel-subj":     { en: "Select Subject", sw: "Chagua Somo" },
+  "pa-best":         { en: "💪 Best Subjects", sw: "💪 Masomo Bora" },
+  "pa-needs":        { en: "📚 Needs Attention", sw: "📚 Yanahitaji Uangalizi" },
+  "pa-insights":     { en: "💡 Insights & Recommendations", sw: "💡 Uchambuzi na Mapendekezo" },
+  // ── parent announcements / subscription ──
+  "ann-sub":         { en: "School news and important notices", sw: "Habari za shule na taarifa muhimu" },
+  "sub-sub":         { en: "Unlock full results, detailed analytics and report-card PDFs", sw: "Fungua matokeo kamili, uchambuzi wa kina na PDF za ripoti" },
 };
 
 let currentLang = localStorage.getItem("dd_lang") || "en";
@@ -106,14 +139,21 @@ function applyI18n(){
     const entry = I18N_STRINGS[el.getAttribute("data-i18n-placeholder")];
     if(entry && entry[currentLang]) el.placeholder = entry[currentLang];
   });
-  const toggleBtn = document.getElementById("lang-toggle-btn");
-  if(toggleBtn) toggleBtn.textContent = currentLang === "en" ? "🇹🇿 Kiswahili" : "🇬🇧 English";
+  ["lang-toggle-btn","lang-toggle-btn-app"].forEach(id=>{
+    const b = document.getElementById(id);
+    if(b) b.textContent = currentLang === "en" ? "🇹🇿 Kiswahili" : "🇬🇧 English";
+  });
 }
 
 function toggleLang(){
   currentLang = currentLang === "en" ? "sw" : "en";
   localStorage.setItem("dd_lang", currentLang);
   applyI18n();
+  if(typeof currentUser !== "undefined" && currentUser){
+    buildNav();
+    if(currentPageId) _showPage(currentPageId);   // re-render dynamic content in the new language
+    applyI18n();
+  }
 }
 
 document.addEventListener("DOMContentLoaded", applyI18n);

@@ -342,11 +342,11 @@ const NAV_ADMIN = [
   {id:"config",    icon:gearSVG(),    label:"Config"},
 ];
 const NAV_PARENT = [
-  {id:"parent-dashboard",    icon:homeSVG(),   label:"Dashboard"},
-  {id:"parent-reports",      icon:reportSVG(), label:"View Reports"},
-  {id:"parent-analytics",    icon:starSVG(),   label:"Academic Analytics"},
-  {id:"parent-announcements",icon:chatSVG(),   label:"Announcements"},
-  {id:"parent-subscription", icon:lockSVG(),   label:"Subscription"},
+  {id:"parent-dashboard",    icon:homeSVG(),   label:"Dashboard",          key:"nav-dashboard"},
+  {id:"parent-reports",      icon:reportSVG(), label:"View Reports",       key:"nav-reports"},
+  {id:"parent-analytics",    icon:starSVG(),   label:"Academic Analytics", key:"nav-analytics"},
+  {id:"parent-announcements",icon:chatSVG(),   label:"Announcements",      key:"nav-ann"},
+  {id:"parent-subscription", icon:lockSVG(),   label:"Subscription",       key:"nav-sub"},
 ];
 function buildTeacherNav(user){
   const items = [
@@ -371,7 +371,7 @@ function buildNav(){
   items.forEach(item=>{
     const el=document.createElement("div");
     el.className="nav-item"; el.dataset.page=item.id;
-    el.innerHTML=`${item.icon}<span>${item.label}</span>`;
+    el.innerHTML=`${item.icon}<span>${item.key ? t(item.key) : item.label}</span>`;
     el.addEventListener("click",()=>showPage(item.id));
     nav.appendChild(el);
   });
@@ -432,6 +432,7 @@ function _showPage(id){
   if(id==="teacher-analytics") loadTeacherAnalytics();
   if(id==="parent-subscription") loadParentSubscription();
   if(id==="star-system") loadStarSystemPage();
+  applyI18n();
 }
 
 // ── LOGOUT ───────────────────────────────────────────────────
