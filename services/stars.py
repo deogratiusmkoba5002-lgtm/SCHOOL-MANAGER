@@ -186,6 +186,11 @@ def _school_meets_cycle_prerequisites(school_id):
     if not is_registration_complete(school_id):
         return False
     con = get_db(); cur = con.cursor()
+    cur.execute("SELECT verification_status FROM schools WHERE id=%s", (school_id,))
+    vrow = cur.fetchone(); cur.close(); con.close()
+    if not vrow or vrow[0] != "approved":
+        return False
+    con = get_db(); cur = con.cursor()
     cur.execute("SELECT COUNT(*) FROM students WHERE school_id=%s", (school_id,))
     if cur.fetchone()[0] < 1:
         cur.close(); con.close(); return False

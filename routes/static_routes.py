@@ -44,11 +44,11 @@ def terms_page(): return send_from_directory(BASE_DIR, "terms.html")
 def robots_txt():
     base_url = (PUBLIC_BASE_URL or "https://drdemic.co.tz").rstrip("/")
     body = (
-        "User-agent: *\\n"
-        "Allow: /\\n"
-        "Disallow: /setup\\n"
-        "Disallow: /superadmin\\n"
-        f"Sitemap: {base_url}/sitemap.xml\\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /setup\n"
+        "Disallow: /superadmin\n"
+        f"Sitemap: {base_url}/sitemap.xml\n"
     )
     return Response(body, mimetype="text/plain")
 
@@ -102,7 +102,10 @@ def serve_logo_db(school_id):
         raw = base64.b64decode(data)
     except Exception:
         return ("Not found", 404)
-    return send_file(io.BytesIO(raw), mimetype=mime)
+    resp = send_file(io.BytesIO(raw), mimetype=mime)
+    resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 @static_bp.route("/<path:filename>")
 def serve_static(filename):

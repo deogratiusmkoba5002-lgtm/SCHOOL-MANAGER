@@ -12,6 +12,9 @@ def test_robots_txt(client):
     assert "Disallow: /setup" in body
     assert "Disallow: /superadmin" in body
     assert "Sitemap: https://drdemic.co.tz/sitemap.xml" in body
+    assert body.splitlines()[0] == "User-agent: *"
+    assert "\\n" not in body
+
 
 
 def test_sitemap_xml(client):

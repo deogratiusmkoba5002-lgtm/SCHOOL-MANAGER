@@ -31,6 +31,8 @@ def api_register_school():
     ref_token    = data.get("ref_token","").strip()
     if not school_name: return jsonify({"ok":False,"error":"School name required"}), 400
     if not admin_user or not admin_pass: return jsonify({"ok":False,"error":"Admin username and password required"}), 400
+    if len(admin_pass) < 6:
+        return jsonify({"ok":False,"error":"Admin password must be at least 6 characters"}), 400
     if agree_terms != "1":
         return jsonify({"ok":False,"error":"You must agree to the Terms & Conditions and Privacy Policy"}), 400
     if not valid_reg_code(reg_code):
@@ -52,13 +54,22 @@ def api_register_school():
         classes_data  = json.loads(data.get("classes","[]"))
         subjects_data = json.loads(data.get("subjects","[]"))
         grades_data   = json.loads(data.get("grades","[]"))
-    except psycopg2.errors.UniqueViolation:
-        con.rollback(); cur.close(); con.close()
-        return jsonify({"ok":False,"error":f"School code '{reg_code}' is already registered. If this is your school, contact support."}), 409    
-    except Exception as e:
-        return jsonify({"ok":False,"error":f"Invalid JSON: {e}"}), 400
+        if not all(isinstance(x, list) for x in (classes_data, subjects_data, grades_data)):
+            raise ValueError("expected lists")
+    except Exception:
+        return jsonify({"ok":False,"error":"Invalid classes, subjects or grades data"}), 400
     if not subjects_data: return jsonify({"ok":False,"error":"At least one subject required"}), 400
     if not grades_data:   return jsonify({"ok":False,"error":"At least one grade rule required"}), 400
+    try:
+        for s in subjects_data:
+            if s.get("name","").strip() and not (1 <= len((s.get("abbreviation") or "").strip()) <= 4):
+                raise ValueError
+        for gr in grades_data:
+            lo, hi, gname = float(gr["min_score"]), float(gr["max_score"]), str(gr["grade"]).strip()
+            if not (0 <= lo <= hi <= 100) or not (1 <= len(gname) <= 3):
+                raise ValueError
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return jsonify({"ok":False,"error":"Check subject abbreviations (1-4 characters) and grade ranges (0-100)"}), 400
     con = get_db(); cur = con.cursor()
     try:
         cur.execute("""INSERT INTO schools(school_name,reg_code,necta_code,verification_status,terms_accepted_at,terms_accepted_by)
@@ -99,9 +110,12 @@ def api_register_school():
                     cur.execute("INSERT INTO streams(school_id,class_id,stream_name) VALUES(%s,%s,%s) ON CONFLICT(class_id,stream_name) DO NOTHING",
                                 (school_id, cid, sname))
         con.commit()
-    except Exception as e:
+    except psycopg2.errors.UniqueViolation:
         con.rollback(); cur.close(); con.close()
-        return jsonify({"ok":False,"error":str(e)}), 500
+        return jsonify({"ok":False,"error":f"School code '{reg_code}' is already registered. If this is your school, contact support."}), 409
+    except Exception:
+        con.rollback(); cur.close(); con.close()
+        raise      # monitoring records it and the user gets a safe message with an event ID
     cur.close(); con.close()
     if ref_token:
         referring_school_id = resolve_school_by_referral_token(ref_token)
