@@ -302,6 +302,7 @@ function renderVerificationBanner(c){
 async function bootApp(){
   document.getElementById("login-page").style.display="none";
   document.getElementById("app").style.display="flex";
+  const seo = document.getElementById("seo-about"); if(seo) seo.style.display="none";
   document.getElementById("sidebar-username").textContent=currentUser.username;
   let roleLabel;
   if(currentUser.role==="parent") roleLabel="[Parent Portal]";
@@ -456,6 +457,7 @@ document.getElementById("logout-btn").addEventListener("click",()=>{
   currentPageId = null;
   document.getElementById("app").style.display="none";
   document.getElementById("login-page").style.display="flex";
+  const seo = document.getElementById("seo-about"); if(seo) seo.style.display="";
   document.getElementById("login-user").value="";
   document.getElementById("login-pass").value="";
   const regEl = document.getElementById("login-regcode");
