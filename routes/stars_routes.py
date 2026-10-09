@@ -63,6 +63,8 @@ def api_stars_dashboard():
         "referral_stats": referral_stats,
         "payout_account": payout,
         "unread_notifications": get_unread_star_notification_count(sid),
+        "cycle_completed": any(h["type"] == "CYCLE_REWARD" and h["status"] != "REVERSED"
+                               for h in get_star_history(sid, limit=1000)),
     })
 
 

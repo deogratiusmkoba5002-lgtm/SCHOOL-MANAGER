@@ -37,8 +37,10 @@ async function loadStarSystemPage(){
         <div style="font-size:.9rem;margin-bottom:8px">${p.qualifying_parent_count} / ${p.required} parents</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div style="font-size:.82rem;color:var(--muted);margin-top:8px">${p.remaining} more qualifying parent(s) needed</div>
-      ` : `<p style="color:var(--muted);font-size:.85rem">No active cycle yet — complete registration, add students, teachers and publish results to start one.</p>`}
-    </div>
+      ` : (d.cycle_completed
+          ? `<p style="color:var(--muted);font-size:.85rem">🎉 You've earned your adoption Star. This reward is one-time per school.</p>`
+          : `<p style="color:var(--muted);font-size:.85rem">No active cycle yet — complete registration, add students, teachers and publish results to start one.</p>`)}
+        </div>
     <div class="section-card" style="margin-bottom:20px">
       <div class="section-card-title">Your Referral Link</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">

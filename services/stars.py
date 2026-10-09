@@ -202,9 +202,16 @@ def _school_meets_cycle_prerequisites(school_id):
 
 # ── CYCLE LIFECYCLE ──────────────────────────────────────────────
 def ensure_cycle_started(school_id):
-    """Idempotent. Starts a new IN_PROGRESS cycle for this school if
-    prerequisites are met and no cycle is currently in progress."""
+    """Idempotent. Starts a cycle for this school ONLY if prerequisites are
+    met, no cycle is in progress, and the school has never completed one.
+    The Star is a one-time adoption reward, not a recurring payout."""
     if get_current_cycle(school_id) is not None:
+        return
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT 1 FROM star_cycles WHERE school_id=%s AND status='COMPLETED' LIMIT 1", (school_id,))
+    already_rewarded = cur.fetchone() is not None
+    cur.close(); con.close()
+    if already_rewarded:
         return
     if not _school_meets_cycle_prerequisites(school_id):
         return
