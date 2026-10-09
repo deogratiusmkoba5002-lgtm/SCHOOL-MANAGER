@@ -273,10 +273,14 @@ function renderScoreSheet(container, d, label) {
 }
 function renderGradeSheet(container, d, label) {
   const subs = d.subjects;
-  const hdr = `<tr><th>#</th><th>Student</th>${subs.map(s => `<th title="${s}">${subAbbr(s)}</th>`).join("")}<th>Points</th><th>Division</th></tr>`;
+  const tailHdr = d.primary ? "<th>Avg</th><th>Grade</th>" : "<th>Points</th><th>Division</th>";
+  const hdr = `<tr><th>#</th><th>Student</th>${subs.map(s => `<th title="${s}">${subAbbr(s)}</th>`).join("")}${tailHdr}</tr>`;
   const rows = d.results.map((r, i) => {
     const cells = subs.map(s => { const g = r.grades[s]; const fail = g === "F"; return `<td style="${fail ? "color:var(--red);font-weight:600" : ""}">${g || "-"}</td>`; }).join("");
-    return `<tr><td style="color:var(--muted)">${i + 1}</td><td style="font-weight:600">${r.name}</td>${cells}<td style="font-weight:600">${r.points != null ? r.points : "-"}</td><td style="font-weight:700;color:var(--blue)">${r.division || "-"}</td></tr>`;
+    const tail = d.primary
+      ? `<td style="font-weight:600">${r.average != null ? r.average : "-"}</td><td style="font-weight:700;color:var(--blue)">${r.avg_grade || "-"}</td>`
+      : `<td style="font-weight:600">${r.points != null ? r.points : "-"}</td><td style="font-weight:700;color:var(--blue)">${r.division || "-"}</td>`;
+    return `<tr><td style="color:var(--muted)">${i + 1}</td><td style="font-weight:600">${r.name}</td>${cells}${tail}</tr>`;
   }).join("");
   container.innerHTML = `<div class="table-card"><div class="table-toolbar"><span class="table-toolbar-title">${label} (Grades) – ${d.results.length} students</span></div><div class="table-wrap"><table class="scoresheet-table"><thead>${hdr}</thead><tbody>${rows}</tbody></table></div></div>`;
 }

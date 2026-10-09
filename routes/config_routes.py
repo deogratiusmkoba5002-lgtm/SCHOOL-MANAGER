@@ -65,7 +65,7 @@ def api_set_grading_system():
     sid = g.school_id; d = request.json or {}
     grading_system = d.get("grading_system")
     division_source = d.get("division_source")
-    if grading_system not in ("o_level","a_level"):
+    if grading_system not in ("o_level","a_level","primary"):
         return jsonify({"ok":False,"error":"Invalid grading system"}),400
     if division_source not in ("school","necta"):
         return jsonify({"ok":False,"error":"Invalid division source"}),400

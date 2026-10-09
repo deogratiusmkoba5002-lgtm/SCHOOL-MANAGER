@@ -96,6 +96,8 @@ def compute_division_from_finals(school_id, finals, grading_system=None, divisio
     settings = get_school_grading_settings(school_id)
     level = grading_system or settings["grading_system"]
     div_source = division_source or settings["division_source"]
+    if level == "primary":
+        return None, None
     rules = get_necta_grades(level) if div_source=="necta" else get_grade_rules(school_id)
     noncredit = set(noncredit_override) if noncredit_override is not None else set(get_noncredit_subjects(school_id))
 

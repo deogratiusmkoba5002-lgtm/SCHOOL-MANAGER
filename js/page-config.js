@@ -399,10 +399,10 @@ function renderConfigGrades(){
       <div class="gr-range">
         <span class="gr-lbl">From</span>
         <input class="gr-min" type="number" min="0" max="100" value="${g.min_score}"
-          oninput="configGrades[${i}].min_score=parseFloat(this.value)||0;renderConfigGradePreview()">
+          onchange="configGradeEdit(${i},'min',this.value)">
         <span class="gr-lbl">–</span>
         <input class="gr-max" type="number" min="0" max="100" value="${g.max_score}"
-          oninput="configGrades[${i}].max_score=parseFloat(this.value)||0;renderConfigGradePreview()">
+          onchange="configGradeEdit(${i},'max',this.value)">
         <span class="gr-lbl">= Grade:</span>
         <input class="gr-name" type="text" maxlength="3" placeholder="A" value="${escHtml(g.grade)}"
           oninput="configGrades[${i}].grade=this.value.slice(0,3);renderConfigGradePreview()">
@@ -430,6 +430,28 @@ function renderConfigGradePreview(){
     `<div class="grade-badge">${escHtml(g.grade)}: ${g.min_score}–${g.max_score}</div>`
   ).join("");
 }
+
+function configGradeEdit(i, field, val){
+  const G = configGrades;
+  const v = Math.max(0, Math.min(100, parseFloat(val)||0));
+  if(field==="min"){
+    G[i].min_score = v;
+    if(v > G[i].max_score) G[i].max_score = v;
+    for(let j=i+1;j<G.length;j++){
+      G[j].max_score = Math.max(0, G[j-1].min_score-1);
+      if(G[j].min_score > G[j].max_score) G[j].min_score = G[j].max_score;
+    }
+  } else {
+    G[i].max_score = v;
+    if(v < G[i].min_score) G[i].min_score = v;
+    for(let j=i-1;j>=0;j--){
+      G[j].min_score = Math.min(100, G[j+1].max_score+1);
+      if(G[j].max_score < G[j].min_score) G[j].max_score = G[j].min_score;
+    }
+  }
+  renderConfigGrades();
+}
+
 async function configSaveGrades(){
   const cleaned = configGrades.filter(g=>g.grade && g.grade.trim());
   if(!cleaned.length){ toast("Add at least one grade rule","error"); return; }

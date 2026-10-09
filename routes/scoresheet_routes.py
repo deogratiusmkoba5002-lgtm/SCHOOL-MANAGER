@@ -89,7 +89,8 @@ def api_scoresheet():
         settings = get_school_grading_settings(sid)
         level = grading_system or settings["grading_system"]
         div_source = division_source or settings["division_source"]
-        rules = get_necta_grades(level) if div_source=="necta" else get_grade_rules(sid)
+        is_primary = level == "primary"
+        rules = get_necta_grades(level) if (div_source=="necta" and not is_primary) else get_grade_rules(sid)
         results=[]
         for s in studs:
             subj_scores={}; grades={}
@@ -98,10 +99,16 @@ def api_scoresheet():
                 subj_scores[subject]=score
                 grades[subject],_ = grade_and_points_for_score(rules, score)
             points, division = compute_division_from_finals(sid, subj_scores, grading_system, division_source, noncredit_override)
-            results.append({"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),
-                            "grades":grades,"points":points,"division":division or "-"})
-        return jsonify({"subjects":active_subjects,"results":results,"sheet_type":"grade"})
-
+            row = {"id":s["id"],"name":s["name"],"stream_name":s.get("stream_name"),
+                   "grades":grades,"points":points,"division":division or "-"}
+            if is_primary:
+                vals=[v for v in subj_scores.values() if v is not None]
+                avg = round(sum(vals)/len(vals),2) if vals else None
+                row["average"] = avg
+                row["avg_grade"] = grade_and_points_for_score(rules, avg)[0] if avg is not None else "-"
+            results.append(row)
+        return jsonify({"subjects":active_subjects,"results":results,"sheet_type":"grade","primary":is_primary})
+    
     grade_rules=get_grade_rules(sid)
     def grade_for(score):
         if score is None: return "-"

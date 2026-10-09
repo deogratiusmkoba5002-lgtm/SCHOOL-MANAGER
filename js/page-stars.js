@@ -43,10 +43,10 @@ async function loadStarSystemPage(){
         </div>
     <div class="section-card" style="margin-bottom:20px">
       <div class="section-card-title">Your Referral Link</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      ${d.referral_link ? `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <input class="form-input" id="star-referral-link" readonly value="${escHtml(d.referral_link)}" style="flex:1;min-width:220px">
         <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('star-referral-link').value);toast('Copied!','success')">Copy</button>
-      </div>
+      </div>` : `<p style="color:var(--orange);font-size:.85rem">🔒 Your referral link and withdrawals unlock once the platform has verified your school.</p>`}
       <p style="font-size:.8rem;color:var(--muted);margin-top:10px">Share this link with other schools. When a school you refer becomes fully active, you earn a bonus Star.</p>
       <div style="margin-top:14px;font-size:.85rem;color:var(--muted)">
         Schools Referred: <strong>${d.referral_stats.schools_referred}</strong> &nbsp;|&nbsp;

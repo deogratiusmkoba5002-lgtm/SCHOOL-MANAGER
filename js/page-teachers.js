@@ -268,6 +268,9 @@ document.getElementById("marks-load-btn").addEventListener("click", async()=>{
   if(currentUser.role==="teacher" && !is_teacher_allowed_local(subject, class_id, stream_id)){
     toast("You are not assigned to this subject/class","error"); return;
   }
+  if(!config.active_term){
+    toast("Cannot enter marks because no term is open. Ask the admin to open a term.","error"); return;
+  }
   const loadBtn = document.getElementById("marks-load-btn");
   loadBtn.textContent="Loading..."; loadBtn.disabled=true;
   try{

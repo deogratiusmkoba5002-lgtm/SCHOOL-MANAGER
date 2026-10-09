@@ -16,7 +16,7 @@ from services.stars import (
     get_current_cycle, get_referral_stats,
     get_payout_account, set_payout_account, get_withdrawals, request_withdrawal,
     get_star_notifications, get_unread_star_notification_count,
-    mark_star_notification_read, mark_all_star_notifications_read,
+    mark_star_notification_read, mark_all_star_notifications_read, is_school_verified,
 )
 
 stars_bp = Blueprint("stars", __name__)
@@ -39,7 +39,8 @@ def api_stars_dashboard():
         reconcile_school_payouts(sid)
     except Exception:
         log.exception("payout reconcile failed")
-    token = get_or_create_referral_token(sid)
+    verified = is_school_verified(sid)
+    token = get_or_create_referral_token(sid) if verified else None
     balance = get_star_balance(sid)
     cycle = get_current_cycle(sid)
     referral_stats = get_referral_stats(sid)
@@ -59,7 +60,8 @@ def api_stars_dashboard():
         "star_value_tzs": STAR_VALUE_TZS,
         "balance": balance,
         "cycle_progress": progress,
-        "referral_link": f"{request.host_url.rstrip('/')}/r/{token}",
+        "verified": verified,
+        "referral_link": f"{request.host_url.rstrip('/')}/r/{token}" if token else None,
         "referral_stats": referral_stats,
         "payout_account": payout,
         "unread_notifications": get_unread_star_notification_count(sid),

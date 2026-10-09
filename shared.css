@@ -411,3 +411,9 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
   .sidebar-footer{display:none}
   .nav-item-logout-mobile{display:flex}
 }
+#lang-mobile-wrap{display:none}
+#lang-toggle-btn-mobile{background:var(--card);border:1.5px solid var(--border);border-radius:20px;padding:5px 14px;font-size:.75rem;color:var(--muted);cursor:pointer}
+@media(max-width:768px){
+  #lang-mobile-wrap{display:flex;justify-content:flex-end;margin:-6px 0 14px}
+  #lang-toggle-btn-app{display:none}
+}

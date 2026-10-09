@@ -158,6 +158,9 @@
           <div id="term-banner-detail" style="opacity:.85;font-size:.75rem"></div>
         </div>
       </div>
+      <div id="lang-mobile-wrap">
+        <button id="lang-toggle-btn-mobile" onclick="toggleLang()">🇹🇿 Kiswahili</button>
+      </div>
 
       <!-- ── ADMIN PARENTS PAGE ── -->
       <div class="page" id="page-parents">
@@ -1020,6 +1023,7 @@
               <div class="form-group">
                 <label class="form-label">Examination Level</label>
                 <select class="form-select" id="gsheet-level">
+                  <option value="primary">Primary School</option>
                   <option value="o_level">O-Level (NECTA CSEE)</option>
                   <option value="a_level">A-Level (ACSEE)</option>
                 </select>
@@ -1272,6 +1276,7 @@
                 <div class="field">
                   <label>Examination Level</label>
                   <select id="gs-level" onchange="onGradingLevelChange()">
+                    <option value="primary">Primary School</option>
                     <option value="o_level">O-Level (NECTA CSEE)</option>
                     <option value="a_level">A-Level (ACSEE)</option>
                   </select>

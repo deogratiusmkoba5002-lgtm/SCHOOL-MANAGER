@@ -15,6 +15,12 @@ from core.db import get_db, to_dicts
 from config import (STAR_VALUE_TZS, STAR_WITHDRAWAL_MIN_STARS,
                      STAR_WITHDRAWAL_MAX_STARS, STAR_WITHDRAWAL_WINDOW_HOURS)
 
+def is_school_verified(school_id):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT verification_status FROM schools WHERE id=%s", (school_id,))
+    row = cur.fetchone(); cur.close(); con.close()
+    return bool(row and row[0] == "approved")
+
 
 # ── REFERRAL TOKENS ─────────────────────────────────────────────
 def get_or_create_referral_token(school_id):
@@ -44,7 +50,9 @@ def resolve_school_by_referral_token(token):
     school. Returns school_id or None. Revoked tokens never resolve."""
     if not token: return None
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT school_id FROM star_referral_tokens WHERE token=%s AND revoked=0", (token.strip(),))
+    cur.execute("""SELECT t.school_id FROM star_referral_tokens t
+                   JOIN schools s ON s.id=t.school_id
+                   WHERE t.token=%s AND t.revoked=0 AND s.verification_status='approved'""", (token.strip(),))
     row = cur.fetchone(); cur.close(); con.close()
     return row[0] if row else None
 
@@ -323,6 +331,9 @@ def _maybe_award_referral_reward(referred_school_id):
     if not referring_school_id:
         return
 
+    if not is_school_verified(referred_school_id) or not is_school_verified(referring_school_id):
+        return
+
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT COUNT(*) FROM star_cycles WHERE school_id=%s AND status='COMPLETED'""",
                 (referred_school_id,))
@@ -407,9 +418,12 @@ def request_withdrawal(school_id, username, stars, idempotency_key):
     con = get_db(); cur = con.cursor()
     wid = None
     try:
-        cur.execute("SELECT id FROM schools WHERE id=%s FOR UPDATE", (school_id,))
-        if not cur.fetchone():
+        cur.execute("SELECT verification_status FROM schools WHERE id=%s FOR UPDATE", (school_id,))
+        srow = cur.fetchone()
+        if not srow:
             raise ValueError("School not found")
+        if srow[0] != "approved":
+            raise ValueError("Your school must be verified by the platform before you can withdraw stars")
 
         cur.execute("SELECT id, stars, amount, status FROM star_withdrawals WHERE idempotency_key=%s", (idem,))
         existing = cur.fetchone()

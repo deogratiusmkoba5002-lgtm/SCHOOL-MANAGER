@@ -202,8 +202,8 @@ def pdf_grade_sheet():
     settings = get_school_grading_settings(school_id)
     level = grading_system or settings["grading_system"]
     div_source = division_source or settings["division_source"]
-    rules = get_necta_grades(level) if div_source=="necta" else get_grade_rules(school_id)
-
+    is_primary = level == "primary"
+    rules = get_necta_grades(level) if (div_source=="necta" and not is_primary) else get_grade_rules(school_id)
     fname=os.path.join(tempfile.gettempdir(),f"Grade_{school_id}_{class_id}_{mode}_{ca_name.replace(':','_')}_{tid}.pdf")
     class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
     if mode=="ca" and ca_name.startswith("test:"):
@@ -222,7 +222,7 @@ def pdf_grade_sheet():
     story+=_school_header_story(school_id,styles,f"{title} — {class_label}" if class_label else title, term["label"])
 
     name_style = ParagraphStyle("NameCell", parent=styles["Normal"], fontSize=7.5, leading=8.5)
-    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in active_subjects]+["Points","Division"]
+    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in active_subjects]+(["Avg","Grade"] if is_primary else ["Points","Division"])
     tdata=[hdr]
     for ri,s in enumerate(studs,1):
         subj_scores={}
@@ -233,7 +233,13 @@ def pdf_grade_sheet():
             grade,_ = grade_and_points_for_score(rules, sc)
             row.append(grade)
         points, division = compute_division_from_finals(school_id, subj_scores, grading_system, division_source, noncredit_override)
-        row += [str(points) if points is not None else "-", division or "-"]
+        if is_primary:
+            vals=[v for v in subj_scores.values() if v is not None]
+            avg=sum(vals)/len(vals) if vals else None
+            row += [f"{avg:.1f}" if avg is not None else "-",
+                    grade_and_points_for_score(rules, avg)[0] if avg is not None else "-"]
+        else:
+            row += [str(points) if points is not None else "-", division or "-"]
         tdata.append(row)
 
     sc_w=1.2*cm

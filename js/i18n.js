@@ -139,8 +139,8 @@ function applyI18n(){
     const entry = I18N_STRINGS[el.getAttribute("data-i18n-placeholder")];
     if(entry && entry[currentLang]) el.placeholder = entry[currentLang];
   });
-  ["lang-toggle-btn","lang-toggle-btn-app"].forEach(id=>{
-    const b = document.getElementById(id);
+  ["lang-toggle-btn","lang-toggle-btn-app","lang-toggle-btn-mobile"].forEach(id=>{
+  const b = document.getElementById(id);
     if(b) b.textContent = currentLang === "en" ? "🇹🇿 Kiswahili" : "🇬🇧 English";
   });
   translateDom();
