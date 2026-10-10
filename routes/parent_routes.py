@@ -72,8 +72,7 @@ def api_list_assessments_for_publish():
     cur.execute("SELECT assess_key, published FROM published_assessments WHERE school_id=%s AND term_id=%s",(sid,term_id))
     pub_map = dict(cur.fetchall()); cur.close(); con.close()
     restriction = parent_restriction(sid, g.role, g.student_id)
-    if restriction and (assess or "*") not in earned_keys(sid, int(term_id), restriction):
-        return locked_response(restriction)
+    earned = earned_keys(sid, int(term_id), restriction) if restriction else None
     result=[]
     for k in keys:
         label = "Final Exam" if k=="exam" else (test_map.get(int(k.split(":")[1])) if k.startswith("test:") else k)

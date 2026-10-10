@@ -567,3 +567,17 @@ def test_school_subscription_request_flow(client, login):
                                   "FROM schools WHERE id=%s", (school["id"],))[0]
     assert (status, plan) == ("active", "standard") and 181 <= (expires - _now()).days <= 182
     assert post(a, transaction_id="ABC123").status_code == 409                          # an approved txn id can't be reused
+
+def test_assessment_list_hides_unearned_for_restricted_parent(client, login):
+    school, term, cls, admin, studs = classroom(1)
+    a = login(school, admin["username"])
+    ok(client.post("/api/results/publish_assessments", headers=a,
+                   json={"term_id": term["id"], "assess_keys": ["CA1"], "publish": True}), "publish CA1")
+    ok(client.post("/api/restrictions/bulk", headers=a,
+                   json={"restrict": [{"student_id": studs[0]["id"], "reason": "fees"}]}), "restrict")
+    ok(client.post("/api/results/publish_assessments", headers=a,
+                   json={"term_id": term["id"], "assess_keys": ["exam"], "publish": True}), "publish exam")
+    p = login(school, studs[0]["parent_username"], studs[0]["parent_password"])
+    rows = ok(client.get(f"/api/results/assessments?term_id={term['id']}", headers=p), "list")["assessments"]
+    flags = {r["assess_key"]: r["published"] for r in rows}
+    assert flags["CA1"] is True and flags["exam"] is False
