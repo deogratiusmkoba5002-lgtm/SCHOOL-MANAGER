@@ -28,22 +28,14 @@ function populateParentTermSel(selId, loadAssessments=false){
   if(loadAssessments) loadResAssessments();
 }
 async function loadParentReports(){
-  await loadParentAccess();   // fresh status, so a new restriction shows immediately
+  await loadParentAccess();
   const locked = !(window.parentAccess && window.parentAccess.active);
   const choice = document.getElementById("parent-reports-choice");
   const rb = document.getElementById("parent-reports-restricted");
-  const restriction = window.parentAccess && window.parentAccess.restriction;
-  if(restriction){
+  if(window.parentAccess && window.parentAccess.restriction){
     rb.style.display = "block";
-    rb.innerHTML = `<strong>🚫 Results are currently restricted by the school.</strong>` +
-      (restriction.reason ? `<div style="margin-top:6px">Reason: ${escHtml(restriction.reason)}</div>` : "") +
-      `<div style="margin-top:6px;font-size:.85rem">Please contact the school office.</div>`;
-    choice.dataset.lockedHide = "1";
-    ["parent-reports-choice","parent-section-report-card","parent-section-results"].forEach(id=>document.getElementById(id).style.display="none");
-    document.getElementById("parent-reports-locked").style.display = "none";
-    return;
-  }
-  rb.style.display = "none";
+    rb.innerHTML = `<strong>🚫 Newer results are withheld by the school.</strong> Results published before the restriction remain available. See Announcements for details.`;
+  } else rb.style.display = "none";
   document.getElementById("parent-reports-locked").style.display = locked ? "flex" : "none";
   if(locked){
     choice.dataset.lockedHide = "1";
@@ -225,9 +217,22 @@ async function deleteAnnouncement(id){
 // ── PARENT ANNOUNCEMENTS ──────────────────────────────────────
 async function loadParentAnnouncements(){
   const sid = currentUser.student_id;
-  const anns = sid ? await api(`/announcements?student_id=${sid}`) : [];
+  const [annsRaw, rs] = await Promise.all([
+    sid ? api(`/announcements?student_id=${sid}`) : [],
+    api("/restrictions/mine")
+  ]);
+  const anns = Array.isArray(annsRaw) ? annsRaw : [];
+  const r = rs && rs.ok ? rs.restriction : null;
   const list = document.getElementById("parent-announcements-list");
-  if(!anns.length){
+  const personal = r ? `
+    <div style="background:#FFEBEE;border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid var(--red)">
+      <span style="display:inline-block;background:var(--red);color:#fff;border-radius:6px;padding:2px 8px;font-size:.68rem;font-weight:700;letter-spacing:.04em;margin-bottom:8px">🔒 SENT PERSONALLY TO YOU</span>
+      <div style="font-weight:700;color:#B71C1C;font-size:.95rem;margin-bottom:6px">Access to new results is restricted</div>
+      <div style="font-size:.88rem;color:var(--text);margin-bottom:6px">The school has restricted your access to results published after ${escHtml(new Date(r.restricted_at).toLocaleDateString())}. Results published before that date remain available to you.</div>
+      ${r.reason ? `<div style="font-size:.88rem;color:#B71C1C;margin-bottom:6px"><strong>Reason:</strong> ${escHtml(r.reason)}</div>` : ""}
+      <div style="font-size:.78rem;color:var(--muted)">Please contact the school office to resolve this.</div>
+    </div>` : "";
+  if(!anns.length && !personal){
     list.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">
       <svg viewBox="0 0 24 24" fill="var(--border)" width="48" height="48" style="margin-bottom:12px"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
       <div>${t("no-ann")}</div></div>`;
@@ -235,7 +240,7 @@ async function loadParentAnnouncements(){
   }
   const unread = anns.filter(a=>!a.is_read);
   unread.forEach(a=>api(`/announcements/${a.id}/read`,"POST",{student_id:sid}));
-  list.innerHTML = anns.map(a=>`
+  list.innerHTML = personal + anns.map(a=>`
     <div style="background:var(--card);border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid ${a.is_read?"var(--border)":"var(--blue)"}">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         ${!a.is_read?`<span style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0"></span>`:""}

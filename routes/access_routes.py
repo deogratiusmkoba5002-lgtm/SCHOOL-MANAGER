@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify, g
 from services.payouts import check_payout
 from core.db import get_db, to_dicts
 from core.auth import require_auth, require_role
-from services.restrictions import get_restriction
+from services.restrictions import public_restriction
 from services.access import (
     get_access, plans_public, start_payment, finalize_payment, refresh_pending,
     verify_webhook_signature, SnippeError,
@@ -52,7 +52,7 @@ def api_access_status():
     pending = next((h for h in hist if h["status"] == "pending"), None)
     return jsonify({"ok": True, "student_id": stid, "student_name": name, **acc,
                     "plans": plans_public(), "pending": pending, "history": hist,
-                    "restriction": get_restriction(g.school_id, stid)})
+                    "restriction": public_restriction(g.school_id, stid)})
 
 
 @access_bp.route("/api/access/pay", methods=["POST"])

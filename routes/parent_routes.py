@@ -4,7 +4,7 @@ from core.db import get_db, to_dict, to_dicts
 from core.auth import require_auth, require_role
 from services.grading import get_grade, compute_division_from_finals
 from services.subscriptions import is_subscribed
-from services.restrictions import parent_restricted_response
+from services.restrictions import parent_restriction, earned_keys, locked_response
 from services.scores import (
     get_subjects, get_active_term, get_term_by_id, get_term_tests, _assign_positions,
     _score_for_assess, _active_subjects_in_scores, compute_student_finals,
@@ -41,9 +41,14 @@ def api_toggle_results():
                         "message": "Publishing results requires an active subscription."}), 402
     if not term_id: return jsonify({"ok":False,"error":"term_id required"}),400
     con=get_db(); cur=con.cursor()
-    cur.execute("""INSERT INTO results_published(school_id,term_id,published) VALUES(%s,%s,%s)
-                   ON CONFLICT(school_id,term_id) DO UPDATE SET published=EXCLUDED.published""",
-                (sid,int(term_id),1 if publish else 0))
+    cur.execute("""INSERT INTO results_published(school_id,term_id,published,published_at)
+                   VALUES(%s,%s,%s,CASE WHEN %s=1 THEN NOW() ELSE NULL END)
+                   ON CONFLICT(school_id,term_id) DO UPDATE SET
+                     published=EXCLUDED.published,
+                     published_at=CASE WHEN EXCLUDED.published=0 THEN NULL
+                                       WHEN results_published.published=1 THEN results_published.published_at
+                                       ELSE NOW() END""",
+                (sid,int(term_id),1 if publish else 0,1 if publish else 0))
     con.commit(); cur.close(); con.close()
     if publish:
         ensure_cycle_started(sid)
@@ -66,10 +71,14 @@ def api_list_assessments_for_publish():
     con=get_db(); cur=con.cursor()
     cur.execute("SELECT assess_key, published FROM published_assessments WHERE school_id=%s AND term_id=%s",(sid,term_id))
     pub_map = dict(cur.fetchall()); cur.close(); con.close()
+    restriction = parent_restriction(sid, g.role, g.student_id)
+    if restriction and (assess or "*") not in earned_keys(sid, int(term_id), restriction):
+        return locked_response(restriction)
     result=[]
     for k in keys:
         label = "Final Exam" if k=="exam" else (test_map.get(int(k.split(":")[1])) if k.startswith("test:") else k)
-        result.append({"assess_key":k, "label":label, "published": bool(pub_map.get(k,0))})
+        result.append({"assess_key":k, "label":label,
+                       "published": bool(pub_map.get(k,0)) and (earned is None or k in earned)})
     return jsonify({"ok":True,"term_id":term_id,"assessments":result})
 
 @parent_bp.route("/api/results/publish_assessments", methods=["POST"])
@@ -83,9 +92,14 @@ def api_publish_assessments():
     if not term_id or not keys: return jsonify({"ok":False,"error":"term_id and assess_keys required"}),400
     con=get_db(); cur=con.cursor()
     for k in keys:
-        cur.execute("""INSERT INTO published_assessments(school_id,term_id,assess_key,published) VALUES(%s,%s,%s,%s)
-                       ON CONFLICT(school_id,term_id,assess_key) DO UPDATE SET published=EXCLUDED.published""",
-                    (sid,int(term_id),k,1 if publish else 0))
+        cur.execute("""INSERT INTO published_assessments(school_id,term_id,assess_key,published,published_at)
+                       VALUES(%s,%s,%s,%s,CASE WHEN %s=1 THEN NOW() ELSE NULL END)
+                       ON CONFLICT(school_id,term_id,assess_key) DO UPDATE SET
+                         published=EXCLUDED.published,
+                         published_at=CASE WHEN EXCLUDED.published=0 THEN NULL
+                                           WHEN published_assessments.published=1 THEN published_assessments.published_at
+                                           ELSE NOW() END""",
+                    (sid,int(term_id),k,1 if publish else 0,1 if publish else 0))
     con.commit(); cur.close(); con.close()
     return jsonify({"ok":True})
 
@@ -95,8 +109,6 @@ def api_publish_assessments():
 def api_parent_terms():
     sid=g.school_id
     if g.role == "parent" and not has_active_access(sid, g.student_id):
-        return jsonify([])
-    if parent_restricted_response(sid, g.role, g.student_id):
         return jsonify([])
     con=get_db(); cur=con.cursor()
     # A term shows up here if EITHER the legacy whole-term publish switch is
@@ -111,7 +123,11 @@ def api_parent_terms():
                        OR EXISTS (SELECT 1 FROM published_assessments pa WHERE pa.school_id=t.school_id AND pa.term_id=t.id AND pa.published=1)
                    )
                    ORDER BY t.id ASC""",(sid,))
-    rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close(); return jsonify(rows)
+    rows=to_dicts(cur.fetchall(),cur); cur.close(); con.close()
+    restriction = parent_restriction(sid, g.role, g.student_id)
+    if restriction:
+        rows = [r for r in rows if earned_keys(sid, r["id"], restriction)]
+    return jsonify(rows)
 
 @parent_bp.route("/api/parent/results", methods=["GET"])
 @require_auth
@@ -122,8 +138,6 @@ def api_parent_results():
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
     if int(student_id) !=g.student_id:
         return jsonify({"ok":False,"error":"Access denied"}),403 
-    blocked = parent_restricted_response(sid, g.role, g.student_id)
-    if blocked: return blocked
     if not has_active_access(sid, g.student_id):
         return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock results.","code":"parent_access_required"}),402
     maybe_record_qualifying_parent(sid, g.student_id)
@@ -139,6 +153,9 @@ def api_parent_results():
         cur.execute("SELECT published FROM results_published WHERE school_id=%s AND term_id=%s",(sid,term_id))
         row=cur.fetchone(); cur.close(); con.close()
         if not row or not row[0]: return jsonify({"ok":False,"error":"Results not yet published"}),403
+    restriction = parent_restriction(sid, g.role, g.student_id)
+    if restriction and (assess or "*") not in earned_keys(sid, int(term_id), restriction):
+        return locked_response(restriction)
     stid=int(student_id); term=get_term_by_id(sid,term_id)
     con=get_db(); cur=con.cursor()
     cur.execute("""SELECT s.id,s.name,s.class_id,s.stream_id,c.class_name,st.stream_name

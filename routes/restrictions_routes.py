@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify, g
 
 from core.db import get_db
 from core.auth import require_auth, require_role
+from services.restrictions import public_restriction
 
 restrictions_bp = Blueprint("restrictions", __name__)
 
@@ -46,8 +47,7 @@ def api_bulk_restrictions():
                 cur.execute("""INSERT INTO student_restrictions(school_id,student_id,reason,restricted_by)
                                VALUES(%s,%s,%s,%s)
                                ON CONFLICT(school_id,student_id)
-                               DO UPDATE SET reason=EXCLUDED.reason, restricted_by=EXCLUDED.restricted_by,
-                                             restricted_at=NOW()""",
+                               DO UPDATE SET reason=EXCLUDED.reason, restricted_by=EXCLUDED.restricted_by""",
                             (sid, stid, reason, g.username))
         lift_valid = [i for i in lift if i in valid]
         if lift_valid:
@@ -59,3 +59,8 @@ def api_bulk_restrictions():
     finally:
         cur.close(); con.close()
     return jsonify({"ok": True})
+@restrictions_bp.route("/api/restrictions/mine", methods=["GET"])
+@require_auth
+@require_role("parent")
+def api_my_restriction():
+    return jsonify({"ok": True, "restriction": public_restriction(g.school_id, g.student_id)})

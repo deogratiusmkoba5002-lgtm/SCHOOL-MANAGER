@@ -500,6 +500,8 @@ def init_db():
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS approved_notice_pending INTEGER DEFAULT 0",
         "ALTER TABLE star_withdrawals ADD COLUMN IF NOT EXISTS payout_reference TEXT",
+        "ALTER TABLE published_assessments ADD COLUMN IF NOT EXISTS published_at TIMESTAMP",
+        "ALTER TABLE results_published ADD COLUMN IF NOT EXISTS published_at TIMESTAMP",
     ]
     
     for m in migrations:

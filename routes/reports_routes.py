@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
 from core.school import format_student_display_id
-from services.restrictions import parent_restricted_response
+from services.restrictions import parent_restriction, term_report_allowed, locked_response
 from services.grading import get_grade, compute_division_from_finals
 from services.scores import (
     get_subjects, get_active_term, get_term_by_id, get_students_in_scope,
@@ -23,8 +23,6 @@ def api_report(student_id):
     sid = g.school_id
     if g.role == "parent" and g.student_id != student_id:
         return jsonify({"ok":False,"error":"Access denied"}),403
-    blocked = parent_restricted_response(sid, g.role, g.student_id)
-    if blocked: return blocked
     subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()
@@ -43,6 +41,9 @@ def api_report(student_id):
     student["display_id"] = format_student_display_id(sid, student.pop("school_student_no", None))
     term = get_term_by_id(sid,int(term_id)) if term_id else get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No term available"}),400
+    restriction = parent_restriction(sid, g.role, g.student_id)
+    if restriction and not term_report_allowed(sid, term["id"], restriction):
+        return locked_response(restriction)
     tid=term["id"]; ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
     class_id=student["class_id"]; stream_id=student["stream_id"]
 

@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from services.restrictions import parent_restricted_response
+from services.restrictions import parent_restriction, term_report_allowed, locked_response
 
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
@@ -29,8 +29,6 @@ def pdf_report(sid):
     school_id=g.school_id
     if g.role == "parent" and g.student_id != sid:
         return  jsonify({"error":"Access denied"}),403
-    blocked = parent_restricted_response(school_id, g.role, g.student_id)
-    if blocked: return blocked
     subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
     term_id=request.args.get("term_id")
     con=get_db(); cur=con.cursor()
@@ -43,6 +41,9 @@ def pdf_report(sid):
         return jsonify({"ok":False,"error":"Parent access required for this student's report PDF","code":"parent_access_required"}),402
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
     if not term: return jsonify({"error":"No term"}),400
+    restriction = parent_restriction(school_id, g.role, g.student_id)
+    if restriction and not term_report_allowed(school_id, term["id"], restriction):
+        return locked_response(restriction)
     tid=term["id"]; ca_count=term["ca_count"]; ca_w=term["ca_weight"]; ex_w=term["exam_weight"]
     class_id=student["class_id"]; stream_id=student["stream_id"]
 
