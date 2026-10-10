@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
 from core.school import format_student_display_id
+from services.restrictions import parent_restricted_response
 from services.grading import get_grade, compute_division_from_finals
 from services.scores import (
     get_subjects, get_active_term, get_term_by_id, get_students_in_scope,
@@ -22,6 +23,8 @@ def api_report(student_id):
     sid = g.school_id
     if g.role == "parent" and g.student_id != student_id:
         return jsonify({"ok":False,"error":"Access denied"}),403
+    blocked = parent_restricted_response(sid, g.role, g.student_id)
+    if blocked: return blocked
     subjects = get_subjects(sid)
     term_id = request.args.get("term_id")
     con = get_db(); cur = con.cursor()

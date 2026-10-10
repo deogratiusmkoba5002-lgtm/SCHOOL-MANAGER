@@ -443,6 +443,17 @@ def init_db():
     );
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS student_restrictions (
+        school_id     INTEGER NOT NULL,
+        student_id    INTEGER NOT NULL,
+        reason        TEXT NOT NULL DEFAULT '',
+        restricted_by TEXT,
+        restricted_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(school_id, student_id)
+    );
+    """)
+
 
     # Migrations - add missing columns to existing tables
     migrations = [

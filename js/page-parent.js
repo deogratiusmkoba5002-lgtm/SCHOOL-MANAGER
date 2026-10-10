@@ -28,8 +28,22 @@ function populateParentTermSel(selId, loadAssessments=false){
   if(loadAssessments) loadResAssessments();
 }
 async function loadParentReports(){
+  await loadParentAccess();   // fresh status, so a new restriction shows immediately
   const locked = !(window.parentAccess && window.parentAccess.active);
   const choice = document.getElementById("parent-reports-choice");
+  const rb = document.getElementById("parent-reports-restricted");
+  const restriction = window.parentAccess && window.parentAccess.restriction;
+  if(restriction){
+    rb.style.display = "block";
+    rb.innerHTML = `<strong>🚫 Results are currently restricted by the school.</strong>` +
+      (restriction.reason ? `<div style="margin-top:6px">Reason: ${escHtml(restriction.reason)}</div>` : "") +
+      `<div style="margin-top:6px;font-size:.85rem">Please contact the school office.</div>`;
+    choice.dataset.lockedHide = "1";
+    ["parent-reports-choice","parent-section-report-card","parent-section-results"].forEach(id=>document.getElementById(id).style.display="none");
+    document.getElementById("parent-reports-locked").style.display = "none";
+    return;
+  }
+  rb.style.display = "none";
   document.getElementById("parent-reports-locked").style.display = locked ? "flex" : "none";
   if(locked){
     choice.dataset.lockedHide = "1";
@@ -408,4 +422,91 @@ function renderAnalyticsInsights(){
   box.innerHTML = insights.length
     ? insights.map(ins=>`<div style="display:flex;gap:10px;padding:10px 12px;border-radius:8px;background:${bgcol[ins.type]};margin-bottom:8px;border-left:3px solid ${colors[ins.type]}"><span style="flex-shrink:0;font-size:1rem">${icons[ins.type]}</span><span style="font-size:.84rem;color:#333;line-height:1.5">${ins.text}</span></div>`).join("")
     : `<p style="color:var(--muted);font-size:.85rem">${t("no-insights")}</p>`;
+}
+// ── RESTRICT PARENT ACCESS (admin) ───────────────────────────
+let _rsStudents = [], _rsOriginal = {}, _rsState = {}, _rsFilter = {class_id:"", stream_id:""};
+
+async function openRestrictModal(){
+  openModal("modal-restrict");
+  const list = document.getElementById("restrict-list");
+  list.innerHTML = `<div class="spinner"></div>`;
+  const [studs, rs] = await Promise.all([api("/students"), api("/restrictions")]);
+  if(!rs.ok || !Array.isArray(studs)){ list.innerHTML = `<p style="color:var(--red)">Could not load students</p>`; return; }
+  _rsStudents = studs; _rsOriginal = {}; _rsState = {};
+  Object.entries(rs.restrictions).forEach(([id, reason])=>{ _rsOriginal[id] = reason; _rsState[id] = {on:true, reason}; });
+  _rsFilter = {class_id:"", stream_id:""};
+  document.getElementById("restrict-search").value = "";
+  document.getElementById("restrict-filter-panel").style.display = "none";
+  document.getElementById("rs-filter-class").innerHTML = `<option value="">All Classes</option>` +
+    (allClasses||[]).map(c=>`<option value="${c.id}">${escHtml(c.class_name)}</option>`).join("");
+  document.getElementById("rs-filter-stream").innerHTML = `<option value="">All Streams</option>`;
+  renderRestrictList();
+}
+function onRsFilterClass(){
+  _rsFilter.class_id = document.getElementById("rs-filter-class").value; _rsFilter.stream_id = "";
+  const c = _rsFilter.class_id ? getClassById(parseInt(_rsFilter.class_id)) : null;
+  document.getElementById("rs-filter-stream").innerHTML = `<option value="">All Streams</option>` +
+    (c ? c.streams.map(s=>`<option value="${s.id}">${escHtml(s.stream_name)}</option>`).join("") : "");
+  renderRestrictList();
+}
+function onRsFilterStream(){ _rsFilter.stream_id = document.getElementById("rs-filter-stream").value; renderRestrictList(); }
+
+function getRsFiltered(){
+  const q = document.getElementById("restrict-search").value.trim().toLowerCase();
+  return _rsStudents.filter(s=>{
+    if(_rsFilter.class_id && String(s.class_id) !== _rsFilter.class_id) return false;
+    if(_rsFilter.stream_id && String(s.stream_id) !== _rsFilter.stream_id) return false;
+    return !q || s.name.toLowerCase().includes(q);
+  });
+}
+function renderRestrictList(){
+  const list = document.getElementById("restrict-list");
+  const rows = getRsFiltered();
+  list.innerHTML = rows.length ? rows.map(s=>{
+    const st = _rsState[s.id] || {on:false, reason:""};
+    return `<div class="marks-student-row" style="flex-wrap:wrap">
+      <input type="checkbox" ${st.on?"checked":""} onchange="rsToggle(${s.id},this.checked)" style="width:18px;height:18px">
+      <div style="flex:1;min-width:150px">
+        <div class="marks-student-name">${escHtml(s.name)}</div>
+        <div style="font-size:.75rem;color:var(--muted)">${escHtml(s.class_name)}${s.stream_name?" "+escHtml(s.stream_name):""}</div>
+      </div>
+      <input type="text" class="form-input" id="rs-reason-${s.id}" maxlength="300" placeholder="Reason (optional) — shown to the parent"
+        value="${escHtml(st.reason)}" oninput="rsReason(${s.id},this.value)"
+        style="flex:1.4;min-width:200px;display:${st.on?"block":"none"}">
+    </div>`;
+  }).join("") : `<p style="color:var(--muted);text-align:center;padding:20px">No students found</p>`;
+  rsUpdateCount();
+}
+function rsToggle(id, on){
+  const st = _rsState[id] || (_rsState[id] = {on:false, reason:""});
+  st.on = on;
+  const inp = document.getElementById("rs-reason-"+id);
+  if(inp){ inp.style.display = on ? "block" : "none"; if(on) inp.focus(); }
+  rsUpdateCount();
+}
+function rsReason(id, v){ (_rsState[id] || (_rsState[id] = {on:true, reason:""})).reason = v; }
+function rsBulk(on){
+  getRsFiltered().forEach(s=>{ (_rsState[s.id] || (_rsState[s.id] = {on:false, reason:""})).on = on; });
+  renderRestrictList();
+}
+function rsUpdateCount(){
+  const n = Object.values(_rsState).filter(s=>s.on).length;
+  document.getElementById("restrict-count").textContent = n + " restricted";
+}
+async function saveRestrictions(){
+  const restrict = [], unrestrict = [];
+  Object.entries(_rsState).forEach(([id, s])=>{
+    const was = id in _rsOriginal;
+    const reason = (s.reason || "").trim();
+    if(s.on && (!was || reason !== _rsOriginal[id])) restrict.push({student_id:+id, reason});
+    if(!s.on && was) unrestrict.push(+id);
+  });
+  if(!restrict.length && !unrestrict.length){ toast("No changes to save","info"); return; }
+  if(!confirm(`Apply changes? ${restrict.length} restricted/updated, ${unrestrict.length} restored.`)) return;
+  const btn = document.getElementById("restrict-save-btn");
+  btn.disabled = true; btn.textContent = "Saving...";
+  const r = await api("/restrictions/bulk", "POST", {restrict, unrestrict});
+  btn.disabled = false; btn.textContent = "Save Changes";
+  if(r.ok){ toast("Restrictions updated","success"); closeModal("modal-restrict"); }
+  else toast(r.error || "Failed","error");
 }

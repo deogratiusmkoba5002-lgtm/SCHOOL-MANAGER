@@ -5,6 +5,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
+from services.restrictions import parent_restricted_response
 
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
@@ -28,6 +29,8 @@ def pdf_report(sid):
     school_id=g.school_id
     if g.role == "parent" and g.student_id != sid:
         return  jsonify({"error":"Access denied"}),403
+    blocked = parent_restricted_response(school_id, g.role, g.student_id)
+    if blocked: return blocked
     subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
     term_id=request.args.get("term_id")
     con=get_db(); cur=con.cursor()

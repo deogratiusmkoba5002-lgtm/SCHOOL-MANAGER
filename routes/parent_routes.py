@@ -4,6 +4,7 @@ from core.db import get_db, to_dict, to_dicts
 from core.auth import require_auth, require_role
 from services.grading import get_grade, compute_division_from_finals
 from services.subscriptions import is_subscribed
+from services.restrictions import parent_restricted_response
 from services.scores import (
     get_subjects, get_active_term, get_term_by_id, get_term_tests, _assign_positions,
     _score_for_assess, _active_subjects_in_scores, compute_student_finals,
@@ -95,6 +96,8 @@ def api_parent_terms():
     sid=g.school_id
     if g.role == "parent" and not has_active_access(sid, g.student_id):
         return jsonify([])
+    if parent_restricted_response(sid, g.role, g.student_id):
+        return jsonify([])
     con=get_db(); cur=con.cursor()
     # A term shows up here if EITHER the legacy whole-term publish switch is
     # on, OR at least one individual assessment has been published via the
@@ -119,6 +122,8 @@ def api_parent_results():
     if not student_id: return jsonify({"ok":False,"error":"student_id required"}),400
     if int(student_id) !=g.student_id:
         return jsonify({"ok":False,"error":"Access denied"}),403 
+    blocked = parent_restricted_response(sid, g.role, g.student_id)
+    if blocked: return blocked
     if not has_active_access(sid, g.student_id):
         return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock results.","code":"parent_access_required"}),402
     maybe_record_qualifying_parent(sid, g.student_id)

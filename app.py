@@ -9,6 +9,7 @@ from flask import Flask
 from flask_cors import CORS
 from migration.db_init import init_db
 from werkzeug.middleware.proxy_fix import ProxyFix
+from routes.restrictions_routes import restrictions_bp
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  
@@ -40,7 +41,7 @@ from routes.health_routes import health_bp
 for bp in (auth_bp, registration_bp, classes_bp, teachers_bp, terms_bp, students_bp,
            marks_bp, analytics_bp, config_bp, reports_bp, scoresheet_bp, announcements_bp,
            parent_bp, subscription_bp, pdf_bp, superadmin_bp, import_bp, access_bp,
-           stars_bp, monitoring_bp, health_bp,
+           stars_bp, monitoring_bp, health_bp, restrictions_bp,
            static_bp):                      # static last: it owns the catch-all route                    # static last: it owns the catch-all route
     app.register_blueprint(bp)
 

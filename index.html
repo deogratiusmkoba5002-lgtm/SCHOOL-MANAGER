@@ -200,6 +200,13 @@
           </div>
         </div>
 
+        <!-- Restrict parents access card -->
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-title">🚫 Restrict Parents Access</div>
+          <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px">Block individual students' parents from seeing results (e.g. unpaid school fees). Admin, teachers and other students are not affected.</p>
+          <button class="btn btn-red" onclick="openRestrictModal()">Restrict Parents Access</button>
+        </div>
+
         <!-- Announcements card -->
         <div class="section-card" style="margin-bottom:20px">
           <div class="section-card-title">
@@ -327,6 +334,8 @@
             Subscribe to see the full examination history.</div>
           <button class="btn btn-blue btn-sm" onclick="showPage('parent-subscription')">View Plans</button>
         </div>
+        <div id="parent-reports-restricted"
+          style="display:none;background:#FFEBEE;border-left:4px solid var(--red);border-radius:10px;padding:18px 20px;margin-bottom:16px;font-size:.92rem;color:#B71C1C"></div>
         <!-- Two choice cards -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px" id="parent-reports-choice">
           <div onclick="showParentSection('report-card')"
@@ -1719,6 +1728,34 @@
   <script src="/js/page-config.js"></script>
   <script src="/js/page-analytics.js"></script>
   <script src="/js/page-stars.js"></script>
+
+  <div class="modal-backdrop" id="modal-restrict" style="display:none">
+    <div class="modal" style="width:min(760px,96vw)">
+      <div class="modal-title">Restrict Parents Access</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;position:relative">
+        <div class="search-box" style="flex:1;min-width:180px">
+          <input type="text" id="restrict-search" placeholder="Search by name…" oninput="renderRestrictList()" style="width:100%"/>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('restrict-filter-panel').style.display=document.getElementById('restrict-filter-panel').style.display==='none'?'block':'none'">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg> Filter
+        </button>
+        <div id="restrict-filter-panel" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:white;border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:14px;width:220px;z-index:20">
+          <div class="field" style="margin-bottom:10px"><label>Class</label><select id="rs-filter-class" onchange="onRsFilterClass()"></select></div>
+          <div class="field" style="margin-bottom:0"><label>Stream</label><select id="rs-filter-stream" onchange="onRsFilterStream()"><option value="">All Streams</option></select></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="rsBulk(true)">Restrict all shown</button>
+        <button class="btn btn-outline btn-sm" onclick="rsBulk(false)">Clear all shown</button>
+        <span id="restrict-count" style="font-size:.82rem;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div id="restrict-list" style="max-height:52vh;overflow-y:auto"></div>
+      <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modal-restrict')">Cancel</button>
+        <button class="btn btn-blue" id="restrict-save-btn" onclick="saveRestrictions()">Save Changes</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ══ IMPORT STUDENTS MODAL ══ -->
   <div class="modal-backdrop" id="modal-import-students" style="display:none"
