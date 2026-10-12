@@ -133,6 +133,7 @@ async function bulkDownloadReports(){
     const params = new URLSearchParams();
     if(_schoolId) params.set("school_id", _schoolId);
     if(_authToken) params.set("token", _authToken);
+    params.set("lang", currentLang);
     const url = `${API}/pdf/report/${ids[i]}?${params.toString()}`;
     window.open(url, "_blank");
     await new Promise(res=>setTimeout(res, 400)); // stagger so the browser doesn't block the popups

@@ -46,7 +46,7 @@ def api_superadmin_schools():
             sub_row = cur.fetchone()
             exempt, sub_status, sub_plan, sub_expires = sub_row if sub_row else (0,"inactive","",None)
             payment_status = "demo" if exempt else (sub_status or "inactive")
-            result.append({"id":sid,"school_name":s["school_name"],"registered_at":s.get("cast") or "—",
+            result.append({"id":sid,"school_name":s["school_name"],"registered_at":s.get("registered_at") or "—",
                            "student_count":sc,"teacher_count":tc,"active_term":at,
                            "payment_status":payment_status,
                            "subscription_plan": sub_plan or "—",

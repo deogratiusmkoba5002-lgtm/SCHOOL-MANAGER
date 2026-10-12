@@ -574,7 +574,7 @@ async function loadPendingSchools(){
     <div class="notice-item">
       <div class="notice-meta">
         <span class="notice-title">${esc(s.school_name)} — code: <strong>${esc(s.necta_code||"—")}</strong></span>
-        <span class="notice-date">${s.cast ? s.cast.slice(0,16) : ""}</span>
+        <span class="notice-date">${s.registered_at ? s.registered_at.slice(0,16) : ""}</span>
       </div>
       <span class="notice-target" style="${s.verification_status==='rejected'?'background:#FFEBEE;color:#C62828':'background:#FFF9C4;color:#F57F17'}">
         Status: ${esc(s.verification_status)}${s.verification_status==='rejected' ? " — deletes automatically ~6h after rejection" : ""}

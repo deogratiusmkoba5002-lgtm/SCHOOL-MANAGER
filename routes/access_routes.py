@@ -52,7 +52,7 @@ def api_access_status():
     pending = next((h for h in hist if h["status"] == "pending"), None)
     return jsonify({"ok": True, "student_id": stid, "student_name": name, **acc,
                     "plans": plans_public(), "pending": pending, "history": hist,
-                    "restriction": public_restriction(g.school_id, stid)})
+                    "restriction": public_restriction(g.school_id, stid) if g.role in ("parent", "admin") else None})
 
 
 @access_bp.route("/api/access/pay", methods=["POST"])

@@ -69,6 +69,7 @@ def api_mark_announcement_read(aid):
 # ── PLATFORM ANNOUNCEMENTS (school-side) ──────────────────────
 @announcements_bp.route("/api/platform_announcements", methods=["GET"])
 @require_auth
+@require_role("admin")
 def api_platform_announcements():
     sid=g.school_id
     con=get_db(); cur=con.cursor()
@@ -82,6 +83,7 @@ def api_platform_announcements():
 
 @announcements_bp.route("/api/platform_announcements/<int:aid>/read", methods=["POST"])
 @require_auth
+@require_role("admin")
 def api_platform_announcement_read(aid):
     sid=g.school_id
     con=get_db(); cur=con.cursor()

@@ -282,6 +282,7 @@ input,select,textarea{font-family:inherit;outline:none}
 </head>
 <body>
 <div id="toast-container"></div>
+<button id="lang-toggle-btn" onclick="toggleLang()" style="position:fixed;top:14px;right:14px;z-index:50;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.35);border-radius:20px;padding:6px 14px;font-size:.78rem;color:#fff;cursor:pointer">🇹🇿 Kiswahili</button>
 
 <div class="reg-bg">
   <div class="reg-wrapper">
@@ -521,6 +522,8 @@ input,select,textarea{font-family:inherit;outline:none}
   </div>
 </div>
 
+<script src="/js/i18n.js"></script>
+<script src="/js/i18n-extra.js"></script>
 <script>
 const API = "/api";
 

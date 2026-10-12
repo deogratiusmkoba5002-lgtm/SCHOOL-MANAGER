@@ -15,7 +15,7 @@ from config import BASE_DIR
 from core.school import get_config_val, get_school_name
 from services.grading import get_grade
 from services.scores import get_subject_map, _assign_positions
-
+from services.pdf_i18n import pt
 
 def _get_logo_element(school_id, max_h=2*cm):
     logo_data = get_config_val(school_id, "logo_data", "")
@@ -57,7 +57,7 @@ def _school_header_story(school_id, styles, title_text, subtitle_text=""):
     if subtitle_text: story.append(Paragraph(subtitle_text,s_s))
     story.append(Spacer(1,0.3*cm)); return story
 
-def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,term=None,class_label=""):
+def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,term=None,class_label="",lang="en"):
     subj_map=get_subject_map(school_id)
     H_BG=colors.HexColor("#1A6FA8"); S_BG=colors.HexColor("#5BA4CF")
     ODD=colors.HexColor("#E8F4FC"); EVEN=colors.white
@@ -78,7 +78,7 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
         row["grade"]=get_grade(school_id,row["average"]); results.append(row)
     _assign_positions(results,"average")
     name_style = ParagraphStyle("NameCell", parent=styles["Normal"], fontSize=7.5, leading=8.5)
-    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in subjects]+["Total","Avg","Pos","Grd"]
+    hdr=["#",pt("Student",lang)]+[subj_map.get(s,s[:4].upper()) for s in subjects]+[pt("Total",lang),pt("Avg",lang),pt("Pos",lang),pt("Grd",lang)]
     tdata=[hdr]; fail_cells=[]
     for ri,r in enumerate(results,1):
         row=[str(ri),Paragraph(_esc(r["name"]),name_style)]
@@ -107,5 +107,5 @@ def _blue_sheet_pdf(school_id,filename,subtitle,students,subjects,get_score_fn,t
     tbl.setStyle(TableStyle(ts)); story.append(tbl)
     story.append(Spacer(1,0.3*cm))
     ft=ParagraphStyle("F",parent=styles["Normal"],fontSize=6.5,textColor=colors.grey,alignment=2)
-    story.append(Paragraph(f"Generated | {len(students)} students | {tl}",ft))
+    story.append(Paragraph(f"{pt('Generated',lang)} | {len(students)} {pt('students',lang)} | {tl}",ft))
     doc.build(story)

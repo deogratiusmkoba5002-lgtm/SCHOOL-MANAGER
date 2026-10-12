@@ -68,7 +68,7 @@ function renderReportCard(out, d, readOnly) {
   const lockStyle = "background:#ECEFF1;color:#546E7A;box-shadow:none";
   let pdfBtn;
   if (acc.active) {
-    pdfBtn = `<button class="btn btn-pdf btn-sm" onclick="window.open('${pdfUrl}','_blank')">
+    pdfBtn = `<button class="btn btn-pdf btn-sm" onclick="window.open('${pdfUrl}&lang='+currentLang,'_blank')">
       <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
       Download Report PDF</button>`;
   } else if (currentUser.role === "parent") {
@@ -220,6 +220,7 @@ document.getElementById("ca-sheet-pdf-btn").addEventListener("click", () => {
   if (_schoolId) params.set("school_id", _schoolId);
   if (grade) Object.entries(gradeParamsObj()).forEach(([k, v]) => params.set(k, v));
   if (_authToken) params.set("token", _authToken);   // ← ADD THIS LINE
+  params.set("lang", currentLang);
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
   if (requireSub()) { window.open(url, "_blank"); }
 });
@@ -238,6 +239,7 @@ document.getElementById("term-sheet-pdf-btn").addEventListener("click", () => {
   if (_schoolId) params.set("school_id", _schoolId);
   if (grade) Object.entries(gradeParamsObj()).forEach(([k, v]) => params.set(k, v));
   if (_authToken) params.set("token", _authToken);   // ← ADD THIS LINE
+  params.set("lang", currentLang);
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/terminal_sheet?${params.toString()}`;
   if (requireSub()) { window.open(url, "_blank"); }
 });
@@ -256,6 +258,7 @@ document.getElementById("exam-sheet-pdf-btn").addEventListener("click", () => {
   if (_schoolId) params.set("school_id", _schoolId);
   if (grade) Object.entries(gradeParamsObj()).forEach(([k, v]) => params.set(k, v));
   if (_authToken) params.set("token", _authToken);   // ← ADD THIS LINE
+  params.set("lang", currentLang);
   const url = grade ? `${API}/pdf/grade_sheet?${params.toString()}` : `${API}/pdf/ca_sheet?${params.toString()}`;
   if (requireSub()) { window.open(url, "_blank"); }
 });

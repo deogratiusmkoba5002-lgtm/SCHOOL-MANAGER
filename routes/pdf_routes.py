@@ -19,6 +19,7 @@ from services.scores import (
 )
 from services.pdf import _esc, _school_header_story, _blue_sheet_pdf
 from services.access import has_active_access
+from services.pdf_i18n import pdf_lang, pt, pdf_subject, sheet_title
 
 pdf_bp = Blueprint("pdf", __name__)
 
@@ -27,6 +28,7 @@ pdf_bp = Blueprint("pdf", __name__)
 @require_role("admin","teacher","parent")
 def pdf_report(sid):
     school_id=g.school_id
+    lang=pdf_lang()
     if g.role == "parent" and g.student_id != sid:
         return  jsonify({"error":"Access denied"}),403
     subjects=get_subjects(school_id); subj_map=get_subject_map(school_id)
@@ -70,23 +72,23 @@ def pdf_report(sid):
     doc=SimpleDocTemplate(fname,pagesize=page_size,rightMargin=1.5*cm,leftMargin=1.5*cm,topMargin=1.5*cm,bottomMargin=1.5*cm)
     styles=getSampleStyleSheet(); story=[]
     H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC"); WHITE=colors.white; RED=colors.HexColor("#C0392B")
-    story+=_school_header_story(school_id,styles,"STUDENT REPORT CARD")
+    story+=_school_header_story(school_id,styles,pt("STUDENT REPORT CARD",lang))
     stream_label=f"{student['class_name']} {student['stream_name']}" if student.get("stream_name") else student["class_name"]
-    info=[[" Name:",student["name"],"Class:",stream_label],
-          ["Term:",term["label"],"Weights:",f"CA {ca_w}% | Exam {ex_w}%"],
-          ["Class Position:",f"{c_pos}/{c_total}","Grade:",get_grade(school_id,avg)]]
-    if s_pos is not None: info.append(["Stream Position:",f"{s_pos}/{s_total}","",""])
-    it=Table(info,colWidths=[3*cm,6*cm,3*cm,5*cm])
+    info=[[" "+pt("Name:",lang),student["name"],pt("Class:",lang),stream_label],
+          [pt("Term:",lang),term["label"],pt("Weights:",lang),f"CA {ca_w}% | {pt('Exam',lang)} {ex_w}%"],
+          [pt("Class Position:",lang),f"{c_pos}/{c_total}",pt("Grade:",lang),get_grade(school_id,avg)]]
+    if s_pos is not None: info.append([pt("Stream Position:",lang),f"{s_pos}/{s_total}","",""])
+    it=Table(info,colWidths=[3.6*cm,5.4*cm,3.6*cm,4.4*cm])
     it.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
         ("FONTNAME",(2,0),(2,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),9),
         ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     story+=[it,Spacer(1,0.4*cm)]
-    hdr=["Subject"]+[f"CA{i}" for i in range(1,ca_count+1)]+["Exam","Final","Pos","Grd","Remark","Sign"]
+    hdr=[pt("Subject",lang)]+[f"CA{i}" for i in range(1,ca_count+1)]+[pt("Exam",lang),pt("Final",lang),pt("Pos",lang),pt("Grd",lang),pt("Remark",lang),pt("Sign",lang)]
     tdata=[hdr]; tot,cnt=0,0; fail_rows=[]
     for subject in active_subjects:
         entry=student_scores.get(subject,{})
         ca_map=entry.get("ca",{})
-        row_data=[subject.title()]+[f"{ca_map.get(f'CA{i}'):.1f}" if ca_map.get(f"CA{i}") is not None else "-" for i in range(1,ca_count+1)]
+        row_data=[pdf_subject(subject,lang)]+[f"{ca_map.get(f'CA{i}'):.1f}" if ca_map.get(f"CA{i}") is not None else "-" for i in range(1,ca_count+1)]
         exam_v=entry.get("exam")
         row_data.append(f"{exam_v:.1f}" if exam_v is not None else "-")
         final_v=student_finals.get(subject)
@@ -107,9 +109,9 @@ def pdf_report(sid):
     for ri in fail_rows: mts.append(("TEXTCOLOR",(0,ri),(-1,ri),RED))
     mt.setStyle(TableStyle(mts)); story+=[mt,Spacer(1,0.4*cm)]
     comp_avg=tot/cnt if cnt else 0
-    summary_data=[["AVERAGE",f"{comp_avg:.2f}","GRADE",get_grade(school_id,comp_avg),"CLASS POS",f"{c_pos}/{c_total}"]]
-    summary_cols=[3*cm,3*cm,2*cm,2*cm,3*cm,4*cm]
-    if s_pos is not None: summary_data[0]+=["STREAM POS",f"{s_pos}/{s_total}"]; summary_cols+=[3*cm,3*cm]
+    summary_data=[[pt("AVERAGE",lang),f"{comp_avg:.2f}",pt("GRADE",lang),get_grade(school_id,comp_avg),pt("CLASS POS",lang),f"{c_pos}/{c_total}"]]
+    summary_cols=[3*cm,3*cm,2*cm,2*cm,3.6*cm,3.4*cm]
+    if s_pos is not None: summary_data[0]+=[pt("STREAM POS",lang),f"{s_pos}/{s_total}"]; summary_cols+=[3.6*cm,2.4*cm]
     sm=Table(summary_data,colWidths=summary_cols)
     sm.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),H_BG),("TEXTCOLOR",(0,0),(-1,-1),WHITE),
         ("FONTNAME",(0,0),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),9),
@@ -118,13 +120,13 @@ def pdf_report(sid):
     con=get_db(); cur=con.cursor()
     cur.execute("SELECT * FROM remarks WHERE school_id=%s AND student_id=%s AND term_id=%s",(school_id,sid,tid))
     rmk_row=cur.fetchone(); rmk=to_dict(rmk_row,cur) if rmk_row else None; cur.close(); con.close()
-    rm_data=[["Class Teacher Remark:",rmk["class_teacher_remark"] if rmk else "________________________"],
-             ["Head of School Remark:",rmk["head_remark"] if rmk else "________________________"]]
+    rm_data=[[pt("Class Teacher Remark:",lang),rmk["class_teacher_remark"] if rmk else "________________________"],
+         [pt("Head of School Remark:",lang),rmk["head_remark"] if rmk else "________________________"]]
     rmt=Table(rm_data,colWidths=[5*cm,12*cm])
     rmt.setStyle(TableStyle([("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
         ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LINEBELOW",(1,0),(1,-1),0.5,colors.grey)]))
     story+=[rmt,Spacer(1,0.4*cm)]
-    sig=Table([["Class Teacher Sign: _______________","Head Sign: _______________","Date: _______________"]],colWidths=[6*cm,6*cm,5*cm])
+    sig=Table([[f"{pt('Class Teacher Sign:',lang)} ____________",f"{pt('Head Sign:',lang)} ____________",f"{pt('Date:',lang)} ____________"]],colWidths=[6.5*cm,5.5*cm,5*cm])
     sig.setStyle(TableStyle([("FONTSIZE",(0,0),(-1,-1),7.5),("FONTNAME",(0,0),(-1,-1),"Helvetica")]))
     story.append(sig); doc.build(story)
     return send_file(fname,as_attachment=True,
@@ -137,6 +139,7 @@ def pdf_report(sid):
 @require_role("admin","teacher")
 def pdf_ca_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
+    lang=pdf_lang()
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
     ca_name=request.args.get("ca_name","CA1"); term_id=request.args.get("term_id")
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
@@ -163,7 +166,7 @@ def pdf_ca_sheet():
         r=cur.fetchone(); cur.close(); con.close()
         subtitle_label = (r[0].upper() if r else "TEST")
     class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
-    _blue_sheet_pdf(school_id,fname,f"{subtitle_label} SCORE SHEET",studs,active_subjects,get_score,term,class_label=class_label)
+    _blue_sheet_pdf(school_id,fname,sheet_title("score",subtitle_label,lang),studs,active_subjects,get_score,term,class_label=class_label,lang=lang)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
 @pdf_bp.route("/api/pdf/grade_sheet", methods=["GET"])
@@ -172,6 +175,7 @@ def pdf_ca_sheet():
 @require_role("admin","teacher")
 def pdf_grade_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
+    lang=pdf_lang()
     mode=request.args.get("mode","ca")
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None
     ca_name=request.args.get("ca_name","CA1"); term_id=request.args.get("term_id")
@@ -214,9 +218,9 @@ def pdf_grade_sheet():
         con=get_db(); cur=con.cursor()
         cur.execute("SELECT label FROM term_tests WHERE id=%s AND school_id=%s",(int(ca_name.split(":",1)[1]),school_id))
         r=cur.fetchone(); cur.close(); con.close()
-        title = f"{(r[0].upper() if r else 'TEST')} GRADE SHEET"
+        title = sheet_title("grade", (r[0] if r else "TEST"), lang)
     else:
-        title = {"ca": f"{ca_name.upper()} GRADE SHEET", "exam":"EXAM GRADE SHEET", "terminal":"TERMINAL GRADE SHEET"}.get(mode,"GRADE SHEET")
+        title = sheet_title("grade", {"ca": ca_name, "exam": "EXAM", "terminal": "TERMINAL"}.get(mode, ""), lang)
 
     subj_map=get_subject_map(school_id)
     H_BG=colors.HexColor("#1A6FA8"); ODD=colors.HexColor("#E8F4FC"); WHITE=colors.white
@@ -226,7 +230,7 @@ def pdf_grade_sheet():
     story+=_school_header_story(school_id,styles,f"{title} — {class_label}" if class_label else title, term["label"])
 
     name_style = ParagraphStyle("NameCell", parent=styles["Normal"], fontSize=7.5, leading=8.5)
-    hdr=["#","Student"]+[subj_map.get(s,s[:4].upper()) for s in active_subjects]+(["Avg","Grade"] if is_primary else ["Points","Division"])
+    hdr=["#",pt("Student",lang)]+[subj_map.get(s,s[:4].upper()) for s in active_subjects]+([pt("Avg",lang),pt("Grade",lang)] if is_primary else [pt("Points",lang),pt("Division",lang)])
     tdata=[hdr]
     for ri,s in enumerate(studs,1):
         subj_scores={}
@@ -258,7 +262,7 @@ def pdf_grade_sheet():
     tbl.setStyle(TableStyle(ts)); story.append(tbl)
     story.append(Spacer(1,0.3*cm))
     ft=ParagraphStyle("F",parent=styles["Normal"],fontSize=6.5,textColor=colors.grey,alignment=2)
-    story.append(Paragraph(f"Generated | {len(studs)} students | {term['label']}",ft))
+    story.append(Paragraph(f"{pt('Generated',lang)} | {len(studs)} {pt('students',lang)} | {term['label']}",ft))
     doc.build(story)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
@@ -268,6 +272,7 @@ def pdf_grade_sheet():
 @require_role("admin","teacher")
 def pdf_terminal_sheet():
     school_id=g.school_id; subjects=get_subjects(school_id)
+    lang=pdf_lang()
     class_id=request.args.get("class_id"); stream_id=request.args.get("stream_id") or None; term_id=request.args.get("term_id")
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
     if not term: return jsonify({"error":"No term"}),400
@@ -283,6 +288,8 @@ def pdf_terminal_sheet():
         return round(f,1) if f is not None else None
     active_subjects = [subj for subj in subjects if any(get_score(s["id"], subj) is not None for s in studs)]
     class_label = studs[0]["class_name"] + (f" {studs[0]['stream_name']}" if stream_id and studs[0].get("stream_name") else "")
-    _blue_sheet_pdf(school_id,fname,f"TERMINAL SCORE SHEET (CA {term['ca_weight']}% + Exam {term['exam_weight']}%)",studs,active_subjects,get_score,term)
+    title = (f"KARATASI YA ALAMA ZA MUHULA (CA {ca_w}% + Mtihani {ex_w}%)" if lang=="sw"
+         else f"TERMINAL SCORE SHEET (CA {ca_w}% + Exam {ex_w}%)")
+    _blue_sheet_pdf(school_id,fname,title,studs,active_subjects,get_score,term,class_label=class_label,lang=lang)
     return send_file(fname,as_attachment=True,download_name=os.path.basename(fname),mimetype="application/pdf")
 
