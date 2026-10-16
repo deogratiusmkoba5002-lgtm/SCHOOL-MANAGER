@@ -688,6 +688,52 @@ def init_db():
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_star_qp_payment_ref ON star_qualifying_parents(payment_reference)")
     except Exception as e:
         print(f"star payment-reference index note: {e}")
+    # ── DRDEMIC MINI ─────────────────────────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mini_users (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'owner',
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        token_version INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        CHECK (role IN ('owner','parent'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mini_users_username ON mini_users (LOWER(username));
+    CREATE TABLE IF NOT EXISTS mini_sheets (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER NOT NULL REFERENCES mini_users(id),
+        share_key TEXT NOT NULL UNIQUE,
+        school_name TEXT NOT NULL DEFAULT '',
+        exam_name TEXT NOT NULL DEFAULT '',
+        sheet_type TEXT NOT NULL DEFAULT 'marks',
+        grade_rules JSONB NOT NULL,
+        data JSONB NOT NULL,
+        logo_data TEXT,
+        logo_mime TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        published INTEGER NOT NULL DEFAULT 0,
+        published_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_sheets_owner ON mini_sheets(owner_id);
+    CREATE TABLE IF NOT EXISTS mini_history (
+        id SERIAL PRIMARY KEY,
+        sheet_id INTEGER NOT NULL REFERENCES mini_sheets(id) ON DELETE CASCADE,
+        editor TEXT,
+        changed_at TIMESTAMP DEFAULT NOW(),
+        changes JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_history_sheet ON mini_history(sheet_id, id DESC);
+    CREATE TABLE IF NOT EXISTS mini_recipients (
+        sheet_id INTEGER NOT NULL REFERENCES mini_sheets(id) ON DELETE CASCADE,
+        phone TEXT NOT NULL,
+        PRIMARY KEY(sheet_id, phone)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_recipients_phone ON mini_recipients(phone);
+    """)
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 

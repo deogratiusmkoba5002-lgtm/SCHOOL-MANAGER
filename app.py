@@ -37,11 +37,12 @@ from routes.access_routes import access_bp
 from routes.stars_routes import stars_bp
 from routes.monitoring_routes import monitoring_bp
 from routes.health_routes import health_bp
+from routes.mini_routes import mini_bp
 
 for bp in (auth_bp, registration_bp, classes_bp, teachers_bp, terms_bp, students_bp,
            marks_bp, analytics_bp, config_bp, reports_bp, scoresheet_bp, announcements_bp,
            parent_bp, subscription_bp, pdf_bp, superadmin_bp, import_bp, access_bp,
-           stars_bp, monitoring_bp, health_bp, restrictions_bp,
+           stars_bp, monitoring_bp, health_bp, restrictions_bp, mini_bp,
            static_bp):                      # static last: it owns the catch-all route                    # static last: it owns the catch-all route
     app.register_blueprint(bp)
 

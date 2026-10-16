@@ -43,7 +43,7 @@ OPERATIONS = [
     ("superadmin.", "Superadmin"), ("registration.", "School registration"),
     ("students.", "Students"), ("teachers.", "Teachers"), ("classes.", "Classes"),
     ("terms.", "Terms"), ("config.", "School config"), ("announcements.", "Announcements"),
-    ("static_pages.", "Static pages"),
+    ("static_pages.", "Static pages"), ("mini.", "DrDemic Mini"),
 ]
 
 

@@ -17,7 +17,13 @@ _STATIC_FILES = ["shared.css", "DRDEMIC-LOGO.png"]
 
 
 @static_bp.route("/")
-def index(): return send_from_directory(BASE_DIR, "index.html")
+def index(): return send_from_directory(BASE_DIR, "home.html")
+
+@static_bp.route("/app")
+def app_page(): return send_from_directory(BASE_DIR, "index.html")
+
+@static_bp.route("/mini")
+def mini_page(): return send_from_directory(BASE_DIR, "mini.html")
 
 @static_bp.route("/setup")
 def setup_page(): return send_from_directory(BASE_DIR, "setup.html")

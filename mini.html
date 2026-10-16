@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DrDemic Mini – DrDemic Sheet</title>
+<meta name="robots" content="noindex"/>
+<link rel="icon" type="image/png" href="/DRDEMIC-LOGO.png"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F0F4F8;color:#0D1B2A;font-size:14px}
+.top{background:#0A1628;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px}
+.top a{color:#90CAF9;text-decoration:none}.sp{flex:1}
+button,select{font:inherit;padding:7px 12px;border-radius:8px;border:1.5px solid #1565C0;background:#fff;color:#1565C0;cursor:pointer;font-weight:600}
+button.pri{background:#1565C0;color:#fff}button.x{border:none;background:none;color:#C62828;padding:2px 6px}
+.box{max-width:380px;margin:60px auto;background:#fff;padding:28px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1);display:none}
+.box input{width:100%;margin:8px 0;padding:10px;border:1.5px solid #B0BEC5;border-radius:8px;font:inherit}
+.wrap{max-width:900px;margin:24px auto;padding:0 16px}.row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.muted{color:#546E7A;font-size:.85rem}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.card{background:#fff;border-radius:12px;padding:16px;text-decoration:none;color:inherit;box-shadow:0 3px 14px rgba(21,101,192,.12);display:block}
+.badge{background:#E8F5E9;color:#2E7D32;border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:700}
+.head{display:flex;align-items:center;gap:16px;padding:14px 16px;background:#fff}
+.logo{width:72px;height:72px;border-radius:50%;border:2px dashed #90CAF9;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#90CAF9;cursor:pointer;overflow:hidden;flex-shrink:0}
+.logo img{width:100%;height:100%;object-fit:cover}
+.big{display:block;width:min(420px,70vw);border:none;border-bottom:1.5px solid #CFD8DC;font:700 1.3rem inherit;padding:4px 0;margin:2px 0;outline:none;background:none}
+.big.sm{font-size:1rem;font-weight:600}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;background:#E3F2FD;position:sticky;top:0;z-index:5}
+.grid-wrap{overflow:auto;padding:12px 16px;max-height:calc(100vh - 230px)}
+table{border-collapse:collapse;background:#fff;font-size:13px}
+th,td{border:1px solid #CFD8DC;padding:0;min-width:70px}
+th{background:#1A6FA8;color:#fff;padding:6px;white-space:nowrap;position:sticky;top:0}
+th input.h{background:transparent;border:none;color:#fff;font-weight:700;width:90px;text-align:center}
+th input.h::placeholder{color:#B3E5FC}th.gh{cursor:pointer}
+td input{width:100%;border:none;padding:7px 6px;font:inherit;background:transparent;min-width:70px}
+td input:focus{outline:2px solid #1565C0;background:#F5FAFF}td.sn,td[id]{padding:6px;text-align:center;background:#F7FAFC;font-weight:600}
+td input.num{text-align:center;width:70px}td:nth-child(2) input{min-width:200px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:20}
+.modal>div{background:#fff;border-radius:12px;padding:20px;width:min(520px,94vw);max-height:80vh;overflow:auto}
+.modal input{padding:6px;width:80px;border:1.5px solid #B0BEC5;border-radius:6px}.hi{border-bottom:1px solid #ECEFF1;padding:8px 0}.hi ul{margin:4px 0 0 18px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#0A1628;color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:50}
+table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{position:static}
+</style></head><body>
+<div class="top"><img src="/DRDEMIC-LOGO.png" height="28" alt=""><b>DrDemic Mini</b><span class="sp"></span>
+<span id="who"></span><a href="/mini" id="back">My sheets</a><a href="/">Home</a><button id="logout" onclick="logout()" style="display:none">Sign out</button></div>
+<div id="toast"></div>
+
+<div id="v-auth" class="box">
+  <h2 id="a-title">Sign in</h2>
+  <p class="muted">Parents: use your phone number (first password is the same number, e.g. 0712345678). Teachers/admins: use your username.</p>
+  <input id="a-user" placeholder="Username or phone number"><input id="a-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doAuth()">
+  <button class="pri" id="a-btn" onclick="doAuth()" style="width:100%;margin-top:6px">Sign in</button>
+  <p class="muted" style="margin-top:12px"><a href="#" id="a-switch" onclick="setMode(mode==='login'?'signup':'login');return false">New teacher/admin? Create an account</a></p>
+</div>
+
+<div id="v-dash" class="wrap" style="display:none">
+  <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
+  <div id="sheets" class="cards"></div>
+</div>
+
+<div id="v-parent" class="wrap" style="display:none">
+  <div id="pw" style="display:none;background:#FFF8E1;padding:12px;border-radius:10px;margin-bottom:14px">
+    <b>Please set your own password.</b>
+    <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
+  </div>
+  <h2 style="margin-bottom:10px">My children's results</h2><div id="pres"></div>
+</div>
+
+<div id="v-sheet" style="display:none">
+  <div class="head">
+    <label class="logo" onclick="$('logo-in').click()"><img id="logo-img" style="display:none" alt=""><span id="logo-plus">+</span></label>
+    <input type="file" id="logo-in" accept="image/*" style="display:none" onchange="upLogo(this)">
+    <div><input id="school" class="big" placeholder="Enter school name" oninput="mark()"><input id="exam" class="big sm" placeholder="Enter exam name" oninput="mark()"></div>
+  </div>
+  <div class="bar">
+    <button class="pri" onclick="saveSheet()">SAVE</button>
+    <select id="type" onchange="setType(this.value)" title="Sheet type"></select>
+    <button onclick="toast('Report cards: coming soon')">Create Report</button>
+    <button id="b-pub" onclick="publish()">Publish</button>
+    <button onclick="dl('download')">Download Sheet</button>
+    <button onclick="dl('template')">Download Template</button>
+    <button onclick="$('imp').click()">Import Template</button><input type="file" id="imp" accept=".xlsx,.csv" style="display:none" onchange="doImport(this)">
+    <button onclick="copyLink()">Copy Link</button>
+    <button onclick="showHistory()">History</button>
+  </div>
+  <div class="grid-wrap"><table id="grid"></table></div>
+</div>
+
+<div class="modal" id="m-grades"><div>
+  <h3>Edit Grades</h3><p class="muted" style="margin:6px 0 10px">Boundaries drive the Grade column. Points/Division on Secondary and Advanced sheets always use the NECTA bands.</p>
+  <div id="gl"></div><div class="row" style="margin-top:10px"><button onclick="addGrade()">+ Add grade</button><span class="sp"></span><button onclick="closeM()">Cancel</button><button class="pri" onclick="applyGrades()">Apply</button></div>
+</div></div>
+<div class="modal" id="m-hist"><div><h3>History</h3><div id="hl"></div><div style="text-align:right;margin-top:10px"><button onclick="closeM()">Close</button></div></div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const rid=()=>Math.random().toString(36).slice(2,8);
+const TYPES={marks:"Marks Score Sheet",primary:"Primary Grade Score Sheet",secondary:"Secondary Grade Score Sheet",advanced:"Advanced-Level Grade Score Sheet"};
+let token=localStorage.getItem("mini_token"), me=JSON.parse(localStorage.getItem("mini_me")||"null");
+let S=null, dirty=false, mode="login", gtmp=[];
+window.onbeforeunload=e=>dirty?(e.preventDefault(),""):undefined;
+
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
+function show(v){["auth","dash","parent","sheet"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+  $("who").textContent=me?me.username:"";$("logout").style.display=me?"inline-block":"none";$("back").style.display=me&&me.role==="owner"?"inline":"none";}
+async function api(path,method="GET",body){
+  const h={"Content-Type":"application/json"}; if(token)h.Authorization="Bearer "+token;
+  let j; try{const r=await fetch("/api/mini"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+    try{j=await r.json()}catch(e){j={ok:false,error:"Server error"}} j._status=r.status;
+  }catch(e){j={ok:false,error:"Network error"};}
+  if(j._status===401&&token&&!path.startsWith("/auth/login")) logout();
+  return j;
+}
+function setAuth(r){token=r.token;me={username:r.username,role:r.role,must_change:!!r.must_change_password};
+  localStorage.setItem("mini_token",token);localStorage.setItem("mini_me",JSON.stringify(me));}
+function logout(){localStorage.removeItem("mini_token");localStorage.removeItem("mini_me");dirty=false;location.href="/mini";}
+
+// ── auth / dashboard / parent ──
+function setMode(m){mode=m;$("a-title").textContent=m==="login"?"Sign in":"Create teacher/admin account";
+  $("a-btn").textContent=m==="login"?"Sign in":"Create account";
+  $("a-switch").textContent=m==="login"?"New teacher/admin? Create an account":"Already have an account? Sign in";}
+async function doAuth(){
+  const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",{username:$("a-user").value,password:$("a-pass").value});
+  if(!r.ok) return toast(r.error||"Failed"); setAuth(r); location.href="/mini";
+}
+async function loadDash(){
+  show("dash"); const r=await api("/sheets");
+  $("sheets").innerHTML=r.ok&&r.sheets.length?r.sheets.map(s=>`<a class="card" href="/mini?s=${esc(s.key)}"><b>${esc(s.exam_name||"Untitled exam")}</b>
+    <div class="muted">${esc(s.school_name||"No school name")}</div><div class="muted">${TYPES[s.sheet_type]} · ${s.students} students</div>
+    ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
+}
+async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
+async function loadParent(){
+  show("parent"); if(me.must_change)$("pw").style.display="block";
+  const r=await api("/parent/results"); const v=x=>x==null?"-":x;
+  $("pres").innerHTML=r.ok&&r.results.length?r.results.map(s=>s.children.map(k=>`<div class="card" style="margin-bottom:14px">
+    <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
+    <table class="res"><tr><th>Subject</th><th>Score</th></tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td></tr>`).join("")}</table>
+    <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; <b>Position:</b> ${v(k.position)} / ${k.out_of} &nbsp; <b>Grade:</b> ${k.grade}
+    ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`).join("")).join(""):"<p class='muted'>No published results yet.</p>";
+}
+async function changePw(){const r=await api("/auth/change_password","POST",{old_password:$("op").value,new_password:$("np").value});
+  if(r.ok){setAuth(r);$("pw").style.display="none";toast("Password updated");}else toast(r.error);}
+
+// ── sheet ──
+function mark(){dirty=true;}
+function cols(){return ["name","phone",...S.subjects.map(s=>s.id)];}
+function extra(){return S.sheet_type==="secondary"||S.sheet_type==="advanced";}
+function gradeFor(a){if(a==null)return"-";for(const g of S.grade_rules)if(a>=g.min)return g.grade;return S.grade_rules[S.grade_rules.length-1].grade;}
+function calc(r){const v=S.subjects.filter(s=>s.name.trim()).map(s=>parseFloat(r.marks[s.id])).filter(x=>!isNaN(x));
+  const t=v.reduce((a,b)=>a+b,0);return{total:v.length?+t.toFixed(2):null,avg:v.length?+(t/v.length).toFixed(2):null};}
+function blank(){return{id:"r"+rid(),name:"",phone:"",marks:{}};}
+function ensureBlank(){const l=S.rows[S.rows.length-1];if(!l||l.name||l.phone||Object.keys(l.marks).length)S.rows.push(blank());}
+function rowHTML(i){const r=S.rows[i],c=calc(r);
+  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td><input data-r="${i}" data-c="1" value="${esc(r.phone)}"></td>`
+  +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${r.marks[s.id]??""}"></td>`).join("")
+  +`<td></td><td id="t${i}">${c.total??""}</td><td id="a${i}">${c.avg??""}</td><td id="p${i}">${r.position??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`
+  +(extra()?`<td>${r.points??""}</td><td>${r.division??""}</td>`:"")+`</tr>`;}
+function addRowEl(i){$("grid").tBodies[0].insertAdjacentHTML("beforeend",rowHTML(i));}
+function renderGrid(){
+  $("grid").innerHTML=`<thead><tr><th>S/N</th><th>Student Name</th><th>Account/Phone Number</th>`
+   +S.subjects.map((s,i)=>`<th><input class="h" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
+   +`<th><button onclick="addSub()">+ Add Subject</button></th><th>Total</th><th>Average</th><th>Position</th><th class="gh" onclick="openGrades()" title="Edit grade boundaries">Grade ✎</th>`
+   +(extra()?`<th>Points</th><th>Division</th>`:"")+`</tr></thead><tbody></tbody>`;
+  ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i));
+}
+function setCell(r,c,v){if(c===0)r.name=v;else if(c===1)r.phone=v;else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}}
+$("grid").addEventListener("input",e=>{
+  const t=e.target; if(t.dataset.sub!==undefined){S.subjects[+t.dataset.sub].name=t.value;return mark();}
+  if(t.dataset.r===undefined)return;
+  const i=+t.dataset.r,r=S.rows[i]; setCell(r,+t.dataset.c,t.value); mark();
+  const k=calc(r); $("t"+i).textContent=k.total??""; $("a"+i).textContent=k.avg??""; $("g"+i).textContent=k.avg==null?"":gradeFor(k.avg);
+  if(i===S.rows.length-1){S.rows.push(blank());addRowEl(S.rows.length-1);}
+});
+$("grid").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.dataset.r!==undefined){e.preventDefault();
+  const n=document.querySelector(`input[data-r="${+e.target.dataset.r+1}"][data-c="${e.target.dataset.c}"]`);if(n)n.focus();}});
+$("grid").addEventListener("paste",e=>{
+  const t=e.target; if(t.dataset.r===undefined)return;
+  const txt=(e.clipboardData||window.clipboardData).getData("text"); if(!/[\t\n]/.test(txt.trim()))return;
+  e.preventDefault(); const lines=txt.replace(/\r/g,"").replace(/\n+$/,"").split("\n"),i=+t.dataset.r,c0=+t.dataset.c;
+  lines.forEach((ln,k)=>{while(S.rows.length<=i+k)S.rows.push(blank());ln.split("\t").forEach((v,j)=>{if(c0+j<cols().length)setCell(S.rows[i+k],c0+j,v.trim());});});
+  mark(); renderGrid();
+});
+function addSub(){S.subjects.push({id:"s"+rid(),name:""});mark();renderGrid();}
+function delSub(i){if(!confirm("Remove this subject and its marks?"))return;S.subjects.splice(i,1);mark();renderGrid();}
+function setType(v){S.sheet_type=v;mark();renderGrid();}
+function updatePub(){$("b-pub").textContent=S.published?"Unpublish":"Publish";}
+function showLogo(){if(S.has_logo){const i=$("logo-img");i.src=`/api/mini/sheet/${S.key}/logo?t=${Date.now()}`;i.style.display="block";$("logo-plus").style.display="none";}}
+function apply(p){
+  S={...p,rows:p.rows.map(r=>({id:r.id,name:r.name,phone:r.phone,marks:r.marks,position:r.position,points:r.points,division:r.division}))};
+  dirty=false; $("school").value=S.school_name; $("exam").value=S.exam_name;
+  $("type").innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(""); $("type").value=S.sheet_type;
+  showLogo(); renderGrid(); updatePub();
+}
+function editorName(){if(S.is_owner)return"";let n=localStorage.getItem("mini_editor");
+  if(!n){n=(prompt("Your name (shown in the sheet history):")||"Guest").trim().slice(0,60);localStorage.setItem("mini_editor",n);}return n;}
+async function saveSheet(){
+  const r=await api(`/sheet/${S.key}/save`,"POST",{editor:editorName(),version:S.version,school_name:$("school").value,exam_name:$("exam").value,
+    sheet_type:S.sheet_type,grade_rules:S.grade_rules,subjects:S.subjects,rows:S.rows});
+  if(r.ok){apply(r);toast("Saved");return true;} toast(r.error||"Save failed"); return false;
+}
+async function publish(){
+  if(!S.is_owner)return toast("Only the signed-in owner of this sheet can publish");
+  const on=!S.published;
+  if(!confirm(on?"Publish? Parents whose phone number is on this sheet will see their child's results.":"Hide results from parents?"))return;
+  if(!(await saveSheet()))return;
+  const r=await api(`/sheet/${S.key}/publish`,"POST",{publish:on});
+  if(!r.ok)return toast(r.error||"Failed");
+  S.published=on;updatePub();
+  toast(on?`Published to ${r.parents} parent account(s)`+(r.missing_phone?` — ${r.missing_phone} student(s) have no valid phone`:""):"Results hidden");
+}
+async function dl(kind){if(dirty&&!(await saveSheet()))return;window.open(`/api/mini/sheet/${S.key}/${kind==="download"?"download.xlsx":"template.xlsx"}`);}
+async function doImport(inp){
+  const f=inp.files[0];inp.value="";if(!f)return;
+  if(S.rows.some(r=>r.name)&&!confirm("Replace the current students and subjects with this file?"))return;
+  const fd=new FormData();fd.append("file",f);
+  const r=await fetch(`/api/mini/sheet/${S.key}/import`,{method:"POST",body:fd}).then(x=>x.json()).catch(()=>({ok:false,error:"Import failed"}));
+  if(!r.ok)return toast(r.error); S.subjects=r.subjects;S.rows=r.rows;mark();renderGrid();toast(`Imported ${r.rows.length} students — press SAVE`);
+}
+function copyLink(){const u=location.origin+"/mini?s="+S.key;
+  (navigator.clipboard?navigator.clipboard.writeText(u).then(()=>toast("Link copied — anyone with it can edit this sheet")):Promise.reject()).catch(()=>prompt("Copy this link:",u));}
+async function upLogo(inp){const f=inp.files[0];if(!f)return;const fd=new FormData();fd.append("logo",f);
+  const r=await fetch(`/api/mini/sheet/${S.key}/logo`,{method:"POST",body:fd}).then(x=>x.json()).catch(()=>({ok:false,error:"Upload failed"}));
+  if(r.ok){S.has_logo=true;showLogo();}else toast(r.error);}
+
+// ── grades modal / history ──
+function closeM(){document.querySelectorAll(".modal").forEach(m=>m.style.display="none");}
+function openGrades(){gtmp=S.grade_rules.map(g=>({...g}));drawGrades();$("m-grades").style.display="flex";}
+function drawGrades(){$("gl").innerHTML=gtmp.map((g,i)=>`<div class="row"><span>From</span><input type="number" min="0" max="100" value="${g.min}" onchange="gtmp[${i}].min=+this.value">
+  <span>= Grade</span><input maxlength="3" value="${esc(g.grade)}" onchange="gtmp[${i}].grade=this.value"><button class="x" onclick="gtmp.splice(${i},1);drawGrades()">×</button></div>`).join("");}
+function addGrade(){gtmp.push({min:0,grade:""});drawGrades();}
+function applyGrades(){
+  if(!gtmp.length||!gtmp.every(g=>g.grade.trim()&&g.min>=0&&g.min<=100))return toast("Each grade needs a name and a mark from 0 to 100");
+  S.grade_rules=gtmp.map(g=>({min:g.min,grade:g.grade.trim()})).sort((a,b)=>b.min-a.min);mark();closeM();renderGrid();
+}
+function desc(c){const v=x=>x==null||x===""?"empty":x;
+  switch(c.what){case"mark":return`${c.student} – ${c.subject}: ${v(c.old)} → ${v(c.new)}`;
+    case"student_added":return`Added student ${c.student}`;case"student_removed":return`Removed student ${c.student}`;
+    case"subject_added":return`Added subject ${c.new||"(unnamed)"}`;case"subject_renamed":return`Renamed subject ${c.old} → ${c.new}`;
+    case"subject_removed":return`Removed subject ${c.old}`;case"name":case"phone":return`${c.student}: ${c.what} ${v(c.old)} → ${v(c.new)}`;
+    default:return`${c.what.replace(/_/g," ")} changed`;}}
+async function showHistory(){
+  const r=await api(`/sheet/${S.key}/history`);
+  $("hl").innerHTML=r.ok&&r.history.length?r.history.map(h=>`<div class="hi"><b>${esc(h.editor)}</b> <span class="muted">${new Date(h.changed_at).toLocaleString()}</span>
+    <ul>${h.changes.slice(0,60).map(c=>`<li>${esc(desc(c))}</li>`).join("")}</ul>${h.changes.length>60?`<div class="muted">+${h.changes.length-60} more</div>`:""}</div>`).join(""):"<p class='muted'>No saved changes yet.</p>";
+  $("m-hist").style.display="flex";
+}
+
+// ── boot ──
+(async function(){
+  const key=new URLSearchParams(location.search).get("s");
+  if(key){const r=await api("/sheet/"+key);if(!r.ok){show("auth");setMode("login");return toast(r.error||"Sheet not found");}show("sheet");return apply(r);}
+  if(!token||!me){show("auth");return setMode("login");}
+  me.role==="parent"?loadParent():loadDash();
+})();
+</script></body></html>

@@ -292,7 +292,7 @@ input,select,textarea{font-family:inherit;outline:none}
       <div style="font-size:4rem;margin-bottom:16px">🏫</div>
       <h2>School Already Registered</h2>
       <p>This school account has already been set up. Please log in to access the system.</p>
-      <a href="/" class="btn-goto-login">
+      <a href="/app" class="btn-goto-login">
         <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
         Go to Login
       </a>
@@ -851,7 +851,7 @@ async function submitRegistration(){
     const d   = await res.json();
     if(d.ok){
       toast("🎉 School registered! Your account is active — verification is pending, so you'll see a notice until we confirm your NECTA code. Redirecting to login...","success");
-      setTimeout(()=>window.location.href="/",3200);
+      setTimeout(()=>window.location.href="/app",3200);
     } else {
       toast(d.error||"Registration failed","error");
       btn.innerHTML=`<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Complete Registration`;
