@@ -43,9 +43,15 @@ td.hl{background:#FFF176!important}th.hl{background:#F9A825!important}
 .modal input{padding:6px;width:80px;border:1.5px solid #B0BEC5;border-radius:6px}.hi{border-bottom:1px solid #ECEFF1;padding:8px 0}.hi.click{cursor:pointer}.hi.click:hover{background:#E0F2F1}.hi ul{margin:4px 0 0 18px}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00574B;color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:50}
 table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{position:static}
+.tabs2{display:flex;gap:4px;background:#E0F2F1;padding:4px;border-radius:10px;margin-bottom:16px;flex-wrap:wrap}
+.tabs2 .tb{padding:8px 16px;border-radius:8px;border:none;background:none;color:#546E7A}
+.tabs2 .tb.on{background:#fff;color:#00897B;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.panel{background:#fff;border-radius:12px;padding:18px;box-shadow:0 3px 14px rgba(0,137,123,.14);margin-bottom:16px}
+.ins{display:flex;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;border-left:3px solid;font-size:.85rem;line-height:1.5}
 </style></head><body>
-<div class="top"><img src="/DRDEMIC-LOGO.png" height="28" alt=""><b>DrDemic Mini</b><span class="sp"></span>
-<span id="who"></span><a href="/mini" id="back">My sheets</a><a href="/">Home</a><button id="logout" onclick="logout()" style="display:none">Sign out</button></div>
+<div class="top"><a href="/">Home</a><a href="/mini" id="back">My sheets</a>
+<a href="#" id="subbtn" style="display:none" onclick="showSub();return false">Subscribe</a><span class="sp"></span>
+<button id="logout" onclick="logout()" style="display:none">Sign out</button></div>
 <div id="toast"></div>
 
 <div id="v-auth" class="box">
@@ -78,10 +84,36 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <b>Please set your own password.</b>
     <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
   </div>
-  <h2 style="margin-bottom:10px">My children's results</h2><div id="pres"></div>
+  <div class="row" style="margin-bottom:10px"><h2>My children's results</h2><span class="sp"></span>
+    <button class="pri" onclick="openAnalytics()"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align:-2px"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Analytics</button></div>
+  <div id="pres"></div>
   <p id="pall" style="display:none;margin:6px 0 14px"><a href="/mini">View all my results</a></p>
   <h2 style="margin:18px 0 10px">Announcements</h2><div id="pann"></div>
 </div>
+
+<div id="v-an" class="wrap" style="display:none">
+  <div class="row"><button onclick="loadParent(PUB)">← Back</button><h2>Academic Analytics</h2></div>
+  <div id="an-locked" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#FFF8E1;border-left:4px solid #FFB300;border-radius:10px;padding:14px 18px;margin-bottom:16px">
+    <div style="color:#5D4037"><b>🔒 Subscribe to unlock analytics.</b> Graphs and insights fill in once your subscription is active.</div>
+    <button class="pri" onclick="showSub()">View Plans</button></div>
+  <div id="an-child-wrap" style="display:none;margin-bottom:12px"><select id="an-child" onchange="anChild=+this.value;anRender()"></select></div>
+  <div class="tabs2"><button class="tb on" id="tb-avg" onclick="anTabSet('avg')">Overall Average Trend</button>
+    <button class="tb" id="tb-subject" onclick="anTabSet('subject')">Subject Trend</button></div>
+  <div id="an-subj-wrap" style="display:none;margin-bottom:12px"><select id="an-subj" onchange="anRender()"></select></div>
+  <div class="panel"><canvas id="an-chart" style="width:100%;height:260px;display:block"></canvas></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:16px">
+    <div class="panel" style="margin:0"><b style="color:#00A040">💪 Best Subjects</b><div id="an-best" style="margin-top:8px"></div></div>
+    <div class="panel" style="margin:0"><b style="color:#C62828">📚 Needs Attention</b><div id="an-weak" style="margin-top:8px"></div></div>
+  </div>
+  <div class="panel"><b>💡 Insights &amp; Recommendations</b><div id="an-ins" style="margin-top:10px"></div></div>
+</div>
+
+<div id="v-sub" class="wrap" style="display:none">
+  <div class="row"><button onclick="loadParent(PUB)">← Back</button><h2>Subscription</h2></div>
+  <p class="muted" style="margin-bottom:12px">Unlock detailed analytics, performance graphs and insights.</p>
+  <div id="sub-body"></div>
+</div>
+<datalist id="subj-list"></datalist>
 
 <div id="v-sheet" style="display:none">
   <div class="head">
@@ -153,8 +185,10 @@ let S=null, dirty=false, mode="login", gtmp=[];
 window.onbeforeunload=e=>dirty?(e.preventDefault(),""):undefined;
 
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
-function show(v){["auth","dash","parent","sheet","link"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
-  $("who").textContent=me?me.username:"";$("logout").style.display=me?"inline-block":"none";$("back").style.display=me&&me.role==="owner"?"inline":"none";}
+function show(v){["auth","dash","parent","sheet","link","an","sub"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+  $("logout").style.display=me?"inline-block":"none";
+  $("back").style.display=me&&me.role==="owner"?"inline":"none";
+  $("subbtn").style.display=me&&me.role==="parent"?"inline":"none";}
 async function api(path,method="GET",body){
   const h={"Content-Type":"application/json"}; if(token)h.Authorization="Bearer "+token;
   let j; try{const r=await fetch("/api/mini"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
@@ -253,7 +287,7 @@ function rowHTML(i){const r=S.rows[i],c=calc(r);
 function addRowEl(i){$("grid").tBodies[0].insertAdjacentHTML("beforeend",rowHTML(i));}
 function renderGrid(){
   $("grid").innerHTML=`<thead><tr><th>S/N</th><th>Student Name</th><th>Account/Phone Number</th>`
-   +S.subjects.map((s,i)=>`<th><input class="h" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
+   +S.subjects.map((s,i)=>`<th><input class="h" list="subj-list" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
    +`<th><button onclick="addSub()">+ Add Subject</button></th><th>Total</th><th>Average</th><th>Position</th><th class="gh" onclick="openGrades()" title="Edit grade boundaries">Grade ✎</th>`
    +(extra()?`<th>Points</th><th>Division</th>`:"")+`</tr></thead><tbody></tbody>`;
   ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL();
@@ -351,6 +385,7 @@ function showLogo(){if(S.has_logo){const i=$("logo-img");i.src=`/api/mini/sheet/
 function apply(p){
   S={...p,rows:p.rows.map(r=>({id:r.id,name:r.name,phone:r.phone,marks:r.marks,position:r.position,points:r.points,division:r.division}))};
   LK=new Set(S.linked||[]);
+  $("subj-list").innerHTML=(S.subject_suggestions||[]).map(n=>`<option value="${esc(n)}">`).join("");
   dirty=false; $("school").value=S.school_name; $("exam").value=S.exam_name; $("cls").value=S.class_name||""; HL=null; $("hbar").style.display="none";
   $("type").innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(""); $("type").value=S.sheet_type;
   showLogo(); renderGrid(); updatePub();
@@ -435,6 +470,125 @@ function applyHL(){
     const ch=HL.subs[S.subjects[+inp.dataset.sub].id];
     if(ch){inp.parentElement.classList.add("hl");inp.title=`${hv(ch.o)} → ${hv(ch.n)}`;}
   });
+}
+
+// ── parent analytics ──
+const capS=s=>String(s).replace(/\b\w/g,c=>c.toUpperCase());
+let ANA=null, anChild=0, anTab="avg";
+function anTabSet(t){anTab=t;$("tb-avg").classList.toggle("on",t==="avg");$("tb-subject").classList.toggle("on",t==="subject");
+  $("an-subj-wrap").style.display=t==="subject"?"block":"none";anRender();}
+async function openAnalytics(){
+  show("an");$("an-locked").style.display="none";
+  const r=await api("/parent/analytics");
+  if(r._status===402){$("an-locked").style.display="flex";ANA=[];drawChart([],[]);
+    const m="<p class='muted'>🔒 Subscribe to see this</p>";$("an-best").innerHTML=m;$("an-weak").innerHTML=m;$("an-ins").innerHTML=m;return;}
+  if(!r.ok)return toast(r.error||"Failed");
+  ANA=r.children.filter(c=>c.points.length);anChild=0;
+  $("an-child").innerHTML=ANA.map((c,i)=>`<option value="${i}">${esc(c.student)}</option>`).join("");
+  $("an-child-wrap").style.display=ANA.length>1?"block":"none";
+  anRender();
+}
+function anRender(){
+  if(!ANA||!ANA.length){drawChart([],[]);const m="<p class='muted'>No published results yet.</p>";
+    $("an-best").innerHTML=m;$("an-weak").innerHTML=m;$("an-ins").innerHTML=m;return;}
+  const c=ANA[anChild],pts=c.points;
+  const subs=[...new Set(pts.flatMap(p=>Object.keys(p.subjects)))].sort();
+  const sel=$("an-subj"),cur=sel.value;
+  sel.innerHTML=subs.map(s=>`<option value="${esc(s)}">${esc(capS(s))}</option>`).join("");
+  if(subs.includes(cur))sel.value=cur;
+  const vals=anTab==="avg"?pts.map(p=>p.avg):pts.map(p=>p.subjects[sel.value]??null);
+  drawChart(pts.map(p=>p.label),vals);
+  const recent=pts.slice(-3),avgs=subs.map(s=>{const v=recent.map(p=>p.subjects[s]).filter(x=>x!=null);
+    return v.length?[s,v.reduce((a,b)=>a+b,0)/v.length]:null}).filter(Boolean).sort((a,b)=>b[1]-a[1]);
+  const row=(s,v,col)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #E0F2F1"><span>${esc(capS(s))}</span><b style="color:${col}">${v.toFixed(1)}</b></div>`;
+  $("an-best").innerHTML=avgs.length?avgs.slice(0,3).map(([s,v])=>row(s,v,"#00A040")).join(""):"<p class='muted'>Not enough data</p>";
+  $("an-weak").innerHTML=avgs.length?avgs.slice(-3).reverse().map(([s,v])=>row(s,v,"#C62828")).join(""):"<p class='muted'>Not enough data</p>";
+  anInsights(c.student,pts,subs);
+}
+function anInsights(name,pts,subs){
+  const box=$("an-ins");
+  if(pts.length<2){box.innerHTML="<p class='muted'>Need at least 2 published results to generate insights.</p>";return;}
+  const last=pts[pts.length-1],prev=pts[pts.length-2],out=[];
+  subs.forEach(s=>{const cur=last.subjects[s],pre=prev.subjects[s];if(cur==null)return;
+    const all=pts.map(p=>p.subjects[s]).filter(v=>v!=null),avg=all.reduce((a,b)=>a+b,0)/all.length,S=capS(s);
+    if(avg>=85)out.push(["success",`Outstanding performance in ${S}! ${name} consistently excels here — keep it up.`]);
+    else if(avg<40)out.push(["danger",`${S} requires urgent attention. ${name} is scoring below expectations — more revision and support are strongly recommended.`]);
+    else if(pre!=null){const d=cur-pre;
+      if(d>=15)out.push(["success",`Excellent improvement in ${S}! ${name} has made significant progress.`]);
+      else if(d<=-15)out.push(["warning",`A noticeable decline in ${S}. ${name} is encouraged to spend more time on revision.`]);
+      else out.push(["info",`${name} is maintaining steady performance in ${S}. A little extra push could move results up a grade.`]);}
+  });
+  if(last.avg>prev.avg)out.unshift(["success",`📈 Overall average improved from ${prev.avg} to ${last.avg}. Great work, ${name}!`]);
+  else if(last.avg<prev.avg)out.unshift(["warning",`📉 Overall average dropped from ${prev.avg} to ${last.avg}. ${name} should focus on weaker areas.`]);
+  if(last.out_of>0&&last.position&&last.position/last.out_of<=0.25)out.unshift(["success",`🏆 ${name} is among the top 25% of the class — an outstanding achievement!`]);
+  const col={success:"#00C853",warning:"#FF6D00",danger:"#F44336",info:"#00897B"},bg={success:"#E8F5E9",warning:"#FFF3E0",danger:"#FFEBEE",info:"#E0F2F1"},ic={success:"✅",warning:"⚠️",danger:"🚨",info:"💡"};
+  box.innerHTML=out.map(([t,x])=>`<div class="ins" style="background:${bg[t]};border-color:${col[t]}"><span>${ic[t]}</span><span>${esc(x)}</span></div>`).join("")||"<p class='muted'>No insights yet.</p>";
+}
+function drawChart(labels,values){
+  const c=$("an-chart"),dpr=window.devicePixelRatio||1,W=Math.max((c.parentElement.clientWidth||500)-40,260),sm=W<420,H=sm?220:260;
+  c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.height=H+"px";
+  const x=c.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,H);
+  const P=sm?{t:16,r:10,b:60,l:34}:{t:20,r:20,b:80,l:48},cW=W-P.l-P.r,cH=H-P.t-P.b;
+  x.strokeStyle="#E0F2F1";x.lineWidth=1;x.fillStyle="#546E7A";x.font=sm?"9px Arial":"11px Arial";x.textAlign="right";
+  [0,25,50,75,100].forEach(v=>{const y=P.t+cH-v/100*cH;x.beginPath();x.moveTo(P.l,y);x.lineTo(P.l+cW,y);x.stroke();x.fillText(v,P.l-6,y+4);});
+  if(!values.length){x.textAlign="center";x.fillText("Not enough data yet",P.l+cW/2,P.t+cH/2);return;}
+  const step=values.length>1?cW/(values.length-1):cW,px=i=>P.l+(values.length>1?i*step:cW/2);
+  x.font=sm?"8px Arial":"9px Arial";
+  labels.forEach((l,i)=>{x.save();x.translate(px(i),P.t+cH+14);x.rotate(-Math.PI/4);x.textAlign="right";x.fillStyle="#546E7A";x.fillText(l,0,0);x.restore();});
+  const pts=values.map((v,i)=>v==null?null:{x:px(i),y:P.t+cH-v/100*cH,v});
+  const ok=pts.filter(Boolean);
+  if(ok.length){x.beginPath();x.moveTo(ok[0].x,P.t+cH);ok.forEach(p=>x.lineTo(p.x,p.y));x.lineTo(ok[ok.length-1].x,P.t+cH);x.closePath();
+    const gr=x.createLinearGradient(0,P.t,0,P.t+cH);gr.addColorStop(0,"rgba(0,137,123,.18)");gr.addColorStop(1,"rgba(0,137,123,.02)");x.fillStyle=gr;x.fill();}
+  x.strokeStyle="#00897B";x.lineWidth=2.5;x.lineJoin="round";x.lineCap="round";x.beginPath();let f=true;
+  pts.forEach(p=>{if(!p)return;if(f){x.moveTo(p.x,p.y);f=false}else x.lineTo(p.x,p.y)});x.stroke();
+  pts.forEach(p=>{if(!p)return;const bad=p.v<50;x.beginPath();x.arc(p.x,p.y,sm?4:5,0,Math.PI*2);x.fillStyle=bad?"#F44336":"#00897B";x.fill();
+    x.strokeStyle="#fff";x.lineWidth=2;x.stroke();x.fillStyle=bad?"#C62828":"#0A1628";x.font="bold 11px Arial";x.textAlign="center";x.fillText(p.v,p.x,p.y-10);});
+}
+
+// ── parent subscription ──
+const tzs=n=>Number(n).toLocaleString("en-US")+" TZS";
+const fdate=i=>i?new Date(i).toLocaleDateString(undefined,{day:"numeric",month:"long",year:"numeric"}):"—";
+let payTimer=null;
+async function showSub(){
+  show("sub");const b=$("sub-body");b.innerHTML="<p class='muted'>Loading…</p>";
+  const st=await api("/access/status");
+  if(!st.ok){b.innerHTML=`<p style="color:#C62828">${esc(st.error||"Could not load subscription")}</p>`;return;}
+  const box=st.active
+    ?`<div style="background:#E0F2F1;border-left:4px solid #00897B;border-radius:10px;padding:16px;margin-bottom:16px">
+        <b style="color:#00695C;font-size:1.05rem">✅ Subscription active — ${esc(st.plan_label||"")}</b>
+        <div style="margin-top:6px">Expires on <b>${fdate(st.expires_at)}</b></div>
+        <div style="margin-top:4px"><b>${st.days_left}</b> day${st.days_left===1?"":"s"} left</div></div>`
+    :`<div style="background:#FFF8E1;border-left:4px solid #FFB300;border-radius:10px;padding:16px;margin-bottom:16px">
+        <b style="color:#5D4037">🔒 No active subscription</b>
+        <div class="muted" style="margin-top:6px">${st.expires_at?"Previous subscription expired on <b>"+fdate(st.expires_at)+"</b>. ":""}Unlocks detailed analytics, graphs and insights.</div></div>`;
+  const plans=st.plans.map(p=>`<button class="pri payb" style="flex:1;min-width:160px;padding:14px" onclick="payPlan('${p.key}')">
+      ${esc(p.label)} - ${tzs(p.amount)}${st.active?"<div style='font-size:.7rem;opacity:.85'>Adds to current expiry</div>":""}</button>`).join("");
+  const hist=st.history.length?`<div class="panel"><b>Payment history</b><table class="res" style="margin-top:8px"><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Status</th><th>Expires</th></tr>
+    ${st.history.map(h=>`<tr><td>${fdate(h.paid_at||h.created_at)}</td><td>${h.plan==="6m"?"6 Months":h.plan==="12m"?"12 Months":esc(h.plan)}</td><td>${tzs(h.amount)}</td>
+      <td><span class="badge" ${h.status==="completed"?"":"style='background:#FFEBEE;color:#C62828'"}>${esc(h.status)}</span></td><td>${h.status==="completed"?fdate(h.expires_at):"—"}</td></tr>`).join("")}</table></div>`:"";
+  b.innerHTML=box+`<div class="panel"><b>${st.active?"Extend subscription":"Choose a plan"}</b>
+    <div style="margin:12px 0"><label class="muted">Mobile-money number that will pay</label>
+      <input id="pay-phone" type="tel" placeholder="e.g. 0712345678" style="width:100%;padding:10px;border:1.5px solid #B0BEC5;border-radius:8px;margin-top:4px;font:inherit">
+      <p class="muted" style="margin-top:4px">A payment prompt is sent to this phone. Any mobile-money phone works. No smartphone needed.</p></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${plans}</div><div id="pay-status" style="margin-top:14px"></div></div>`+hist;
+  if(st.pending)pollPay(st.pending.id,$("pay-status"));
+}
+async function payPlan(key){
+  const phone=$("pay-phone").value.trim();if(!phone)return toast("Enter the mobile-money number that will pay");
+  document.querySelectorAll(".payb").forEach(b=>b.disabled=true);
+  const r=await api("/access/pay","POST",{plan:key,phone});
+  if(!r.ok){document.querySelectorAll(".payb").forEach(b=>b.disabled=false);return toast(r.error||"Could not start payment");}
+  toast("Payment prompt sent. Approve it on the phone");pollPay(r.payment_id,$("pay-status"));
+}
+function pollPay(id,el){
+  clearInterval(payTimer);let tries=0;
+  el.innerHTML=`⏳ Waiting for approval on the phone… <button onclick="pollPay(${id},$('pay-status'))" style="margin-left:8px">Check now</button>`;
+  const tick=async()=>{tries++;const r=await api("/access/check/"+id,"POST",{});if(!r.ok)return;
+    if(r.status==="completed"){clearInterval(payTimer);toast("Payment confirmed. Subscription active!");showSub();}
+    else if(["failed","voided","expired","amount_mismatch"].includes(r.status)){clearInterval(payTimer);
+      toast(r.status==="amount_mismatch"?"Payment amount didn't match. Contact support":"Payment "+r.status+". You can try again.");showSub();}
+    else if(tries>=36){clearInterval(payTimer);el.textContent="Still waiting. If you approved it, reopen this page in a minute.";}};
+  payTimer=setInterval(tick,5000);tick();
 }
 
 // ── boot ──

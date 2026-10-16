@@ -65,6 +65,12 @@ PARENT_PLANS = {
     "12m": {"label": "12 Months", "days": 365, "amount": _price("PARENT_PRICE_12M", 1000)},
 }
 
+# DrDemic Mini parent subscription (separate from the main app's per-student plans)
+MINI_PLANS = {
+    "6m":  {"label": "6 Months",  "days": 182, "amount": _price("MINI_PRICE_6M", 3000)},
+    "12m": {"label": "12 Months", "days": 365, "amount": _price("MINI_PRICE_12M", 5000)},
+}
+
 SNIPPE_API_BASE       = "https://api.snippe.sh"
 SNIPPE_API_KEY        = os.environ.get("SNIPPE_API_KEY", "")
 SNIPPE_WEBHOOK_SECRET = os.environ.get("SNIPPE_WEBHOOK_SECRET", "")

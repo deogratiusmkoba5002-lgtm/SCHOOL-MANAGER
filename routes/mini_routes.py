@@ -10,8 +10,9 @@ from config import SECRET_KEY, SESSION_MAX_AGE, ALLOWED_LOGO_EXT, _mime_for_ext
 from core.db import get_db
 from core.ratelimit import rate_limit
 from core.security import hash_password, verify_password
-from services.access import normalize_phone
+from services.access import normalize_phone, SnippeError
 from services import mini as M
+from services import mini_access as MA
 from services.mini_pdf import build_pdf
 
 mini_bp = Blueprint("mini", __name__)
@@ -132,6 +133,12 @@ def _payload(key, s, viewer):
     is_owner = bool(viewer and viewer["id"] == s["owner_id"])
     con = get_db(); cur = con.cursor()
     linked = sorted(M.linked_names(cur, s["owner_id"]))
+    cur.execute("SELECT DISTINCT TRIM(e->>'name') FROM mini_sheets, jsonb_array_elements(data->'subjects') e "
+                "WHERE owner_id=%s", (s["owner_id"],))
+    _sg = {}
+    for (n,) in cur.fetchall():
+        if n: _sg.setdefault(n.lower(), n)
+    suggestions = sorted(_sg.values(), key=str.lower)
     restr = {}
     if is_owner:
         cur.execute("SELECT name_norm,reason FROM mini_restrictions WHERE sheet_id=%s", (s["id"],))
@@ -141,7 +148,7 @@ def _payload(key, s, viewer):
             "sheet_type": s["sheet_type"], "grade_rules": s["grade_rules"], "subjects": s["data"]["subjects"],
             "rows": M.compute(s["data"], s["sheet_type"], s["grade_rules"]), "version": s["version"],
             "published": bool(s["published"]), "has_logo": s["has_logo"], "is_owner": is_owner,
-            "linked": linked, "restrictions": restr,
+            "linked": linked, "restrictions": restr, "subject_suggestions": suggestions,
             "link": f"/mini/parents/{M.slug(s['school_name'])}/{s['pub_token']}" if s["pub_token"] else None}
 
 
@@ -486,3 +493,94 @@ def mini_announce(key):
         if not cur.closed:
             cur.close(); con.close()
     return jsonify({"ok": True, "parents": n})
+
+# ── parent subscription (Snippe) ────────────────────────────
+def _iso(d):
+    return d.isoformat() + "Z" if d else None
+
+
+@mini_bp.route("/api/mini/access/status", methods=["GET"])
+@need_user("parent")
+def mini_access_status():
+    uid = g.mini_user["id"]
+    MA.refresh_pending(uid)
+    acc = MA.get_access(uid)
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id,plan,amount,status,paid_at,expires_at,created_at FROM mini_payments "
+                "WHERE user_id=%s ORDER BY id DESC LIMIT 10", (uid,))
+    hist = [{"id": r[0], "plan": r[1], "amount": r[2], "status": r[3], "paid_at": _iso(r[4]),
+             "expires_at": _iso(r[5]), "created_at": _iso(r[6])} for r in cur.fetchall()]
+    cur.close(); con.close()
+    pending = next((h for h in hist if h["status"] == "pending"), None)
+    return jsonify({"ok": True, **acc, "plans": MA.plans_public(), "pending": pending, "history": hist})
+
+
+@mini_bp.route("/api/mini/access/pay", methods=["POST"])
+@need_user("parent")
+def mini_access_pay():
+    d = request.get_json(silent=True) or {}
+    try:
+        res = MA.start_payment(g.mini_user["id"], (d.get("plan") or "").strip(), d.get("phone") or "")
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except SnippeError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, **res})
+
+
+@mini_bp.route("/api/mini/access/check/<int:pid>", methods=["POST"])
+@need_user("parent")
+def mini_access_check(pid):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT user_id FROM mini_payments WHERE id=%s", (pid,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row or row[0] != g.mini_user["id"]:
+        return jsonify({"ok": False, "error": "Payment not found"}), 404
+    status = MA.finalize_payment(pid)
+    return jsonify({"ok": True, "status": status, "access": MA.get_access(g.mini_user["id"])})
+
+
+# ── parent analytics (subscribers only) ─────────────────────
+@mini_bp.route("/api/mini/parent/analytics", methods=["GET"])
+@need_user("parent")
+def mini_parent_analytics():
+    uid = g.mini_user["id"]
+    if not MA.get_access(uid)["active"]:
+        return jsonify({"ok": False, "error": "Subscribe to unlock analytics",
+                        "code": "subscription_required"}), 402
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT owner_id,name_norm,name FROM mini_students WHERE parent_user_id=%s", (uid,))
+    mine = cur.fetchall()
+    owners = sorted({m[0] for m in mine})
+    sheets, restr = [], set()
+    if owners:
+        cur.execute("SELECT id,owner_id,exam_name,sheet_type,grade_rules,data FROM mini_sheets "
+                    "WHERE owner_id=ANY(%s) AND published=1 ORDER BY published_at DESC LIMIT 60", (owners,))
+        sheets = cur.fetchall()
+        ids = [x[0] for x in sheets]
+        if ids:
+            cur.execute("SELECT sheet_id,name_norm FROM mini_restrictions WHERE sheet_id=ANY(%s)", (ids,))
+            restr = set(cur.fetchall())
+    cur.close(); con.close()
+    sheets.reverse()                                            # oldest -> newest
+    kids = {(o, nn): {"student": name, "points": []} for o, nn, name in mine}
+    for sid, owner, exam, stype, rules, data in sheets:
+        ranked = M.compute(data, stype, rules)
+        of = sum(1 for r in ranked if r["average"] is not None)
+        subs = {x["id"]: x["name"] for x in data["subjects"] if x["name"]}
+        for r in ranked:
+            key = (owner, M.norm(r["name"]))
+            if key not in kids or (sid, key[1]) in restr or r["average"] is None:
+                continue
+            scores = {}
+            for i, n in subs.items():                           # normalised: "English" == "english"
+                v = r["marks"].get(i)
+                if v is not None:
+                    scores[M.norm(n)] = v
+            kids[key]["points"].append({"label": exam or "Exam", "avg": r["average"],
+                                        "position": r["position"], "out_of": of, "subjects": scores})
+    out = []
+    for c in kids.values():
+        c["points"] = c["points"][-5:]
+        out.append(c)
+    return jsonify({"ok": True, "children": out})

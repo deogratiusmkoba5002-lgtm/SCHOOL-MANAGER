@@ -761,6 +761,29 @@ def init_db():
         posted_at TIMESTAMP DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_mini_ann_owner ON mini_announcements(owner_id, id DESC);
+    CREATE TABLE IF NOT EXISTS mini_access (
+        user_id    INTEGER PRIMARY KEY REFERENCES mini_users(id) ON DELETE CASCADE,
+        plan       TEXT NOT NULL DEFAULT '',
+        expires_at TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS mini_payments (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER NOT NULL REFERENCES mini_users(id) ON DELETE CASCADE,
+        plan            TEXT NOT NULL,
+        duration_days   INTEGER NOT NULL,
+        amount          INTEGER NOT NULL,
+        reference       TEXT UNIQUE,
+        idempotency_key TEXT,
+        phone           TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        failure_reason  TEXT,
+        applied         INTEGER NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP DEFAULT NOW(),
+        paid_at         TIMESTAMP,
+        expires_at      TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_payments_user ON mini_payments(user_id);
     """)
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")

@@ -100,9 +100,17 @@ def api_access_webhook():
     if etype.startswith("payment.") and ref:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM student_payments WHERE reference=%s", (ref,))
-        row = cur.fetchone(); cur.close(); con.close()
+        row = cur.fetchone()
+        mrow = None
+        if not row:
+            cur.execute("SELECT id FROM mini_payments WHERE reference=%s", (ref,))
+            mrow = cur.fetchone()
+        cur.close(); con.close()
         if row:
             finalize_payment(row[0])
+        elif mrow:
+            from services.mini_access import finalize_payment as mini_finalize
+            mini_finalize(mrow[0])
     elif etype.startswith("payout.") and ref:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM star_withdrawals WHERE payout_reference=%s", (ref,))
