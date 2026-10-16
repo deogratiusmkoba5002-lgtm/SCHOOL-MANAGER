@@ -22,11 +22,24 @@ def test_mini_end_to_end(client):
     assert hist[0]["editor"] == "Guest Teacher"
 
     assert client.post(url + "/publish", json={}).status_code == 401  # guests cannot publish
-    pub = client.post(url + "/publish", json={"publish": True}, headers=owner).get_json()
-    assert pub["parents"] == 2
+    pub = client.post(url + "/publish", headers=owner,
+                      json={"publish": True, "restrict": [{"name": "Low", "reason": "fees"}]}).get_json()
+    assert pub["students"] == 2 and pub["restricted"] == 1 and pub["link"].startswith("/mini/parents/")
+    token = pub["link"].rsplit("/", 1)[1]
+    link = f"/api/mini/link/{token}/login"
 
-    parent = client.post("/api/mini/auth/login", json={"username": "0711000002", "password": "0711000002"}).get_json()
-    res = client.get("/api/mini/parent/results", headers=_h(parent["token"])).get_json()["results"]
-    kids = res[0]["children"]
-    assert len(kids) == 1 and kids[0]["student"] == "High"           # sees only their own child
-    assert client.post("/api/mini/sheets", headers=_h(parent["token"])).status_code == 403
+    assert client.post(link, json={"name": "High", "password": "0000"}).status_code == 401
+    assert client.post(link, json={"name": "high", "password": "0711000002"}).get_json()["need_password"] is True
+    done = client.post(link, json={"name": "High", "password": "0711000002",
+                                   "new_password": "newpass1", "confirm_password": "newpass1"}).get_json()
+    assert done["ok"] and done["token"]
+    res = client.get(f"/api/mini/parent/results?pub={token}", headers=_h(done["token"])).get_json()["results"]
+    assert len(res[0]["children"]) == 1 and res[0]["children"][0]["student"] == "High"
+    assert client.post("/api/mini/sheets", headers=_h(done["token"])).status_code == 403
+    assert client.post(link, json={"name": "High", "password": "newpass1"}).get_json()["ok"]
+    assert "high" in client.get(url).get_json()["linked"]
+
+    ann = client.post(url + "/announce", json={"title": "Meeting", "body": "Friday"}, headers=owner).get_json()
+    assert ann["parents"] == 1
+    got = client.get("/api/mini/parent/results", headers=_h(done["token"])).get_json()["announcements"]
+    assert got[0]["title"] == "Meeting"

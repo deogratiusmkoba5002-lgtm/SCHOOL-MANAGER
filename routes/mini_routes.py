@@ -85,11 +85,16 @@ def mini_login():
     con = get_db(); cur = con.cursor()
     cur.execute("SELECT id,username,password,role,must_change_password,token_version FROM mini_users "
                 "WHERE LOWER(username)=ANY(%s)", (names,))
-    rows = cur.fetchall(); cur.close(); con.close()
+    rows = cur.fetchall()
+    # a linked parent can also sign in with the child's name
+    cur.execute("SELECT u.id,s.name,u.password,u.role,u.must_change_password,u.token_version "
+                "FROM mini_students s JOIN mini_users u ON u.id=s.parent_user_id WHERE s.name_norm=%s", (M.norm(u),))
+    rows += cur.fetchall()
+    cur.close(); con.close()
     for r in rows:
         if verify_password(p, r[2]):
             return _token_reply(r[0], r[1], r[3], r[4], r[5])
-    return jsonify({"ok": False, "error": "Wrong username/phone or password"}), 401
+    return jsonify({"ok": False, "error": "Wrong username/name or password"}), 401
 
 
 @mini_bp.route("/api/mini/auth/change_password", methods=["POST"])
@@ -113,22 +118,31 @@ def mini_change_password():
 
 # ── sheets ──────────────────────────────────────────────────
 _F = ("id", "owner_id", "school_name", "exam_name", "class_name", "sheet_type", "grade_rules", "data", "version",
-      "published", "has_logo")
+      "published", "has_logo", "pub_token")
 
 
 def _sheet(cur, key, lock=False):
     cur.execute("SELECT id,owner_id,school_name,exam_name,class_name,sheet_type,grade_rules,data,version,published,"
-                "logo_data IS NOT NULL FROM mini_sheets WHERE share_key=%s" + (" FOR UPDATE" if lock else ""), (key,))
+                "logo_data IS NOT NULL,pub_token FROM mini_sheets WHERE share_key=%s" + (" FOR UPDATE" if lock else ""), (key,))
     r = cur.fetchone()
     return dict(zip(_F, r)) if r else None
 
 
 def _payload(key, s, viewer):
+    is_owner = bool(viewer and viewer["id"] == s["owner_id"])
+    con = get_db(); cur = con.cursor()
+    linked = sorted(M.linked_names(cur, s["owner_id"]))
+    restr = {}
+    if is_owner:
+        cur.execute("SELECT name_norm,reason FROM mini_restrictions WHERE sheet_id=%s", (s["id"],))
+        restr = dict(cur.fetchall())
+    cur.close(); con.close()
     return {"ok": True, "key": key, "school_name": s["school_name"], "exam_name": s["exam_name"], "class_name": s["class_name"],
             "sheet_type": s["sheet_type"], "grade_rules": s["grade_rules"], "subjects": s["data"]["subjects"],
             "rows": M.compute(s["data"], s["sheet_type"], s["grade_rules"]), "version": s["version"],
-            "published": bool(s["published"]), "has_logo": s["has_logo"],
-            "is_owner": bool(viewer and viewer["id"] == s["owner_id"])}
+            "published": bool(s["published"]), "has_logo": s["has_logo"], "is_owner": is_owner,
+            "linked": linked, "restrictions": restr,
+            "link": f"/mini/parents/{M.slug(s['school_name'])}/{s['pub_token']}" if s["pub_token"] else None}
 
 
 def _load(key):
@@ -201,7 +215,7 @@ def mini_save(key):
                         (s["id"], editor, Json(changes)))
             s.update(new_meta, data=data, version=s["version"] + 1)
             if s["published"]:
-                M.sync_recipients(cur, s["id"], data["rows"], True)
+                M.sync_students(cur, s["owner_id"], data["rows"])
         con.commit()
     except Exception:
         con.rollback(); raise
@@ -227,19 +241,31 @@ def mini_history(key):
 @mini_bp.route("/api/mini/sheet/<key>/publish", methods=["POST"])
 @need_user("owner")
 def mini_publish(key):
-    publish = bool((request.get_json(silent=True) or {}).get("publish", True))
+    d = request.get_json(silent=True) or {}
+    publish = bool(d.get("publish", True))
+    restrict = d.get("restrict")
+    out = {"ok": True, "published": publish}
     con = get_db(); cur = con.cursor()
     try:
         s = _sheet(cur, key, lock=True)
         if not s or s["owner_id"] != g.mini_user["id"]:
             cur.close(); con.close(); return NOT_FOUND
-        n = missing = 0
         if publish:
-            cur.execute("UPDATE mini_sheets SET published=1,published_at=CASE WHEN published=1 THEN published_at "
-                        "ELSE NOW() END WHERE id=%s", (s["id"],))
+            token = s["pub_token"] or secrets.token_urlsafe(6)
+            cur.execute("UPDATE mini_sheets SET published=1, pub_token=%s, published_at=CASE WHEN published=1 "
+                        "THEN published_at ELSE NOW() END WHERE id=%s", (token, s["id"]))
             rows = s["data"]["rows"]
-            n = M.sync_recipients(cur, s["id"], rows, True)
-            missing = sum(1 for r in rows if r["name"] and not normalize_phone(r["phone"]))
+            M.sync_students(cur, s["owner_id"], rows)
+            if isinstance(restrict, list):
+                M.set_restrictions(cur, s["id"], restrict)
+            linked = M.linked_names(cur, s["owner_id"])
+            named = [r for r in rows if r["name"]]
+            cur.execute("SELECT COUNT(*) FROM mini_restrictions WHERE sheet_id=%s", (s["id"],))
+            out.update(students=len(named), restricted=cur.fetchone()[0],
+                       linked=sum(1 for r in named if M.norm(r["name"]) in linked),
+                       missing_phone=sum(1 for r in named if M.norm(r["name"]) not in linked
+                                         and not normalize_phone(r["phone"])),
+                       link=f"/mini/parents/{M.slug(s['school_name'])}/{token}")
         else:
             cur.execute("UPDATE mini_sheets SET published=0 WHERE id=%s", (s["id"],))
         con.commit()
@@ -248,8 +274,7 @@ def mini_publish(key):
     finally:
         if not cur.closed:
             cur.close(); con.close()
-    return jsonify({"ok": True, "published": publish, "parents": n, "missing_phone": missing})
-
+    return jsonify(out)
 
 # ── logo / files ────────────────────────────────────────────
 @mini_bp.route("/api/mini/sheet/<key>/logo", methods=["POST"])
@@ -326,22 +351,138 @@ def mini_import(key):
 @mini_bp.route("/api/mini/parent/results", methods=["GET"])
 @need_user("parent")
 def mini_parent_results():
-    phone = g.mini_user["username"]
+    pub = (request.args.get("pub") or "").strip()
     con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT s.school_name,s.exam_name,s.sheet_type,s.grade_rules,s.data,CAST(s.published_at AS TEXT)
-                   FROM mini_sheets s JOIN mini_recipients r ON r.sheet_id=s.id
-                   WHERE r.phone=%s AND s.published=1 ORDER BY s.published_at DESC LIMIT 50""", (phone,))
-    sheets = cur.fetchall(); cur.close(); con.close()
+    cur.execute("SELECT owner_id,name_norm FROM mini_students WHERE parent_user_id=%s", (g.mini_user["id"],))
+    mine = set(cur.fetchall())
+    owners = sorted({o for o, _ in mine})
+    sheets, restr, anns = [], {}, []
+    if owners:
+        q = ("SELECT id,owner_id,school_name,exam_name,sheet_type,grade_rules,data,CAST(published_at AS TEXT) "
+             "FROM mini_sheets WHERE owner_id=ANY(%s) AND published=1")
+        args = [owners]
+        if pub:
+            q += " AND pub_token=%s"; args.append(pub)
+        cur.execute(q + " ORDER BY published_at DESC LIMIT 50", args)
+        sheets = cur.fetchall()
+        ids = [x[0] for x in sheets]
+        if ids:
+            cur.execute("SELECT sheet_id,name_norm,reason FROM mini_restrictions WHERE sheet_id=ANY(%s)", (ids,))
+            restr = {(a, b): c for a, b, c in cur.fetchall()}
+        cur.execute("""SELECT a.owner_id,a.title,a.body,CAST(a.posted_at AS TEXT),s.exam_name,s.data
+                       FROM mini_announcements a JOIN mini_sheets s ON s.id=a.sheet_id
+                       WHERE a.owner_id=ANY(%s) ORDER BY a.id DESC LIMIT 100""", (owners,))
+        anns = cur.fetchall()
+    cur.close(); con.close()
     out = []
-    for school, exam, stype, rules, data, pub in sheets:
+    for sid, owner, school, exam, stype, rules, data, pubat in sheets:
         ranked = M.compute(data, stype, rules)
         of = sum(1 for r in ranked if r["average"] is not None)
         subs = [x for x in data["subjects"] if x["name"]]
-        kids = [{"student": r["name"], "total": r["total"], "average": r["average"], "position": r["position"],
-                 "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
-                 "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"])} for x in subs]}
-                for r in ranked if normalize_phone(r["phone"]) == phone]
+        kids = []
+        for r in ranked:
+            nn = M.norm(r["name"])
+            if (owner, nn) not in mine:
+                continue
+            if (sid, nn) in restr:
+                kids.append({"student": r["name"], "restricted": True, "reason": restr[(sid, nn)]})
+                continue
+            kids.append({"student": r["name"], "total": r["total"], "average": r["average"], "position": r["position"],
+                         "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
+                         "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"])} for x in subs]})
         if kids:
             out.append({"school_name": school, "exam_name": exam, "sheet_type": stype,
-                        "published_at": pub, "children": kids})
-    return jsonify({"ok": True, "results": out})
+                        "published_at": pubat, "children": kids})
+    ann_out = []
+    for owner, title, body, at, exam, data in anns:
+        if any((owner, M.norm(r["name"])) in mine for r in data["rows"]):
+            ann_out.append({"title": title, "body": body, "posted_at": at, "exam_name": exam})
+            if len(ann_out) >= 30:
+                break
+    return jsonify({"ok": True, "results": out, "announcements": ann_out})
+
+# ── parent link (shared on WhatsApp) ────────────────────────
+@mini_bp.route("/api/mini/link/<token>", methods=["GET"])
+def mini_link_info(token):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT school_name,exam_name,class_name FROM mini_sheets WHERE pub_token=%s AND published=1", (token,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row:
+        return NOT_FOUND
+    return jsonify({"ok": True, "school_name": row[0], "exam_name": row[1], "class_name": row[2]})
+
+
+@mini_bp.route("/api/mini/link/<token>/login", methods=["POST"])
+@rate_limit("mini_link_login", max_attempts=30, window_minutes=15, by="ip")
+def mini_link_login(token):
+    d = request.get_json(silent=True) or {}
+    nn, pw = M.norm(d.get("name")), d.get("password") or ""
+    if not nn or not pw:
+        return jsonify({"ok": False, "error": "Enter the child's full name and password"}), 400
+    bad = (jsonify({"ok": False, "error": "We could not match that name and password/phone number"}), 401)
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("SELECT owner_id,data FROM mini_sheets WHERE pub_token=%s AND published=1", (token,))
+        sh = cur.fetchone()
+        if not sh:
+            return NOT_FOUND
+        owner, data = sh
+        if nn not in {M.norm(r["name"]) for r in data["rows"]}:
+            return bad
+        cur.execute("SELECT id,name,phone,parent_user_id FROM mini_students "
+                    "WHERE owner_id=%s AND name_norm=%s FOR UPDATE", (owner, nn))
+        st = cur.fetchone()
+        if not st:
+            return bad
+        sid, name, phone, puid = st
+        if puid:                                             # already linked: normal sign-in
+            cur.execute("SELECT password,token_version FROM mini_users WHERE id=%s", (puid,))
+            u = cur.fetchone()
+            if not u or not verify_password(pw, u[0]):
+                return bad
+            return _token_reply(puid, name, "parent", False, u[1])
+        if not phone or normalize_phone(pw) != phone:        # first time: phone number is the password
+            return bad
+        new = d.get("new_password") or ""
+        if not new:
+            return jsonify({"ok": True, "need_password": True})
+        if len(new) < 6:
+            return jsonify({"ok": False, "error": "Password must be at least 6 characters"}), 400
+        if new != (d.get("confirm_password") or ""):
+            return jsonify({"ok": False, "error": "Passwords do not match"}), 400
+        cur.execute("INSERT INTO mini_users(username,password,role) VALUES(%s,%s,'parent') RETURNING id",
+                    (f"p{owner}:{nn}"[:200], hash_password(new)))
+        uid = cur.fetchone()[0]
+        cur.execute("UPDATE mini_students SET parent_user_id=%s WHERE id=%s", (uid, sid))
+        con.commit()
+        return _token_reply(uid, name, "parent", False, 0)
+    except Exception:
+        con.rollback(); raise
+    finally:
+        cur.close(); con.close()
+
+
+@mini_bp.route("/api/mini/sheet/<key>/announce", methods=["POST"])
+@need_user("owner")
+@rate_limit("mini_announce", max_attempts=30, window_minutes=60, by="ip")
+def mini_announce(key):
+    d = request.get_json(silent=True) or {}
+    title, body = str(d.get("title") or "").strip()[:150], str(d.get("body") or "").strip()[:2000]
+    if not title or not body:
+        return jsonify({"ok": False, "error": "Title and message are required"}), 400
+    con = get_db(); cur = con.cursor()
+    try:
+        s = _sheet(cur, key)
+        if not s or s["owner_id"] != g.mini_user["id"]:
+            cur.close(); con.close(); return NOT_FOUND
+        cur.execute("INSERT INTO mini_announcements(sheet_id,owner_id,title,body) VALUES(%s,%s,%s,%s)",
+                    (s["id"], s["owner_id"], title, body))
+        names = {M.norm(r["name"]) for r in s["data"]["rows"] if r["name"]}
+        n = len(names & M.linked_names(cur, s["owner_id"]))
+        con.commit()
+    except Exception:
+        con.rollback(); raise
+    finally:
+        if not cur.closed:
+            cur.close(); con.close()
+    return jsonify({"ok": True, "parents": n})

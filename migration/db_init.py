@@ -734,6 +734,33 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_mini_recipients_phone ON mini_recipients(phone);
     ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS class_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS pub_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mini_sheets_pub_token ON mini_sheets(pub_token);
+    CREATE TABLE IF NOT EXISTS mini_students (
+        id SERIAL PRIMARY KEY,
+        owner_id INTEGER NOT NULL REFERENCES mini_users(id) ON DELETE CASCADE,
+        name_norm TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL DEFAULT '',
+        parent_user_id INTEGER REFERENCES mini_users(id) ON DELETE SET NULL,
+        UNIQUE(owner_id, name_norm)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_students_parent ON mini_students(parent_user_id);
+    CREATE TABLE IF NOT EXISTS mini_restrictions (
+        sheet_id INTEGER NOT NULL REFERENCES mini_sheets(id) ON DELETE CASCADE,
+        name_norm TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY(sheet_id, name_norm)
+    );
+    CREATE TABLE IF NOT EXISTS mini_announcements (
+        id SERIAL PRIMARY KEY,
+        sheet_id INTEGER NOT NULL REFERENCES mini_sheets(id) ON DELETE CASCADE,
+        owner_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        posted_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_ann_owner ON mini_announcements(owner_id, id DESC);
     """)
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")

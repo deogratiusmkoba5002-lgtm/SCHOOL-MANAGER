@@ -23,7 +23,10 @@ button.pri{background:#00897B;color:#fff}button.x{border:none;background:none;co
 .big{display:block;width:min(420px,70vw);border:none;border-bottom:1.5px solid #CFD8DC;font:700 1.3rem inherit;padding:4px 0;margin:2px 0;outline:none;background:none}
 .big.sm{font-size:1rem;font-weight:600}
 .bar{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;background:#E0F2F1;position:sticky;top:0;z-index:5}
-#hbar{display:none;align-items:flex-start;gap:12px;padding:10px 16px;background:#FFF8E1;border-bottom:2px solid #F9A825;font-size:.85rem}
+#hbar{display:none;align-items:flex-start;gap:12px;padding:10px 16px;background:#FFF8E1;border-top:2px solid #F9A825;font-size:.85rem;position:sticky;bottom:0;z-index:5}
+td.phc{position:relative}
+.lk{display:block;padding:7px 6px;text-align:center;color:#78909C;letter-spacing:2px;cursor:not-allowed;background:#F4F9F8}
+.tick{position:absolute;top:1px;right:4px;color:#00C853;font-weight:900;font-size:.8rem}
 #hbar ul{margin:4px 0 0 18px}
 .grid-wrap{overflow:auto;padding:12px 16px;max-height:calc(100vh - 260px)}
 table{border-collapse:collapse;background:#fff;font-size:13px}
@@ -53,6 +56,18 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <p class="muted" style="margin-top:12px"><a href="#" id="a-switch" onclick="setMode(mode==='login'?'signup':'login');return false">New teacher/admin? Create an account</a></p>
 </div>
 
+<div id="v-link" class="box">
+  <h2 id="l-title">Results</h2><p class="muted" id="l-sub" style="margin-bottom:8px"></p>
+  <p class="muted">Sign in with your child's full name. First time? Your password is the phone number the school has for you, and you will then create your own password.</p>
+  <input id="l-name" placeholder="Child's full name">
+  <input id="l-pass" type="password" placeholder="Password (phone number the first time)" onkeydown="if(event.key==='Enter')linkLogin()">
+  <div id="l-new-box" style="display:none">
+    <input id="l-new" type="password" placeholder="Create a new password (6+ characters)">
+    <input id="l-new2" type="password" placeholder="Confirm new password" onkeydown="if(event.key==='Enter')linkLogin()">
+  </div>
+  <button class="pri" id="l-btn" onclick="linkLogin()" style="width:100%;margin-top:6px">Continue</button>
+</div>
+
 <div id="v-dash" class="wrap" style="display:none">
   <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
   <div id="sheets" class="cards"></div>
@@ -64,6 +79,8 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
   </div>
   <h2 style="margin-bottom:10px">My children's results</h2><div id="pres"></div>
+  <p id="pall" style="display:none;margin:6px 0 14px"><a href="/mini">View all my results</a></p>
+  <h2 style="margin:18px 0 10px">Announcements</h2><div id="pann"></div>
 </div>
 
 <div id="v-sheet" style="display:none">
@@ -79,16 +96,17 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <div class="bar">
     <button class="pri" onclick="saveSheet()">SAVE</button>
     <select id="type" onchange="setType(this.value)" title="Sheet type"></select>
-    <button onclick="toast('Report cards: coming soon')">Create Report</button>
-    <button id="b-pub" onclick="publish()">Publish</button>
+    <button id="b-pub" onclick="openPublish()">Publish</button>
     <button onclick="dl('download')">Download Sheet</button>
     <button onclick="dl('template')">Download Template</button>
     <button onclick="$('imp').click()">Import Template</button><input type="file" id="imp" accept=".xlsx,.csv" style="display:none" onchange="doImport(this)">
     <button onclick="copyLink()">Copy Link</button>
+    <span class="sp"></span>
     <button onclick="showHistory()">History</button>
+    <button onclick="openAnn()">Send Announcements</button>
   </div>
-  <div id="hbar"><div style="flex:1"><b id="hbar-t"></b><div id="hbar-x"></div></div><button onclick="exitChanges()">Exit history view</button></div>
   <div class="grid-wrap"><table id="grid"></table></div>
+  <div id="hbar"><div style="flex:1"><b id="hbar-t"></b><div id="hbar-x"></div></div><button onclick="exitChanges()">Exit history view</button></div>
 </div>
 
 <div class="modal" id="m-grades"><div>
@@ -96,25 +114,53 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <div id="gl"></div><div class="row" style="margin-top:10px"><button onclick="addGrade()">+ Add grade</button><span class="sp"></span><button onclick="closeM()">Cancel</button><button class="pri" onclick="applyGrades()">Apply</button></div>
 </div></div>
 <div class="modal" id="m-hist"><div><h3>History</h3><div id="hl"></div><div style="text-align:right;margin-top:10px"><button onclick="closeM()">Close</button></div></div></div>
+<div class="modal" id="m-pub"><div>
+  <h3>Publish results</h3>
+  <p class="muted" style="margin:6px 0 10px">Parents open the link, sign in with their child's name, and see only their child's result.</p>
+  <label class="row"><input type="radio" name="pm" value="all" checked onchange="pubMode()" style="width:auto"> Publish to all</label>
+  <label class="row"><input type="radio" name="pm" value="except" onchange="pubMode()" style="width:auto"> Publish to all except…</label>
+  <div id="pub-except" style="display:none">
+    <div class="row"><input id="rs-search" placeholder="Search by name…" oninput="drawRestrict()" style="flex:1;width:auto;padding:7px">
+      <button onclick="rsBulk(true)">Restrict all shown</button><button onclick="rsBulk(false)">Clear all shown</button></div>
+    <div class="muted" id="rs-count" style="margin-bottom:6px"></div>
+    <div id="rs-list" style="max-height:40vh;overflow:auto"></div>
+  </div>
+  <div id="pub-link" style="display:none;margin-top:12px;background:#E0F2F1;padding:10px;border-radius:8px">
+    <b>Parents link</b> <span class="muted" id="pub-sum"></span>
+    <div class="row" style="margin:6px 0 0"><input id="pub-url" readonly style="flex:1;width:auto;padding:7px"><button class="pri" onclick="copyMsg()">Copy message</button></div>
+  </div>
+  <div class="row" style="margin-top:12px"><button class="x" id="pub-off" onclick="unpublish()" style="display:none">Unpublish</button><span class="sp"></span>
+    <button onclick="closeM()">Close</button><button class="pri" id="pub-go" onclick="doPublish()">Publish</button></div>
+</div></div>
+
+<div class="modal" id="m-ann"><div>
+  <h3>Send announcement</h3>
+  <p class="muted" style="margin:6px 0 10px">Goes to parent accounts linked to students on this sheet. Parents who link later will see it too.</p>
+  <input id="an-title" placeholder="Title" style="width:100%;margin-bottom:8px;padding:8px">
+  <textarea id="an-body" rows="5" placeholder="Message to parents…" style="width:100%;padding:8px;border:1.5px solid #B0BEC5;border-radius:6px;font:inherit"></textarea>
+  <div class="row" style="margin-top:10px"><span class="sp"></span><button onclick="closeM()">Cancel</button><button class="pri" onclick="sendAnn()">Send</button></div>
+</div></div>
 
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const rid=()=>Math.random().toString(36).slice(2,8);
 const TYPES={marks:"Marks Score Sheet",primary:"Primary Grade Score Sheet",secondary:"Secondary Grade Score Sheet",advanced:"Advanced-Level Grade Score Sheet"};
+let PUB=null, LSTEP=1, RSL=[], LK=new Set();
+const norm=s=>String(s||"").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 let token=localStorage.getItem("mini_token"), me=JSON.parse(localStorage.getItem("mini_me")||"null");
 let S=null, dirty=false, mode="login", gtmp=[];
 window.onbeforeunload=e=>dirty?(e.preventDefault(),""):undefined;
 
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
-function show(v){["auth","dash","parent","sheet"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+function show(v){["auth","dash","parent","sheet","link"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
   $("who").textContent=me?me.username:"";$("logout").style.display=me?"inline-block":"none";$("back").style.display=me&&me.role==="owner"?"inline":"none";}
 async function api(path,method="GET",body){
   const h={"Content-Type":"application/json"}; if(token)h.Authorization="Bearer "+token;
   let j; try{const r=await fetch("/api/mini"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
     try{j=await r.json()}catch(e){j={ok:false,error:"Server error"}} j._status=r.status;
   }catch(e){j={ok:false,error:"Network error"};}
-  if(j._status===401&&token&&!path.startsWith("/auth/login")) logout();
+  if(j._status===401&&token&&!PUB&&!path.startsWith("/auth/login")) logout();
   return j;
 }
 function setAuth(r){token=r.token;me={username:r.username,role:r.role,must_change:!!r.must_change_password};
@@ -136,14 +182,52 @@ async function loadDash(){
     ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
 }
 async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
-async function loadParent(){
+async function loadParent(pub){
   show("parent"); if(me.must_change)$("pw").style.display="block";
-  const r=await api("/parent/results"); const v=x=>x==null?"-":x;
-  $("pres").innerHTML=r.ok&&r.results.length?r.results.map(s=>s.children.map(k=>`<div class="card" style="margin-bottom:14px">
+  renderParent(await api("/parent/results"+(pub?"?pub="+encodeURIComponent(pub):"")));
+}
+function renderParent(r){
+  const v=x=>x==null?"-":x;
+  $("pres").innerHTML=r.ok&&r.results.length?r.results.map(s=>s.children.map(k=>k.restricted?`<div class="card" style="margin-bottom:14px;border-left:4px solid #C62828">
+    <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
+    <p style="margin-top:8px;color:#B71C1C"><b>🚫 These results are withheld by the school.</b>${k.reason?" Reason: "+esc(k.reason):""}</p>
+    <p class="muted">Please contact the school office.</p></div>`:`<div class="card" style="margin-bottom:14px">
     <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
     <table class="res"><tr><th>Subject</th><th>Score</th></tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td></tr>`).join("")}</table>
     <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; <b>Position:</b> ${v(k.position)} / ${k.out_of} &nbsp; <b>Grade:</b> ${k.grade}
     ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`).join("")).join(""):"<p class='muted'>No published results yet.</p>";
+  const an=r.announcements||[];
+  $("pann").innerHTML=an.length?an.map(a=>`<div class="card" style="margin-bottom:10px"><b>${esc(a.title)}</b>
+    <div class="muted">${esc(a.exam_name||"")} · ${new Date(a.posted_at.replace(" ","T")+"Z").toLocaleString()}</div>
+    <p style="margin-top:6px;white-space:pre-wrap">${esc(a.body)}</p></div>`).join(""):"<p class='muted'>No announcements.</p>";
+  $("pall").style.display=PUB?"block":"none";
+}
+async function bootLink(tok){
+  PUB=tok;
+  const info=await api("/link/"+encodeURIComponent(tok));
+  if(!info.ok){show("auth");setMode("login");return toast("This results link is not valid, or results are not published");}
+  $("l-title").textContent=info.school_name||"School results";
+  $("l-sub").textContent=[info.exam_name,info.class_name].filter(Boolean).join(" · ");
+  if(token&&me&&me.role==="parent"){                       // already signed in? go straight to the results
+    const r=await api("/parent/results?pub="+encodeURIComponent(tok));
+    if(r.ok&&r.results.length){show("parent");return renderParent(r);}
+  }
+  show("link");
+}
+async function linkLogin(){
+  const body={name:$("l-name").value,password:$("l-pass").value};
+  if(LSTEP===2){
+    body.new_password=$("l-new").value;body.confirm_password=$("l-new2").value;
+    if(body.new_password.length<6)return toast("Password must be at least 6 characters");
+    if(body.new_password!==body.confirm_password)return toast("Passwords do not match");
+  }
+  const r=await api(`/link/${encodeURIComponent(PUB)}/login`,"POST",body);
+  if(!r.ok)return toast(r.error||"Failed");
+  if(r.need_password){
+    LSTEP=2;$("l-new-box").style.display="block";$("l-btn").textContent="Create password & view results";
+    $("l-name").readOnly=true;$("l-pass").readOnly=true;return toast("Phone number confirmed. Now create your own password");
+  }
+  setAuth(r);loadParent(PUB);
 }
 async function changePw(){const r=await api("/auth/change_password","POST",{old_password:$("op").value,new_password:$("np").value});
   if(r.ok){setAuth(r);$("pw").style.display="none";toast("Password updated");}else toast(r.error);}
@@ -154,11 +238,15 @@ function cols(){return ["name","phone",...S.subjects.map(s=>s.id)];}
 function extra(){return S.sheet_type==="secondary"||S.sheet_type==="advanced";}
 function gradeFor(a){if(a==null)return"-";for(const g of S.grade_rules)if(a>=g.min)return g.grade;return S.grade_rules[S.grade_rules.length-1].grade;}
 function calc(r){const v=S.subjects.filter(s=>s.name.trim()).map(s=>parseFloat(r.marks[s.id])).filter(x=>!isNaN(x));
-  const t=v.reduce((a,b)=>a+b,0);return{total:v.length?+t.toFixed(2):null,avg:v.length?+(t/v.length).toFixed(2):null};}
+const t=v.reduce((a,b)=>a+b,0);return{total:v.length?+t.toFixed(2):null,avg:v.length?+(t/v.length).toFixed(2):null};}
 function blank(){return{id:"r"+rid(),name:"",phone:"",marks:{}};}
 function ensureBlank(){const l=S.rows[S.rows.length-1];if(!l||l.name||l.phone||Object.keys(l.marks).length)S.rows.push(blank());}
+function isLinked(r){const n=norm(r.name);return !!n&&LK.has(n);}
+function phoneInner(i){const r=S.rows[i];
+  return isLinked(r)?`<span class="lk" title="Linked to a parent account, no phone number needed">...</span><span class="tick">✓</span>`
+   :`<input data-r="${i}" data-c="1" value="${esc(r.phone)}">`;}
 function rowHTML(i){const r=S.rows[i],c=calc(r);
-  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td><input data-r="${i}" data-c="1" value="${esc(r.phone)}"></td>`
+  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
   +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${r.marks[s.id]??""}"></td>`).join("")
   +`<td></td><td id="t${i}">${c.total??""}</td><td id="a${i}">${c.avg??""}</td><td id="p${i}">${r.position??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`
   +(extra()?`<td>${r.points??""}</td><td>${r.division??""}</td>`:"")+`</tr>`;}
@@ -170,11 +258,12 @@ function renderGrid(){
    +(extra()?`<th>Points</th><th>Division</th>`:"")+`</tr></thead><tbody></tbody>`;
   ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL();
 }
-function setCell(r,c,v){if(c===0)r.name=v;else if(c===1)r.phone=v;else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}}
+function setCell(r,c,v){if(c===0)r.name=v;else if(c===1){if(!isLinked(r))r.phone=v;}else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}}
 $("grid").addEventListener("input",e=>{
   const t=e.target; if(t.dataset.sub!==undefined){S.subjects[+t.dataset.sub].name=t.value;return mark();}
   if(t.dataset.r===undefined)return;
   const i=+t.dataset.r,r=S.rows[i]; setCell(r,+t.dataset.c,t.value); mark();
+  if(+t.dataset.c===0){const td=document.querySelector(`td.phc[data-r="${i}"]`);if(td)td.innerHTML=phoneInner(i);}
   const k=calc(r); $("t"+i).textContent=k.total??""; $("a"+i).textContent=k.avg??""; $("g"+i).textContent=k.avg==null?"":gradeFor(k.avg);
   if(i===S.rows.length-1){S.rows.push(blank());addRowEl(S.rows.length-1);}
 });
@@ -187,7 +276,8 @@ $("grid").addEventListener("keydown",e=>{
   else if(e.key==="ArrowRight"){const L=t.value.length;if(t.selectionStart!==L||t.selectionEnd!==L)return;nc=c+1;}
   else return;
   e.preventDefault();
-  const n=document.querySelector(`input[data-r="${nr}"][data-c="${nc}"]`);
+  let n=document.querySelector(`input[data-r="${nr}"][data-c="${nc}"]`);
+  if(!n&&nc!==c)n=document.querySelector(`input[data-r="${nr}"][data-c="${nc+(nc-c)}"]`);   // hop over linked (uneditable) phone cells
   if(n){n.focus();n.select();}
 });
 $("grid").addEventListener("paste",e=>{
@@ -200,10 +290,67 @@ $("grid").addEventListener("paste",e=>{
 function addSub(){S.subjects.push({id:"s"+rid(),name:""});mark();renderGrid();}
 function delSub(i){if(!confirm("Remove this subject and its marks?"))return;S.subjects.splice(i,1);mark();renderGrid();}
 function setType(v){S.sheet_type=v;mark();renderGrid();}
-function updatePub(){$("b-pub").textContent=S.published?"Unpublish":"Publish";}
+function updatePub(){$("b-pub").textContent=S.published?"Published ✓ Manage":"Publish";}
+function pubMode(){$("pub-except").style.display=document.querySelector('input[name=pm]:checked').value==="except"?"block":"none";}
+function openPublish(){
+  if(!S.is_owner)return toast("Only the signed-in owner of this sheet can publish");
+  const seen=new Set();RSL=[];
+  S.rows.forEach(r=>{const nn=norm(r.name);if(!nn||seen.has(nn))return;seen.add(nn);
+    RSL.push({nn,name:r.name.trim(),on:nn in (S.restrictions||{}),reason:(S.restrictions||{})[nn]||""});});
+  const any=RSL.some(s=>s.on);
+  document.querySelector(`input[name=pm][value=${any?"except":"all"}]`).checked=true;
+  $("rs-search").value="";pubMode();drawRestrict();
+  $("pub-link").style.display="none";$("pub-off").style.display=S.published?"inline-block":"none";
+  $("pub-go").textContent=S.published?"Update":"Publish";
+  if(S.published&&S.link)showLink({link:S.link});
+  $("m-pub").style.display="flex";
+}
+function drawRestrict(){
+  const q=norm($("rs-search").value);
+  $("rs-list").innerHTML=RSL.map((s,i)=>({s,i})).filter(({s})=>!q||s.nn.includes(q)).map(({s,i})=>
+    `<div class="hi"><label><input type="checkbox" style="width:auto" ${s.on?"checked":""} onchange="rsToggle(${i},this.checked)"> ${esc(s.name)}</label>
+     <input maxlength="300" placeholder="Reason (optional), shown to the parent" value="${esc(s.reason)}" oninput="RSL[${i}].reason=this.value"
+       style="width:100%;margin-top:4px;display:${s.on?"block":"none"}"></div>`).join("")||"<p class='muted'>No students on this sheet yet</p>";
+  $("rs-count").textContent=RSL.filter(s=>s.on).length+" restricted";
+}
+function rsToggle(i,on){RSL[i].on=on;drawRestrict();}
+function rsBulk(on){const q=norm($("rs-search").value);RSL.forEach(s=>{if(!q||s.nn.includes(q))s.on=on;});drawRestrict();}
+function showLink(r){
+  $("pub-url").value=location.origin+r.link;
+  $("pub-sum").textContent=r.students!=null?`· ${r.linked} of ${r.students} students already linked to a parent`+(r.missing_phone?`, ${r.missing_phone} have no valid phone`:""):"";
+  $("pub-link").style.display="block";
+}
+function copyMsg(){
+  const m=`Dear parents, results for ${S.exam_name||"the exam"} are out. View them through this link: ${$("pub-url").value}`;
+  (navigator.clipboard?navigator.clipboard.writeText(m).then(()=>toast("Message copied, paste it in your WhatsApp group")):Promise.reject()).catch(()=>prompt("Copy this message:",m));
+}
+async function doPublish(){
+  const except=document.querySelector('input[name=pm]:checked').value==="except";
+  const restrict=except?RSL.filter(s=>s.on).map(s=>({name:s.name,reason:s.reason.trim()})):[];
+  if(!(await saveSheet()))return;
+  const r=await api(`/sheet/${S.key}/publish`,"POST",{publish:true,restrict});
+  if(!r.ok)return toast(r.error||"Failed");
+  S.published=true;S.link=r.link;S.restrictions=Object.fromEntries(restrict.map(x=>[norm(x.name),x.reason]));
+  updatePub();showLink(r);$("pub-off").style.display="inline-block";$("pub-go").textContent="Update";
+  toast(r.restricted?`Published, ${r.restricted} restricted`:"Published to all");
+}
+async function unpublish(){
+  if(!confirm("Hide results from parents?"))return;
+  const r=await api(`/sheet/${S.key}/publish`,"POST",{publish:false});
+  if(!r.ok)return toast(r.error||"Failed");
+  S.published=false;updatePub();closeM();toast("Results hidden");
+}
+function openAnn(){if(!S.is_owner)return toast("Only the signed-in owner of this sheet can send announcements");
+  $("an-title").value="";$("an-body").value="";$("m-ann").style.display="flex";}
+async function sendAnn(){
+  const r=await api(`/sheet/${S.key}/announce`,"POST",{title:$("an-title").value,body:$("an-body").value});
+  if(!r.ok)return toast(r.error||"Failed");
+  closeM();toast(`Sent to ${r.parents} linked parent account(s)`);
+}
 function showLogo(){if(S.has_logo){const i=$("logo-img");i.src=`/api/mini/sheet/${S.key}/logo?t=${Date.now()}`;i.style.display="block";$("logo-plus").style.display="none";}}
 function apply(p){
   S={...p,rows:p.rows.map(r=>({id:r.id,name:r.name,phone:r.phone,marks:r.marks,position:r.position,points:r.points,division:r.division}))};
+  LK=new Set(S.linked||[]);
   dirty=false; $("school").value=S.school_name; $("exam").value=S.exam_name; $("cls").value=S.class_name||""; HL=null; $("hbar").style.display="none";
   $("type").innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(""); $("type").value=S.sheet_type;
   showLogo(); renderGrid(); updatePub();
@@ -215,16 +362,7 @@ async function saveSheet(){
     sheet_type:S.sheet_type,grade_rules:S.grade_rules,subjects:S.subjects,rows:S.rows});
   if(r.ok){apply(r);toast("Saved");return true;} toast(r.error||"Save failed"); return false;
 }
-async function publish(){
-  if(!S.is_owner)return toast("Only the signed-in owner of this sheet can publish");
-  const on=!S.published;
-  if(!confirm(on?"Publish? Parents whose phone number is on this sheet will see their child's results.":"Hide results from parents?"))return;
-  if(!(await saveSheet()))return;
-  const r=await api(`/sheet/${S.key}/publish`,"POST",{publish:on});
-  if(!r.ok)return toast(r.error||"Failed");
-  S.published=on;updatePub();
-  toast(on?`Published to ${r.parents} parent account(s)`+(r.missing_phone?` — ${r.missing_phone} student(s) have no valid phone`:""):"Results hidden");
-}
+
 async function dl(kind){if(dirty&&!(await saveSheet()))return;window.open(`/api/mini/sheet/${S.key}/${kind==="download"?"download.pdf":"template.xlsx"}`);}
 async function doImport(inp){
   const f=inp.files[0];inp.value="";if(!f)return;
@@ -301,6 +439,7 @@ function applyHL(){
 
 // ── boot ──
 (async function(){
+  const lm=location.pathname.match(/^\/mini\/parents\/[^/]+\/([^/]+)\/?$/); if(lm) return bootLink(lm[1]);
   const key=new URLSearchParams(location.search).get("s");
   if(key){const r=await api("/sheet/"+key);if(!r.ok){show("auth");setMode("login");return toast(r.error||"Sheet not found");}show("sheet");return apply(r);}
   if(!token||!me){show("auth");return setMode("login");}

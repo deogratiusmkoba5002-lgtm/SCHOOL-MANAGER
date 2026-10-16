@@ -158,18 +158,46 @@ def diff(old, new, old_meta, new_meta):
     return ch[:1000]
 
 
-def sync_recipients(cur, sheet_id, rows, create_accounts):
-    """Rebuild which parent phones can see this sheet; optionally create their accounts.
-    First password = the phone in local format (0712345678), same convention as the main app."""
-    phones = {normalize_phone(r["phone"]) for r in rows} - {None}
-    cur.execute("DELETE FROM mini_recipients WHERE sheet_id=%s", (sheet_id,))
-    for p in phones:
-        cur.execute("INSERT INTO mini_recipients(sheet_id,phone) VALUES(%s,%s)", (sheet_id, p))
-        if create_accounts:
-            cur.execute("""INSERT INTO mini_users(username,password,role,must_change_password)
-                           VALUES(%s,%s,'parent',1) ON CONFLICT DO NOTHING""",
-                        (p, hash_password_fast("0" + p[3:])))
-    return len(phones)
+def norm(s):
+    return " ".join(str(s or "").lower().split())
+
+
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", str(s or "").lower()).strip("-")[:40] or "school"
+
+
+def linked_names(cur, owner_id):
+    cur.execute("SELECT name_norm FROM mini_students WHERE owner_id=%s AND parent_user_id IS NOT NULL", (owner_id,))
+    return {r[0] for r in cur.fetchall()}
+
+
+def sync_students(cur, owner_id, rows):
+    """Roster of this admin's students. A linked student's phone is never overwritten."""
+    seen = set()
+    for r in rows:
+        nn = norm(r["name"])
+        if not nn or nn in seen:
+            continue
+        seen.add(nn)
+        cur.execute("""INSERT INTO mini_students(owner_id,name_norm,name,phone) VALUES(%s,%s,%s,%s)
+                       ON CONFLICT(owner_id,name_norm) DO UPDATE SET name=EXCLUDED.name,
+                         phone=CASE WHEN mini_students.parent_user_id IS NULL AND EXCLUDED.phone<>''
+                                    THEN EXCLUDED.phone ELSE mini_students.phone END""",
+                    (owner_id, nn, r["name"], normalize_phone(r["phone"]) or ""))
+
+
+def set_restrictions(cur, sheet_id, items):
+    cur.execute("DELETE FROM mini_restrictions WHERE sheet_id=%s", (sheet_id,))
+    seen = set()
+    for it in items[:2000]:
+        if not isinstance(it, dict):
+            continue
+        nn = norm(it.get("name"))
+        if not nn or nn in seen:
+            continue
+        seen.add(nn)
+        cur.execute("INSERT INTO mini_restrictions(sheet_id,name_norm,reason) VALUES(%s,%s,%s)",
+                    (sheet_id, nn, str(it.get("reason") or "").strip()[:300]))
 
 
 def parse_import(file_obj, filename):
