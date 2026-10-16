@@ -12,6 +12,7 @@ from core.ratelimit import rate_limit
 from core.security import hash_password, verify_password
 from services.access import normalize_phone
 from services import mini as M
+from services.mini_pdf import build_pdf
 
 mini_bp = Blueprint("mini", __name__)
 _ser = URLSafeTimedSerializer(SECRET_KEY, salt="drdemic-mini-session")
@@ -111,19 +112,19 @@ def mini_change_password():
 
 
 # ── sheets ──────────────────────────────────────────────────
-_F = ("id", "owner_id", "school_name", "exam_name", "sheet_type", "grade_rules", "data", "version",
+_F = ("id", "owner_id", "school_name", "exam_name", "class_name", "sheet_type", "grade_rules", "data", "version",
       "published", "has_logo")
 
 
 def _sheet(cur, key, lock=False):
-    cur.execute("SELECT id,owner_id,school_name,exam_name,sheet_type,grade_rules,data,version,published,"
+    cur.execute("SELECT id,owner_id,school_name,exam_name,class_name,sheet_type,grade_rules,data,version,published,"
                 "logo_data IS NOT NULL FROM mini_sheets WHERE share_key=%s" + (" FOR UPDATE" if lock else ""), (key,))
     r = cur.fetchone()
     return dict(zip(_F, r)) if r else None
 
 
 def _payload(key, s, viewer):
-    return {"ok": True, "key": key, "school_name": s["school_name"], "exam_name": s["exam_name"],
+    return {"ok": True, "key": key, "school_name": s["school_name"], "exam_name": s["exam_name"], "class_name": s["class_name"],
             "sheet_type": s["sheet_type"], "grade_rules": s["grade_rules"], "subjects": s["data"]["subjects"],
             "rows": M.compute(s["data"], s["sheet_type"], s["grade_rules"]), "version": s["version"],
             "published": bool(s["published"]), "has_logo": s["has_logo"],
@@ -186,14 +187,16 @@ def mini_save(key):
             return jsonify({"ok": False, "error": "Someone else saved changes to this sheet. Reload the page to get them."}), 409
         new_meta = {"school_name": str(d.get("school_name") or "").strip()[:150],
                     "exam_name": str(d.get("exam_name") or "").strip()[:150],
+                    "class_name": str(d.get("class_name") or "").strip()[:80],
                     "sheet_type": stype, "grade_rules": rules}
         changes = M.diff(s["data"], data, {k: s[k] for k in new_meta}, new_meta)
         if changes:
             is_owner = viewer and viewer["id"] == s["owner_id"]
             editor = viewer["username"] if is_owner else (str(d.get("editor") or "").strip()[:60] or "Guest")
-            cur.execute("""UPDATE mini_sheets SET school_name=%s,exam_name=%s,sheet_type=%s,grade_rules=%s,data=%s,
+            cur.execute("""UPDATE mini_sheets SET school_name=%s,exam_name=%s,class_name=%s,sheet_type=%s,grade_rules=%s,data=%s,
                            version=version+1,updated_at=NOW() WHERE id=%s""",
-                        (new_meta["school_name"], new_meta["exam_name"], stype, Json(rules), Json(data), s["id"]))
+                        (new_meta["school_name"], new_meta["exam_name"], new_meta["class_name"], stype,
+                         Json(rules), Json(data), s["id"]))
             cur.execute("INSERT INTO mini_history(sheet_id,editor,changes) VALUES(%s,%s,%s)",
                         (s["id"], editor, Json(changes)))
             s.update(new_meta, data=data, version=s["version"] + 1)
@@ -278,19 +281,21 @@ def mini_logo_get(key):
     return resp
 
 
-def _fname(s, suffix):
+def _fname(s, suffix, ext="xlsx"):
     base = re.sub(r"[^A-Za-z0-9_-]+", "_", s["exam_name"] or "DrDemic_Sheet").strip("_") or "DrDemic_Sheet"
-    return f"{base}_{suffix}.xlsx"
+    return f"{base}_{suffix}.{ext}"
 
 
-@mini_bp.route("/api/mini/sheet/<key>/download.xlsx", methods=["GET"])
+@mini_bp.route("/api/mini/sheet/<key>/download.pdf", methods=["GET"])
 def mini_download(key):
     s = _load(key)
     if not s:
         return NOT_FOUND
-    subs = [x for x in s["data"]["subjects"] if x["name"]]
-    buf = M.sheet_xlsx(s, subs, M.compute(s["data"], s["sheet_type"], s["grade_rules"]))
-    return send_file(buf, as_attachment=True, download_name=_fname(s, "sheet"), mimetype=XLSX)
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT logo_data FROM mini_sheets WHERE share_key=%s", (key,))
+    row = cur.fetchone(); cur.close(); con.close()
+    buf = build_pdf(s, M.compute(s["data"], s["sheet_type"], s["grade_rules"]), row[0] if row else None)
+    return send_file(buf, as_attachment=True, download_name=_fname(s, "sheet", "pdf"), mimetype="application/pdf")
 
 
 @mini_bp.route("/api/mini/sheet/<key>/template.xlsx", methods=["GET"])
@@ -298,9 +303,8 @@ def mini_template(key):
     s = _load(key)
     if not s:
         return NOT_FOUND
-    return send_file(M.template_xlsx(s["data"]["subjects"]), as_attachment=True,
+    return send_file(M.template_xlsx(s["data"]["subjects"], s["data"]["rows"]), as_attachment=True,
                      download_name=_fname(s, "template"), mimetype=XLSX)
-
 
 @mini_bp.route("/api/mini/sheet/<key>/import", methods=["POST"])
 def mini_import(key):

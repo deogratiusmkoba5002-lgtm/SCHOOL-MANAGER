@@ -733,6 +733,7 @@ def init_db():
         PRIMARY KEY(sheet_id, phone)
     );
     CREATE INDEX IF NOT EXISTS idx_mini_recipients_phone ON mini_recipients(phone);
+    ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS class_name TEXT NOT NULL DEFAULT '';
     """)
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")

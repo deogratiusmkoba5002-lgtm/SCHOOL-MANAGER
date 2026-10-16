@@ -126,9 +126,9 @@ def diff(old, new, old_meta, new_meta):
     nsub = {s["id"]: s["name"] for s in new["subjects"]}
     for sid, n in nsub.items():
         if sid not in osub:
-            ch.append({"what": "subject_added", "new": n})
+            ch.append({"what": "subject_added", "new": n, "sid": sid})
         elif osub[sid] != n:
-            ch.append({"what": "subject_renamed", "old": osub[sid], "new": n})
+            ch.append({"what": "subject_renamed", "old": osub[sid], "new": n, "sid": sid})
     for sid, n in osub.items():
         if sid not in nsub:
             ch.append({"what": "subject_removed", "old": n})
@@ -137,20 +137,22 @@ def diff(old, new, old_meta, new_meta):
     for rid, r in nrows.items():
         o = orows.get(rid)
         if o is None:
-            ch.append({"what": "student_added", "student": r["name"],
-                       "marks": {nsub.get(k, k): v for k, v in r["marks"].items()}})
+            ch.append({"what": "student_added", "student": r["name"], "phone": r["phone"], "rid": rid,
+                       "marks": {nsub.get(k, k): v for k, v in r["marks"].items()},
+                       "mid": dict(r["marks"])})
             continue
         for f in ("name", "phone"):
             if o[f] != r[f]:
-                ch.append({"what": f, "student": r["name"] or o["name"], "old": o[f], "new": r[f]})
+                ch.append({"what": f, "student": r["name"] or o["name"], "old": o[f], "new": r[f], "rid": rid})
         for sid in nsub:
             a, b = o["marks"].get(sid), r["marks"].get(sid)
             if a != b:
-                ch.append({"what": "mark", "student": r["name"], "subject": nsub[sid], "old": a, "new": b})
+                ch.append({"what": "mark", "student": r["name"], "subject": nsub[sid],
+                           "old": a, "new": b, "rid": rid, "sid": sid})
     for rid, o in orows.items():
         if rid not in nrows:
             ch.append({"what": "student_removed", "student": o["name"]})
-    for k in ("school_name", "exam_name", "sheet_type", "grade_rules"):
+    for k in ("school_name", "exam_name", "class_name", "sheet_type", "grade_rules"):
         if old_meta[k] != new_meta[k]:
             ch.append({"what": k, "old": old_meta[k], "new": new_meta[k]})
     return ch[:1000]
@@ -203,30 +205,19 @@ def _style(ws, row_no):
         c.alignment = Alignment(horizontal="center")
 
 
-def sheet_xlsx(meta, subjects, ranked):
-    """Same shape as the existing score sheet: no phone column."""
+def template_xlsx(subjects, rows=()):
+    """Import-compatible workbook, pre-filled with whatever is already on the sheet."""
     import openpyxl
-    from openpyxl.styles import Font
-    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Score Sheet"
-    ws.append([meta["school_name"] or "School"]); ws["A1"].font = Font(bold=True, size=14)
-    ws.append([meta["exam_name"] or "Examination"]); ws.append([])
-    extra = ["Points", "Division"] if meta["sheet_type"] in ("secondary", "advanced") else []
-    ws.append(["S/N", "Student"] + [s["name"] for s in subjects] + ["Total", "Average", "Position", "Grade"] + extra)
-    _style(ws, 4)
-    for i, r in enumerate(ranked, 1):
-        ws.append([i, r["name"]] + [r["marks"].get(s["id"]) for s in subjects] +
-                  [r["total"], r["average"], r["position"], r["grade"]] +
-                  ([r["points"], r["division"]] if extra else []))
-    ws.column_dimensions["B"].width = 28
-    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
-    return buf
-
-
-def template_xlsx(subjects):
-    import openpyxl
+    subs = [s for s in subjects if s["name"]]
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "DrDemic Sheet"
-    ws.append(["S/N", "Student Name", "Account/Phone Number"] + [s["name"] for s in subjects if s["name"]])
+    ws.append(["S/N", "Student Name", "Account/Phone Number"] + [s["name"] for s in subs])
     _style(ws, 1)
+    n = 0
+    for r in rows:
+        if not (r["name"] or r["phone"] or r["marks"]):
+            continue
+        n += 1
+        ws.append([n, r["name"], r["phone"]] + [r["marks"].get(s["id"]) for s in subs])
     ws.column_dimensions["B"].width = 28; ws.column_dimensions["C"].width = 24
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf
