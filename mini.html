@@ -48,6 +48,25 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 .tabs2 .tb.on{background:#fff;color:#00897B;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .panel{background:#fff;border-radius:12px;padding:18px;box-shadow:0 3px 14px rgba(0,137,123,.14);margin-bottom:16px}
 .ins{display:flex;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;border-left:3px solid;font-size:.85rem;line-height:1.5}
+/* ── Phase 2: row highlight + sticky S/N and Student columns ── */
+#grid th:nth-child(1),#grid td:nth-child(1){min-width:44px;width:44px;max-width:44px}
+#grid th:nth-child(1),#grid th:nth-child(2),
+#grid td:nth-child(1),#grid td:nth-child(2){position:sticky;z-index:1}
+#grid th:nth-child(1),#grid td:nth-child(1){left:0}
+#grid th:nth-child(2),#grid td:nth-child(2){left:44px;box-shadow:inset -2px 0 0 #80CBC4}
+#grid td:nth-child(2){background:#fff}
+#grid th{z-index:2}
+#grid th:nth-child(1),#grid th:nth-child(2){z-index:4}
+
+/* the row being edited */
+#grid tbody tr:focus-within td:not(.hl){background:#FFF9C4!important}
+#grid tbody tr:focus-within td input:focus{background:#FFEE58}
+#grid tbody tr:focus-within td:nth-child(2) input{font-weight:700}
+
+@media(max-width:600px){
+  #grid td:nth-child(2) input{min-width:120px}
+  #grid th:nth-child(2),#grid td:nth-child(2){min-width:120px}
+}
 </style></head><body>
 <div class="top"><a href="/">Home</a><a href="/mini" id="back">My sheets</a>
 <a href="#" id="subbtn" style="display:none" onclick="showSub();return false">Subscribe</a><span class="sp"></span>
