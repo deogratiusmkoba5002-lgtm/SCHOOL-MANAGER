@@ -86,10 +86,8 @@ def build_pdf(meta, ranked, logo_b64=None):
                 fails.append((ri, ci + 2))
             if stype == "marks":
                 line.append(f"{v:.1f}")
-            elif stype == "primary":
-                line.append(M.grade_for(rules, v))
             else:
-                line.append(_letter(table, v))
+                line.append(M.grade_for(rules, v))
         show = lambda x: "-" if x is None else (f"{x:.1f}" if isinstance(x, float) else str(x))
         if stype == "marks":
             line += [show(r["total"]), show(r["average"]), show(r["position"]),

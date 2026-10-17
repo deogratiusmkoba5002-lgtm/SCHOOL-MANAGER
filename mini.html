@@ -147,6 +147,8 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <div class="bar">
     <button class="pri" onclick="saveSheet()">SAVE</button>
     <select id="type" onchange="setType(this.value)" title="Sheet type"></select>
+    <button onclick="openGrades()">Edit Grades</button>
+    <button id="b-nc" onclick="openNC()" style="display:none">Non-contributing</button>
     <button id="b-pub" onclick="openPublish()">Publish</button>
     <button onclick="dl('download')">Download Sheet</button>
     <button onclick="dl('template')">Download Template</button>
@@ -161,8 +163,14 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 </div>
 
 <div class="modal" id="m-grades"><div>
-  <h3>Edit Grades</h3><p class="muted" style="margin:6px 0 10px">Boundaries drive the Grade column. Points/Division on Secondary and Advanced sheets always use the NECTA bands.</p>
+  <h3>Edit Grades</h3><p class="muted" style="margin:6px 0 10px">Boundaries drive every grade on the sheet. Points: top grade = 1, next = 2 and so on. Divisions use the NECTA bands.</p>
   <div id="gl"></div><div class="row" style="margin-top:10px"><button onclick="addGrade()">+ Add grade</button><span class="sp"></span><button onclick="closeM()">Cancel</button><button class="pri" onclick="applyGrades()">Apply</button></div>
+</div></div>
+<div class="modal" id="m-nc"><div>
+  <h3>Subjects that do not contribute</h3>
+  <p class="muted" style="margin:6px 0 10px">Tick subjects that must NOT count toward points, division or average (e.g. Religion). Their grades are still shown.</p>
+  <div id="nc-list"></div>
+  <div class="row" style="margin-top:12px"><span class="sp"></span><button onclick="closeM()">Cancel</button><button class="pri" onclick="applyNC()">Apply</button></div>
 </div></div>
 <div class="modal" id="m-hist"><div><h3>History</h3><div id="hl"></div><div style="text-align:right;margin-top:10px"><button onclick="closeM()">Close</button></div></div></div>
 <div class="modal" id="m-pub"><div>
@@ -247,7 +255,7 @@ function renderParent(r){
     <p class="muted">Please contact the school office.</p></div>`:`<div class="card" style="margin-bottom:14px">
     <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
     <table class="res"><tr><th>Subject</th><th>Score</th></tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td></tr>`).join("")}</table>
-    <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; <b>Position:</b> ${v(k.position)} / ${k.out_of} &nbsp; <b>Grade:</b> ${k.grade}
+    <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; ${k.position!=null?`<b>Position:</b> ${k.position} / ${k.out_of} &nbsp;`:""} <b>Grade:</b> ${k.grade}
     ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`).join("")).join(""):"<p class='muted'>No published results yet.</p>";
   const an=r.announcements||[];
   $("pann").innerHTML=an.length?an.map(a=>`<div class="card" style="margin-bottom:10px"><b>${esc(a.title)}</b>
@@ -290,34 +298,56 @@ function mark(){dirty=true;}
 function cols(){return ["name","phone",...S.subjects.map(s=>s.id)];}
 function extra(){return S.sheet_type==="secondary"||S.sheet_type==="advanced";}
 function gradeFor(a){if(a==null)return"-";for(const g of S.grade_rules)if(a>=g.min)return g.grade;return S.grade_rules[S.grade_rules.length-1].grade;}
-function calc(r){const v=S.subjects.filter(s=>s.name.trim()).map(s=>parseFloat(r.marks[s.id])).filter(x=>!isNaN(x));
-const t=v.reduce((a,b)=>a+b,0);return{total:v.length?+t.toFixed(2):null,avg:v.length?+(t/v.length).toFixed(2):null};}
+const O_DIV=[[7,17,"I"],[18,21,"II"],[22,25,"III"],[26,33,"IV"],[34,50,"0"]],A_DIV=[[3,9,"I"],[10,12,"II"],[13,17,"III"],[18,19,"IV"],[20,21,"0"]];
+function isGrade(){return S.sheet_type!=="marks";}
+function ptsFor(v){const i=S.grade_rules.findIndex(g=>v>=g.min);return i<0?S.grade_rules.length:i+1;}
+function calc(r){
+  const nc=new Set(S.noncredit||[]),g=isGrade();
+  const ids=S.subjects.filter(s=>s.name.trim()&&!(g&&nc.has(s.id))).map(s=>s.id);
+  const v=ids.map(i=>parseFloat(r.marks[i])).filter(x=>!isNaN(x));
+  const t=v.reduce((a,b)=>a+b,0),o={total:v.length?+t.toFixed(2):null,avg:v.length?+(t/v.length).toFixed(2):null,points:null,division:null};
+  if(extra()){
+    const sec=S.sheet_type==="secondary",need=sec?7:3,bands=sec?O_DIV:A_DIV;
+    if(v.length<need)o.points=o.division="INC";
+    else{const p=v.map(ptsFor).sort((a,b)=>a-b).slice(0,need).reduce((a,b)=>a+b,0);
+      o.points=p;o.division=(bands.find(b=>p>=b[0]&&p<=b[1])||[0,0,"0"])[2];}
+  }
+  return o;
+}
+function cellVal(r,s){const m=r.marks[s.id];if(m===undefined||m==="")return"";
+  if(!isGrade())return m;const n=parseFloat(m);return isNaN(n)?m:gradeFor(n);}
+function tailHead(){const t=S.sheet_type,gh=`<th class="gh" onclick="openGrades()" title="Edit grade boundaries">Grade ✎</th>`;
+  return t==="marks"?`<th>Total</th><th>Average</th><th>Position</th>`+gh:t==="primary"?`<th>Average</th>`+gh:`<th>Points</th><th>Division</th>`;}
+function tailCells(i,r,c){const t=S.sheet_type;
+  if(t==="marks")return `<td id="t${i}">${c.total??""}</td><td id="a${i}">${c.avg??""}</td><td id="p${i}">${r.position??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`;
+  if(t==="primary")return `<td id="a${i}">${c.avg??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`;
+  return `<td id="q${i}">${c.points??""}</td><td id="d${i}">${c.division??""}</td>`;}
+function updTail(i){const c=calc(S.rows[i]),set=(p,v)=>{const e=$(p+i);if(e)e.textContent=v??""};
+  set("t",c.total);set("a",c.avg);set("g",c.avg==null?"":gradeFor(c.avg));set("q",c.points);set("d",c.division);}
+function rowHTML(i){const r=S.rows[i],c=calc(r);
+  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
+  +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${esc(cellVal(r,s))}"></td>`).join("")
+  +`<td></td>`+tailCells(i,r,c)+`</tr>`;}
+function renderGrid(){
+  $("grid").innerHTML=`<thead><tr><th>S/N</th><th>Student Name</th><th>Account/Phone Number</th>`
+   +S.subjects.map((s,i)=>`<th><input class="h" list="subj-list" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
+   +`<th><button onclick="addSub()">+ Add Subject</button></th>`+tailHead()+`</tr></thead><tbody></tbody>`;
+  ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL();
+}
 function blank(){return{id:"r"+rid(),name:"",phone:"",marks:{}};}
 function ensureBlank(){const l=S.rows[S.rows.length-1];if(!l||l.name||l.phone||Object.keys(l.marks).length)S.rows.push(blank());}
 function isLinked(r){const n=norm(r.name);return !!n&&LK.has(n);}
 function phoneInner(i){const r=S.rows[i];
   return isLinked(r)?`<span class="lk" title="Linked to a parent account, no phone number needed">...</span><span class="tick">✓</span>`
    :`<input data-r="${i}" data-c="1" value="${esc(r.phone)}">`;}
-function rowHTML(i){const r=S.rows[i],c=calc(r);
-  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
-  +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${r.marks[s.id]??""}"></td>`).join("")
-  +`<td></td><td id="t${i}">${c.total??""}</td><td id="a${i}">${c.avg??""}</td><td id="p${i}">${r.position??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`
-  +(extra()?`<td>${r.points??""}</td><td>${r.division??""}</td>`:"")+`</tr>`;}
 function addRowEl(i){$("grid").tBodies[0].insertAdjacentHTML("beforeend",rowHTML(i));}
-function renderGrid(){
-  $("grid").innerHTML=`<thead><tr><th>S/N</th><th>Student Name</th><th>Account/Phone Number</th>`
-   +S.subjects.map((s,i)=>`<th><input class="h" list="subj-list" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
-   +`<th><button onclick="addSub()">+ Add Subject</button></th><th>Total</th><th>Average</th><th>Position</th><th class="gh" onclick="openGrades()" title="Edit grade boundaries">Grade ✎</th>`
-   +(extra()?`<th>Points</th><th>Division</th>`:"")+`</tr></thead><tbody></tbody>`;
-  ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL();
-}
 function setCell(r,c,v){if(c===0)r.name=v;else if(c===1){if(!isLinked(r))r.phone=v;}else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}}
 $("grid").addEventListener("input",e=>{
   const t=e.target; if(t.dataset.sub!==undefined){S.subjects[+t.dataset.sub].name=t.value;return mark();}
   if(t.dataset.r===undefined)return;
   const i=+t.dataset.r,r=S.rows[i]; setCell(r,+t.dataset.c,t.value); mark();
   if(+t.dataset.c===0){const td=document.querySelector(`td.phc[data-r="${i}"]`);if(td)td.innerHTML=phoneInner(i);}
-  const k=calc(r); $("t"+i).textContent=k.total??""; $("a"+i).textContent=k.avg??""; $("g"+i).textContent=k.avg==null?"":gradeFor(k.avg);
+  updTail(i);
   if(i===S.rows.length-1){S.rows.push(blank());addRowEl(S.rows.length-1);}
 });
 $("grid").addEventListener("keydown",e=>{
@@ -342,7 +372,21 @@ $("grid").addEventListener("paste",e=>{
 });
 function addSub(){S.subjects.push({id:"s"+rid(),name:""});mark();renderGrid();}
 function delSub(i){if(!confirm("Remove this subject and its marks?"))return;S.subjects.splice(i,1);mark();renderGrid();}
-function setType(v){S.sheet_type=v;mark();renderGrid();}
+function sortAlpha(){
+  const real=S.rows.filter(r=>r.name||r.phone||Object.keys(r.marks).length);
+  real.sort((a,b)=>(!a.name)-(!b.name)||a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  S.rows=real;
+}
+function setType(v){S.sheet_type=v;mark();
+  $("b-nc").style.display=v==="marks"?"none":"inline-block";
+  if(v!=="marks"){sortAlpha();renderGrid();openNC();return;}
+  renderGrid();}
+function openNC(){
+  const nc=new Set(S.noncredit||[]),subs=S.subjects.filter(s=>s.name.trim());
+  $("nc-list").innerHTML=subs.length?subs.map(s=>`<label class="row"><input type="checkbox" style="width:auto" value="${esc(s.id)}" ${nc.has(s.id)?"checked":""}> ${esc(s.name)}</label>`).join(""):"<p class='muted'>Add subjects first</p>";
+  $("m-nc").style.display="flex";
+}
+function applyNC(){S.noncredit=[...document.querySelectorAll("#nc-list input:checked")].map(i=>i.value);mark();closeM();renderGrid();}
 function updatePub(){$("b-pub").textContent=S.published?"Published ✓ Manage":"Publish";}
 function pubMode(){$("pub-except").style.display=document.querySelector('input[name=pm]:checked').value==="except"?"block":"none";}
 function openPublish(){
@@ -407,13 +451,14 @@ function apply(p){
   $("subj-list").innerHTML=(S.subject_suggestions||[]).map(n=>`<option value="${esc(n)}">`).join("");
   dirty=false; $("school").value=S.school_name; $("exam").value=S.exam_name; $("cls").value=S.class_name||""; HL=null; $("hbar").style.display="none";
   $("type").innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(""); $("type").value=S.sheet_type;
+  $("b-nc").style.display=S.sheet_type==="marks"?"none":"inline-block";
   showLogo(); renderGrid(); updatePub();
 }
 function editorName(){if(S.is_owner)return"";let n=localStorage.getItem("mini_editor");
   if(!n){n=(prompt("Your name (shown in the sheet history):")||"Guest").trim().slice(0,60);localStorage.setItem("mini_editor",n);}return n;}
 async function saveSheet(){
   const r=await api(`/sheet/${S.key}/save`,"POST",{editor:editorName(),version:S.version,school_name:$("school").value,exam_name:$("exam").value, class_name: $("cls").value,
-    sheet_type:S.sheet_type,grade_rules:S.grade_rules,subjects:S.subjects,rows:S.rows});
+    sheet_type:S.sheet_type,grade_rules:S.grade_rules,subjects:S.subjects,noncredit:S.noncredit||[],rows:S.rows});
   if(r.ok){apply(r);toast("Saved");return true;} toast(r.error||"Save failed"); return false;
 }
 
@@ -423,7 +468,7 @@ async function doImport(inp){
   if(S.rows.some(r=>r.name)&&!confirm("Replace the current students and subjects with this file?"))return;
   const fd=new FormData();fd.append("file",f);
   const r=await fetch(`/api/mini/sheet/${S.key}/import`,{method:"POST",body:fd}).then(x=>x.json()).catch(()=>({ok:false,error:"Import failed"}));
-  if(!r.ok)return toast(r.error); S.subjects=r.subjects;S.rows=r.rows;mark();renderGrid();toast(`Imported ${r.rows.length} students — press SAVE`);
+  if(!r.ok)return toast(r.error); S.subjects=r.subjects;S.rows=r.rows;S.noncredit=[];mark();renderGrid();toast(`Imported ${r.rows.length} students — press SAVE`);
 }
 function copyLink(){const u=location.origin+"/mini?s="+S.key;
   (navigator.clipboard?navigator.clipboard.writeText(u).then(()=>toast("Link copied — anyone with it can edit this sheet")):Promise.reject()).catch(()=>prompt("Copy this link:",u));}
@@ -609,6 +654,16 @@ function pollPay(id,el){
     else if(tries>=36){clearInterval(payTimer);el.textContent="Still waiting. If you approved it, reopen this page in a minute.";}};
   payTimer=setInterval(tick,5000);tick();
 }
+
+// ── grade sheets: marks show as grades until you click into the cell ──
+$("grid").addEventListener("focusin",e=>{const t=e.target;
+  if(!isGrade()||!t.classList||!t.classList.contains("num"))return;
+  const r=S.rows[+t.dataset.r],s=S.subjects[+t.dataset.c-2];if(!r||!s)return;
+  t.value=r.marks[s.id]??"";t.select();});
+$("grid").addEventListener("focusout",e=>{const t=e.target;
+  if(!isGrade()||!t.classList||!t.classList.contains("num"))return;
+  const r=S.rows[+t.dataset.r],s=S.subjects[+t.dataset.c-2];if(!r||!s)return;
+  t.value=cellVal(r,s);});
 
 // ── boot ──
 (async function(){

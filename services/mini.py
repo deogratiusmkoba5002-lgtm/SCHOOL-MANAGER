@@ -57,7 +57,8 @@ def clean_data(d):
             rid = new_id("r")
         rseen.add(rid)
         rows.append({"id": rid, "name": name, "phone": phone, "marks": marks})
-    return {"subjects": subs, "rows": rows}, None
+    nc = [x for x in (d.get("noncredit") or []) if isinstance(x, str) and x in seen]
+    return {"subjects": subs, "rows": rows, "noncredit": nc}, None
 
 
 def clean_grades(rules):
@@ -84,16 +85,21 @@ def grade_for(rules, score):
     return rules[-1]["grade"]
 
 
-def _points(table, score):
-    for m, _g, p in table:
-        if score >= m:
-            return p
-    return table[-1][2]
+def _points(rules, score):
+    """1 point for the top grade, 2 for the next... (same convention as main DrDemic)."""
+    for i, g in enumerate(rules):
+        if score >= g["min"]:
+            return i + 1
+    return len(rules)
 
 
 def compute(data, sheet_type, rules):
-    """Rows with total/average/grade/points/division/position, sorted best first (ties share a position)."""
+    """Marks sheets: ranked best first (ties share a position).
+    Grade sheets: alphabetical, no positions, non-contributing subjects ignored."""
+    nc = set(data.get("noncredit") or [])
     ids = [s["id"] for s in data["subjects"] if s["name"]]
+    if sheet_type != "marks":
+        ids = [i for i in ids if i not in nc]
     out = []
     for r in data["rows"]:
         vals = [r["marks"][i] for i in ids if i in r["marks"]]
@@ -101,14 +107,19 @@ def compute(data, sheet_type, rules):
         avg = round(total / len(vals), 2) if vals else None
         row = dict(r, total=total, average=avg, grade=grade_for(rules, avg), points=None, division=None)
         if sheet_type in ("secondary", "advanced"):
-            table, divs, need = (O_LEVEL, O_DIV, 7) if sheet_type == "secondary" else (A_LEVEL, A_DIV, 3)
-            pts = sorted(_points(table, v) for v in vals)
+            divs, need = (O_DIV, 7) if sheet_type == "secondary" else (A_DIV, 3)
+            pts = sorted(_points(rules, v) for v in vals)
             if len(pts) < need:
                 row["points"] = row["division"] = "INC"
             else:
                 row["points"] = sum(pts[:need])
                 row["division"] = next((d for lo, hi, d in divs if lo <= row["points"] <= hi), "0")
         out.append(row)
+    if sheet_type != "marks":
+        out.sort(key=lambda r: (not r["name"], r["name"].lower()))
+        for r in out:
+            r["position"] = None
+        return out
     ranked = sorted(out, key=lambda r: (r["average"] is None, -(r["average"] or 0), r["name"].lower()))
     prev = None
     for i, r in enumerate(ranked):
@@ -132,6 +143,9 @@ def diff(old, new, old_meta, new_meta):
     for sid, n in osub.items():
         if sid not in nsub:
             ch.append({"what": "subject_removed", "old": n})
+    onc, nnc = sorted(old.get("noncredit") or []), sorted(new.get("noncredit") or [])
+    if onc != nnc:
+        ch.append({"what": "noncredit", "old": [osub.get(i, i) for i in onc], "new": [nsub.get(i, i) for i in nnc]})
     orows = {r["id"]: r for r in old["rows"]}
     nrows = {r["id"]: r for r in new["rows"]}
     for rid, r in nrows.items():

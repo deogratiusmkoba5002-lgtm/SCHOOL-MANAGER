@@ -146,6 +146,7 @@ def _payload(key, s, viewer):
     cur.close(); con.close()
     return {"ok": True, "key": key, "school_name": s["school_name"], "exam_name": s["exam_name"], "class_name": s["class_name"],
             "sheet_type": s["sheet_type"], "grade_rules": s["grade_rules"], "subjects": s["data"]["subjects"],
+            "noncredit": s["data"].get("noncredit",[]),
             "rows": M.compute(s["data"], s["sheet_type"], s["grade_rules"]), "version": s["version"],
             "published": bool(s["published"]), "has_logo": s["has_logo"], "is_owner": is_owner,
             "linked": linked, "restrictions": restr, "subject_suggestions": suggestions,
