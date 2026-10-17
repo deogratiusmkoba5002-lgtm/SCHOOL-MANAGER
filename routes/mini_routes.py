@@ -70,9 +70,12 @@ def mini_signup():
         return jsonify({"ok": False, "error": "Passwords do not match"}), 400
     if not d.get("agree_terms"):
         return jsonify({"ok": False, "error": "You must agree to the Privacy Policy and Terms to create an account"}), 400
+    phone = normalize_phone(d.get("phone"))
+    if not phone:
+        return jsonify({"ok": False, "error": "Enter a valid phone number, e.g. 0712345678 (used to verify you if you lose your password)"}), 400
     con = get_db(); cur = con.cursor()
-    cur.execute("INSERT INTO mini_users(username,password,role) VALUES(%s,%s,'owner') ON CONFLICT DO NOTHING RETURNING id",
-                (u, hash_password(p)))
+    cur.execute("INSERT INTO mini_users(username,password,role,phone) VALUES(%s,%s,'owner',%s) ON CONFLICT DO NOTHING RETURNING id",
+                (u, hash_password(p), phone))
     row = cur.fetchone(); con.commit(); cur.close(); con.close()
     if not row:
         return jsonify({"ok": False, "error": "That username is taken"}), 409
@@ -174,8 +177,10 @@ def mini_list():
                    ORDER BY updated_at DESC""", (g.mini_user["id"],))
     rows = [{"key": r[0], "school_name": r[1], "exam_name": r[2], "sheet_type": r[3], "published": bool(r[4]),
              "updated_at": r[5], "students": r[6]} for r in cur.fetchall()]
+    cur.execute("SELECT phone FROM mini_users WHERE id=%s", (g.mini_user["id"],))
+    has_phone = bool(cur.fetchone()[0])
     cur.close(); con.close()
-    return jsonify({"ok": True, "sheets": rows})
+    return jsonify({"ok": True, "sheets": rows, "has_phone": has_phone})
 
 
 @mini_bp.route("/api/mini/sheets", methods=["POST"])
@@ -463,11 +468,11 @@ def mini_link_login(token):
             return bad
         sid, name, phone, puid = st
         if puid:                                             # already linked: normal sign-in
-            cur.execute("SELECT password,token_version FROM mini_users WHERE id=%s", (puid,))
+            cur.execute("SELECT password,token_version,must_change_password FROM mini_users WHERE id=%s", (puid,))
             u = cur.fetchone()
             if not u or not verify_password(pw, u[0]):
                 return bad
-            return _token_reply(puid, name, "parent", False, u[1])
+            return _token_reply(puid, name, "parent", u[2], u[1])
         if not phone or normalize_phone(pw) != phone:        # first time: phone number is the password
             return bad
         new = d.get("new_password") or ""
@@ -604,3 +609,48 @@ def mini_parent_analytics():
         c["points"] = c["points"][-5:]
         out.append(c)
     return jsonify({"ok": True, "children": out})
+
+# ── admin phone (for superadmin verification) ───────────────
+@mini_bp.route("/api/mini/auth/phone", methods=["POST"])
+@need_user("owner")
+def mini_set_phone():
+    phone = normalize_phone((request.get_json(silent=True) or {}).get("phone"))
+    if not phone:
+        return jsonify({"ok": False, "error": "Enter a valid phone number, e.g. 0712345678"}), 400
+    con = get_db(); cur = con.cursor()
+    cur.execute("UPDATE mini_users SET phone=%s WHERE id=%s", (phone, g.mini_user["id"]))
+    con.commit(); cur.close(); con.close()
+    return jsonify({"ok": True})
+
+
+# ── admin resets a parent's password (no superadmin needed) ─
+@mini_bp.route("/api/mini/parents", methods=["GET"])
+@need_user("owner")
+def mini_parents():
+    q = M.norm(request.args.get("q"))[:60]
+    q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT id,name,phone,parent_user_id IS NOT NULL FROM mini_students "
+                "WHERE owner_id=%s AND name_norm LIKE %s ORDER BY name_norm LIMIT 50",
+                (g.mini_user["id"], f"%{q}%"))
+    rows = [{"id": r[0], "name": r[1], "phone": r[2], "linked": r[3]} for r in cur.fetchall()]
+    cur.close(); con.close()
+    return jsonify({"ok": True, "parents": rows})
+
+
+@mini_bp.route("/api/mini/parents/<int:sid>/reset_password", methods=["POST"])
+@need_user("owner")
+@rate_limit("mini_parent_reset", max_attempts=30, window_minutes=60, by="ip")
+def mini_parent_reset(sid):
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    temp = "".join(secrets.choice(alphabet) for _ in range(8))
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE mini_users u SET password=%s, must_change_password=1, token_version=token_version+1
+                   FROM mini_students s
+                   WHERE s.id=%s AND s.owner_id=%s AND s.parent_user_id=u.id AND u.role='parent'
+                   RETURNING s.name""", (hash_password(temp), sid, g.mini_user["id"]))
+    row = cur.fetchone()
+    con.commit(); cur.close(); con.close()
+    if not row:
+        return jsonify({"ok": False, "error": "This parent has not signed up yet, or is not yours"}), 404
+    return jsonify({"ok": True, "temp_password": temp, "student": row[0]})

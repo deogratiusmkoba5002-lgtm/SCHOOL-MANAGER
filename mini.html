@@ -88,9 +88,10 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 
 <div id="v-auth" class="box">
   <h2 id="a-title">Sign in</h2>
-  <p class="muted">Parents: use your phone number (first password is the same number, e.g. 0712345678). Teachers/admins: use your username.</p>
-  <input id="a-user" placeholder="Username or phone number"><input id="a-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doAuth()">
+  <p class="muted">Parents: open the link your teacher shared, or sign in with your child's full name.</p>
+  <input id="a-user" placeholder="Username (parents: child's full name)">
 <div id="a-extra" style="display:none">
+  <input id="a-phone" type="tel" placeholder="Your phone number (for password recovery)">
   <input id="a-pass2" type="password" placeholder="Repeat password" onkeydown="if(event.key==='Enter')doAuth()">
   <label style="display:flex;gap:8px;align-items:flex-start;font-size:.8rem;margin:8px 0;line-height:1.4;cursor:pointer">
     <input type="checkbox" id="a-agree" style="width:auto;margin:3px 0 0">
@@ -119,7 +120,11 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 </div>
 
 <div id="v-dash" class="wrap" style="display:none">
-  <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
+  <div id="phone-banner" style="display:none;background:#FFF8E1;border-left:4px solid #FFB300;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+    <b>Add your phone number.</b> <span class="muted">It is how we verify you if you ever lose your password.</span>
+    <div class="row" style="margin-top:8px"><input id="ph-in" type="tel" placeholder="e.g. 0712345678" style="padding:8px;border:1.5px solid #B0BEC5;border-radius:8px"><button class="pri" onclick="savePhone()">Save</button></div>
+  </div>
+  <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button onclick="openParents()">My parents</button><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
   <div id="sheets" class="cards"></div>
 </div>
 
@@ -224,6 +229,14 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <button onclick="closeM()">Close</button><button class="pri" id="pub-go" onclick="doPublish()">Publish</button></div>
 </div></div>
 
+<div class="modal" id="m-par"><div>
+  <h3>My parents</h3>
+  <p class="muted" style="margin:6px 0 8px">A parent forgot their password? Confirm it is really the parent, find the child, press Reset, and give the parent the temporary code. They sign in with the child's full name and that code, then choose a new password.</p>
+  <input id="par-q" placeholder="Search child's name…" oninput="loadParents()" style="width:100%;padding:8px;margin-bottom:8px">
+  <div id="par-list" style="max-height:50vh;overflow:auto"></div>
+  <div style="text-align:right;margin-top:10px"><button onclick="closeM()">Close</button></div>
+</div></div>
+
 <div class="modal" id="m-ann"><div>
   <h3>Send announcement</h3>
   <p class="muted" style="margin:6px 0 10px">Goes to parent accounts linked to students on this sheet. Parents who link later will see it too.</p>
@@ -264,25 +277,47 @@ function setAuth(r){token=r.token;me={username:r.username,role:r.role,must_chang
 function logout(){localStorage.removeItem("mini_token");localStorage.removeItem("mini_me");dirty=false;location.href="/mini";}
 
 // ── auth / dashboard / parent ──
-function setMode(m){mode=m;$("a-title").textContent=m==="login"?"Sign in":"Create teacher/admin account";
+function setMode(m){mode=m;$("a-title").textContent=m==="login"?"Sign in":"Create account";
   $("a-btn").textContent=m==="login"?"Sign in":"Create account";
   $("a-extra").style.display=m==="signup"?"block":"none";
-  $("a-switch").textContent=m==="login"?"New teacher/admin? Create an account":"Already have an account? Sign in";}
+  $("a-switch").textContent=m==="login"?"New here? Create an account":"Already have an account? Sign in";}
 async function doAuth(){
   const body={username:$("a-user").value,password:$("a-pass").value};
   if(mode==="signup"){
+    if(!$("a-phone").value.trim())return toast("Enter your phone number");
     if(body.password!==$("a-pass2").value)return toast("Passwords do not match");
     if(!$("a-agree").checked)return toast("Please tick the box to accept the Privacy Policy and Terms");
-    body.confirm_password=$("a-pass2").value; body.agree_terms=true;
+    body.phone=$("a-phone").value.trim(); body.confirm_password=$("a-pass2").value; body.agree_terms=true;
   }
   const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",body);
   if(!r.ok) return toast(r.error||"Failed"); setAuth(r); location.href="/mini";
 }
 async function loadDash(){
-  show("dash"); if(me.must_change)$("pw").style.display="block"; const r=await api("/sheets");
+  show("dash"); if(me.must_change)$("pw").style.display="block";
+  const r=await api("/sheets");
+  $("phone-banner").style.display=r.ok&&!r.has_phone?"block":"none";
   $("sheets").innerHTML=r.ok&&r.sheets.length?r.sheets.map(s=>`<a class="card" href="/mini?s=${esc(s.key)}"><b>${esc(s.exam_name||"Untitled exam")}</b>
     <div class="muted">${esc(s.school_name||"No school name")}</div><div class="muted">${TYPES[s.sheet_type]} · ${s.students} students</div>
     ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
+}
+async function savePhone(){
+  const r=await api("/auth/phone","POST",{phone:$("ph-in").value});
+  if(!r.ok)return toast(r.error||"Failed");
+  $("phone-banner").style.display="none";toast("Phone number saved");
+}
+function openParents(){$("par-q").value="";$("m-par").style.display="flex";loadParents();}
+async function loadParents(){
+  const r=await api("/parents?q="+encodeURIComponent($("par-q").value.trim()));
+  $("par-list").innerHTML=r.ok&&r.parents.length?r.parents.map(p=>`<div class="hi"><b>${esc(p.name)}</b>
+    <span class="muted">${esc(p.phone?"0"+p.phone.slice(3):"no phone")} · ${p.linked?"has account":"not signed up yet"}</span>
+    ${p.linked?`<button style="float:right;padding:3px 10px" onclick="resetParent(${p.id})">Reset password</button>`:""}</div>`).join("")
+    :"<p class='muted'>No students yet. Students appear here after you publish a sheet.</p>";
+}
+async function resetParent(id){
+  if(!confirm("Reset this parent's password?\n\nMake sure you are speaking to the real parent."))return;
+  const r=await api(`/parents/${id}/reset_password`,"POST",{});
+  if(!r.ok)return toast(r.error||"Failed");
+  prompt("Temporary code (shown once). Give it to the parent:",r.temp_password);
 }
 async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
 const HOME_MAX=6;                         // cards shown on the parent home page

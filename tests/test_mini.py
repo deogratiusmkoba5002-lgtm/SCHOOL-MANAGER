@@ -2,7 +2,7 @@ def _h(t): return {"Authorization": "Bearer " + t}
 
 
 def test_mini_end_to_end(client):
-    owner = _h(client.post("/api/mini/auth/signup", json={"username": "teacher_amos", "password": "secret12", "confirm_password": "secret12", "agree_terms": True}).get_json()["token"])
+    owner = _h(client.post("/api/mini/auth/signup", json={"username": "teacher_amos", "password": "secret12", "confirm_password": "secret12", "agree_terms": True, "phone": "0712345678"}).get_json()["token"])
     key = client.post("/api/mini/sheets", headers=owner).get_json()["key"]
     sheet = client.get(f"/api/mini/sheet/{key}").get_json()
     eng, kis = sheet["subjects"][0]["id"], sheet["subjects"][1]["id"]

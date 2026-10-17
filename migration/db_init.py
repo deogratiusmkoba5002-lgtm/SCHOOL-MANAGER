@@ -734,6 +734,7 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_mini_recipients_phone ON mini_recipients(phone);
     ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS class_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE mini_users ADD COLUMN IF NOT EXISTS phone TEXT;
     ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS pub_token TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_mini_sheets_pub_token ON mini_sheets(pub_token);
     CREATE TABLE IF NOT EXISTS mini_students (

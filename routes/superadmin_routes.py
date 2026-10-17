@@ -9,6 +9,7 @@ from core.security import verify_password, hash_password
 from core.auth import _require_superadmin, _sa_serializer
 from core.school import purge_expired_rejected_schools
 from services.subscriptions import _expire_stale_payment_requests, _platform_payment_config
+from services.access import normalize_phone
 
 superadmin_bp = Blueprint("superadmin", __name__)
 
@@ -325,18 +326,19 @@ def api_sa_reset_password(sid):
 def api_sa_mini_owners():
     sa, err = _require_superadmin()
     if err: return err
-    q = (request.args.get("q") or "").strip().lower()[:60]
-    if len(q) < 2:
+    raw = (request.args.get("q") or "").strip()[:60]
+    if len(raw) < 2:
         return jsonify({"ok": True, "owners": []})
-    q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = raw.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    phone = normalize_phone(raw) or ""
     con = get_db(); cur = con.cursor()
-    cur.execute("""SELECT u.id, u.username, CAST(u.created_at AS TEXT),
+    cur.execute("""SELECT u.id, u.username, CAST(u.created_at AS TEXT), u.phone,
                           (SELECT COUNT(*) FROM mini_sheets s WHERE s.owner_id=u.id),
                           (SELECT string_agg(DISTINCT NULLIF(s.school_name,''), ', ') FROM mini_sheets s WHERE s.owner_id=u.id)
                    FROM mini_users u
-                   WHERE u.role='owner' AND LOWER(u.username) LIKE %s
-                   ORDER BY u.id DESC LIMIT 30""", (f"%{q}%",))
-    rows = [{"id": r[0], "username": r[1], "created_at": r[2], "sheets": r[3], "schools": r[4] or ""}
+                   WHERE u.role='owner' AND (LOWER(u.username) LIKE %s OR u.phone=%s)
+                   ORDER BY u.id DESC LIMIT 30""", (f"%{like}%", phone))
+    rows = [{"id": r[0], "username": r[1], "created_at": r[2], "phone": r[3], "sheets": r[4], "schools": r[5] or ""}
             for r in cur.fetchall()]
     cur.close(); con.close()
     return jsonify({"ok": True, "owners": rows})

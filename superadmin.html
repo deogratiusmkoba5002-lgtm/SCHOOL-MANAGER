@@ -908,7 +908,7 @@ async function searchMiniOwners(){
         <span class="notice-title">${esc(o.username)}</span>
         <span class="notice-date">Joined ${esc((o.created_at||"").slice(0,10))}</span>
       </div>
-      <div class="notice-body">${o.sheets} sheet(s)${o.schools ? " · Schools on sheets: "+esc(o.schools) : ""}</div>
+      <div class="notice-body">${o.sheets} sheet(s)${o.schools ? " · Schools on sheets: "+esc(o.schools) : ""}<br>Phone on file: <b>${o.phone ? esc("0"+o.phone.slice(3)) : "none (older account, cannot verify by phone)"}</b></div>
       <button class="btn btn-danger" style="margin-top:8px;padding:5px 14px;font-size:.78rem"
         data-id="${o.id}" data-name="${esc(o.username)}" onclick="resetMiniOwner(this)">Reset password</button>
     </div>`).join("") : `<div class="empty">No Mini admin found.</div>`;
