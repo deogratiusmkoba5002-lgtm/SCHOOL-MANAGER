@@ -414,6 +414,15 @@ textarea{resize:vertical;min-height:90px}
           <button class="btn btn-purple" onclick="savePaymentConfig()">Save Payment Settings</button>
         </div>
       </div>
+      <div class="section-title" style="margin-top:28px">DrDemic Mini admins</div>
+      <div class="card">
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">Reset a Mini teacher/admin's forgotten password. Verify who is asking first (ask for their school name, exam names or approximate sign-up date), then compare with what is shown below.</p>
+        <div class="list-toolbar">
+          <input type="text" id="mini-owner-q" placeholder="Search by username…" onkeydown="if(event.key==='Enter')searchMiniOwners()"/>
+          <button class="btn btn-purple" onclick="searchMiniOwners()">Search</button>
+        </div>
+        <div id="mini-owner-list"><div class="empty">Type a username and press Search.</div></div>
+      </div>
     </div>
 
     <!-- ═══ ANNOUNCEMENTS (opened from the bell) ═══ -->
@@ -886,6 +895,31 @@ async function resetAdminPassword(btn){
   prompt("Temporary password (shown once). Send it through a verified channel:", r.temp_password);
 }
 
+// ── DRDEMIC MINI: owner password reset ──────────────────────
+async function searchMiniOwners(){
+  const q = document.getElementById("mini-owner-q").value.trim();
+  const box = document.getElementById("mini-owner-list");
+  if(q.length < 2){ box.innerHTML = `<div class="empty">Type at least 2 letters of the username.</div>`; return; }
+  const d = await saApi("/mini/owners?q=" + encodeURIComponent(q));
+  if(!d.ok){ box.innerHTML = `<div class="empty">${esc(d.error||"Failed")}</div>`; return; }
+  box.innerHTML = d.owners.length ? d.owners.map(o=>`
+    <div class="notice-item">
+      <div class="notice-meta">
+        <span class="notice-title">${esc(o.username)}</span>
+        <span class="notice-date">Joined ${esc((o.created_at||"").slice(0,10))}</span>
+      </div>
+      <div class="notice-body">${o.sheets} sheet(s)${o.schools ? " · Schools on sheets: "+esc(o.schools) : ""}</div>
+      <button class="btn btn-danger" style="margin-top:8px;padding:5px 14px;font-size:.78rem"
+        data-id="${o.id}" data-name="${esc(o.username)}" onclick="resetMiniOwner(this)">Reset password</button>
+    </div>`).join("") : `<div class="empty">No Mini admin found.</div>`;
+}
+async function resetMiniOwner(btn){
+  const id = btn.dataset.id, name = btn.dataset.name;
+  if(!confirm(`Reset password for Mini admin "${name}"?\n\nVerify who is asking BEFORE you do this.\nTheir sheets, parents and payments stay untouched.`)) return;
+  const r = await saApi(`/mini/owners/${id}/reset_password`, "POST", {});
+  if(!r.ok){ toast(r.error||"Failed","error"); return; }
+  prompt("Temporary password (shown once). Send it through a verified channel:", r.temp_password);
+}
 
 // ── UTILS ──────────────────────────────────────────────────
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }

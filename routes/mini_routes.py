@@ -66,6 +66,10 @@ def mini_signup():
         return jsonify({"ok": False, "error": "Username: 3-40 letters/numbers/_ . - and at least one letter"}), 400
     if len(p) < 6:
         return jsonify({"ok": False, "error": "Password must be at least 6 characters"}), 400
+    if p != (d.get("confirm_password") or ""):
+        return jsonify({"ok": False, "error": "Passwords do not match"}), 400
+    if not d.get("agree_terms"):
+        return jsonify({"ok": False, "error": "You must agree to the Privacy Policy and Terms to create an account"}), 400
     con = get_db(); cur = con.cursor()
     cur.execute("INSERT INTO mini_users(username,password,role) VALUES(%s,%s,'owner') ON CONFLICT DO NOTHING RETURNING id",
                 (u, hash_password(p)))

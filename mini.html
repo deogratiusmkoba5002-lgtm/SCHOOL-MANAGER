@@ -90,6 +90,13 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <h2 id="a-title">Sign in</h2>
   <p class="muted">Parents: use your phone number (first password is the same number, e.g. 0712345678). Teachers/admins: use your username.</p>
   <input id="a-user" placeholder="Username or phone number"><input id="a-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doAuth()">
+<div id="a-extra" style="display:none">
+  <input id="a-pass2" type="password" placeholder="Repeat password" onkeydown="if(event.key==='Enter')doAuth()">
+  <label style="display:flex;gap:8px;align-items:flex-start;font-size:.8rem;margin:8px 0;line-height:1.4;cursor:pointer">
+    <input type="checkbox" id="a-agree" style="width:auto;margin:3px 0 0">
+    <span>I have read and agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms &amp; Conditions</a>, including that DrDemic Mini keeps its sheets safe only through the sheet link I share.</span>
+  </label>
+</div>
   <button class="pri" id="a-btn" onclick="doAuth()" style="width:100%;margin-top:6px">Sign in</button>
   <p class="muted" style="margin-top:12px"><a href="#" id="a-switch" onclick="setMode(mode==='login'?'signup':'login');return false">New teacher/admin? Create an account</a></p>
 </div>
@@ -106,16 +113,18 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <button class="pri" id="l-btn" onclick="linkLogin()" style="width:100%;margin-top:6px">Continue</button>
 </div>
 
+<div id="pw" class="wrap" style="display:none;background:#FFF8E1;padding:12px;border-radius:10px;margin-bottom:14px">
+  <b>Please set your own password.</b>
+  <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
+</div>
+
 <div id="v-dash" class="wrap" style="display:none">
   <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
   <div id="sheets" class="cards"></div>
 </div>
 
 <div id="v-parent" class="wrap" style="display:none">
-  <div id="pw" style="display:none;background:#FFF8E1;padding:12px;border-radius:10px;margin-bottom:14px">
-    <b>Please set your own password.</b>
-    <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
-  </div>
+
   <div class="row" style="margin-bottom:10px"><h2>Recent results</h2><span class="sp"></span>
     <button class="pri" onclick="openAnalytics()"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align:-2px"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Analytics</button></div>
   <div id="pres"></div>
@@ -257,20 +266,27 @@ function logout(){localStorage.removeItem("mini_token");localStorage.removeItem(
 // ── auth / dashboard / parent ──
 function setMode(m){mode=m;$("a-title").textContent=m==="login"?"Sign in":"Create teacher/admin account";
   $("a-btn").textContent=m==="login"?"Sign in":"Create account";
+  $("a-extra").style.display=m==="signup"?"block":"none";
   $("a-switch").textContent=m==="login"?"New teacher/admin? Create an account":"Already have an account? Sign in";}
 async function doAuth(){
-  const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",{username:$("a-user").value,password:$("a-pass").value});
+  const body={username:$("a-user").value,password:$("a-pass").value};
+  if(mode==="signup"){
+    if(body.password!==$("a-pass2").value)return toast("Passwords do not match");
+    if(!$("a-agree").checked)return toast("Please tick the box to accept the Privacy Policy and Terms");
+    body.confirm_password=$("a-pass2").value; body.agree_terms=true;
+  }
+  const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",body);
   if(!r.ok) return toast(r.error||"Failed"); setAuth(r); location.href="/mini";
 }
 async function loadDash(){
-  show("dash"); const r=await api("/sheets");
+  show("dash"); if(me.must_change)$("pw").style.display="block"; const r=await api("/sheets");
   $("sheets").innerHTML=r.ok&&r.sheets.length?r.sheets.map(s=>`<a class="card" href="/mini?s=${esc(s.key)}"><b>${esc(s.exam_name||"Untitled exam")}</b>
     <div class="muted">${esc(s.school_name||"No school name")}</div><div class="muted">${TYPES[s.sheet_type]} · ${s.students} students</div>
     ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
 }
 async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
 const HOME_MAX=6;                         // cards shown on the parent home page
-let CMAP={}, CID=0, resBack="parent";
+let CMAP={}, CID=0, resBack="parent"; 
 async function loadParent(pub){
   show("parent"); if(me.must_change)$("pw").style.display="block";
   renderParent(await api("/parent/results"+(pub?"?pub="+encodeURIComponent(pub):"")));
@@ -750,6 +766,22 @@ function renderAnalysis(){
     <table><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join("")}</tr>
     <tr>${keys.map(k=>`<td>${n[k]}</td>`).join("")}</tr></table>`;
 }
+
+// ── eye icon on every password field ──
+function addEyes(){
+  document.querySelectorAll("input[type=password]").forEach(i=>{
+    if(i.dataset.eye)return; i.dataset.eye=1;
+    const box=!!i.closest(".box");
+    const w=document.createElement("span");
+    w.style.cssText="position:relative;display:"+(box?"block":"inline-block");
+    i.parentNode.insertBefore(w,i); w.appendChild(i);
+    const b=document.createElement("button"); b.type="button"; b.textContent="👁"; b.title="Show / hide password";
+    b.style.cssText="position:absolute;right:4px;top:50%;transform:translateY(-50%);border:none;background:none;padding:2px 6px;font-size:1rem;cursor:pointer";
+    b.onclick=()=>{const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"🙈":"👁";};
+    w.appendChild(b); i.style.paddingRight="34px";
+  });
+}
+addEyes();
 
 // ── boot ──
 (async function(){

@@ -319,3 +319,42 @@ def api_sa_reset_password(sid):
         return jsonify({"ok": False, "error": "No admin or teacher with that username in this school"}), 404
     current_app.logger.warning("superadmin %s reset password for %s at school %s", sa, username, sid)
     return jsonify({"ok": True, "temp_password": temp})
+
+# ── DrDemic Mini: owner (teacher/admin) password reset ───────────
+@superadmin_bp.route("/api/superadmin/mini/owners", methods=["GET"])
+def api_sa_mini_owners():
+    sa, err = _require_superadmin()
+    if err: return err
+    q = (request.args.get("q") or "").strip().lower()[:60]
+    if len(q) < 2:
+        return jsonify({"ok": True, "owners": []})
+    q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    con = get_db(); cur = con.cursor()
+    cur.execute("""SELECT u.id, u.username, CAST(u.created_at AS TEXT),
+                          (SELECT COUNT(*) FROM mini_sheets s WHERE s.owner_id=u.id),
+                          (SELECT string_agg(DISTINCT NULLIF(s.school_name,''), ', ') FROM mini_sheets s WHERE s.owner_id=u.id)
+                   FROM mini_users u
+                   WHERE u.role='owner' AND LOWER(u.username) LIKE %s
+                   ORDER BY u.id DESC LIMIT 30""", (f"%{q}%",))
+    rows = [{"id": r[0], "username": r[1], "created_at": r[2], "sheets": r[3], "schools": r[4] or ""}
+            for r in cur.fetchall()]
+    cur.close(); con.close()
+    return jsonify({"ok": True, "owners": rows})
+
+
+@superadmin_bp.route("/api/superadmin/mini/owners/<int:uid>/reset_password", methods=["POST"])
+@rate_limit("superadmin_mini_reset_pw", max_attempts=10, window_minutes=60, by="ip")
+def api_sa_mini_reset_password(uid):
+    sa, err = _require_superadmin()
+    if err: return err
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    temp = "".join(secrets.choice(alphabet) for _ in range(10))
+    con = get_db(); cur = con.cursor()
+    cur.execute("""UPDATE mini_users SET password=%s, must_change_password=1, token_version=token_version+1
+                   WHERE id=%s AND role='owner' RETURNING username""", (hash_password(temp), uid))
+    row = cur.fetchone()
+    con.commit(); cur.close(); con.close()
+    if not row:
+        return jsonify({"ok": False, "error": "Mini admin not found"}), 404
+    current_app.logger.warning("superadmin %s reset Mini password for %s (id %s)", sa, row[0], uid)
+    return jsonify({"ok": True, "temp_password": temp, "username": row[0]})
