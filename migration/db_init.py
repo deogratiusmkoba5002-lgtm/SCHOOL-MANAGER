@@ -761,6 +761,9 @@ def init_db():
         posted_at TIMESTAMP DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_mini_ann_owner ON mini_announcements(owner_id, id DESC);
+    ALTER TABLE mini_sheets ADD COLUMN IF NOT EXISTS grandfathered INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS _mini_gf_migration (id INTEGER PRIMARY KEY, applied INTEGER DEFAULT 0);
+    INSERT INTO _mini_gf_migration(id,applied) VALUES(1,0) ON CONFLICT(id) DO NOTHING;
     CREATE TABLE IF NOT EXISTS mini_access (
         user_id    INTEGER PRIMARY KEY REFERENCES mini_users(id) ON DELETE CASCADE,
         plan       TEXT NOT NULL DEFAULT '',
@@ -785,6 +788,12 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_mini_payments_user ON mini_payments(user_id);
     """)
+    # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
+    cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")
+    if cur.fetchone()[0] == 0:
+        cur.execute("UPDATE mini_sheets SET grandfathered=1 WHERE published=1")
+        cur.execute("UPDATE _mini_gf_migration SET applied=1 WHERE id=1")
+        print("Mini migration: grandfathered already-published sheets.")
     con.commit(); cur.close(); con.close()
     print("DB ready (multi-tenant).")
 

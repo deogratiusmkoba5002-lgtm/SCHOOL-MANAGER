@@ -356,22 +356,32 @@ def mini_import(key):
 
 
 # ── parents ─────────────────────────────────────────────────
+def _covered(at, periods):
+    """Was the parent subscribed at time `at`? Each completed payment covers [paid_at, expires_at]."""
+    return any(p and e and p <= at <= e for p, e in periods)
+
+
 @mini_bp.route("/api/mini/parent/results", methods=["GET"])
 @need_user("parent")
 def mini_parent_results():
     pub = (request.args.get("pub") or "").strip()
+    uid = g.mini_user["id"]
+    active = MA.get_access(uid)["active"]
     con = get_db(); cur = con.cursor()
-    cur.execute("SELECT owner_id,name_norm FROM mini_students WHERE parent_user_id=%s", (g.mini_user["id"],))
+    cur.execute("SELECT owner_id,name_norm FROM mini_students WHERE parent_user_id=%s", (uid,))
     mine = set(cur.fetchall())
     owners = sorted({o for o, _ in mine})
-    sheets, restr, anns = [], {}, []
+    sheets, restr, anns, periods = [], {}, [], []
     if owners:
-        q = ("SELECT id,owner_id,school_name,exam_name,sheet_type,grade_rules,data,CAST(published_at AS TEXT) "
-             "FROM mini_sheets WHERE owner_id=ANY(%s) AND published=1")
+        cur.execute("SELECT paid_at,expires_at FROM mini_payments WHERE user_id=%s "
+                    "AND status='completed' AND applied=1", (uid,))
+        periods = cur.fetchall()
+        q = ("SELECT id,owner_id,school_name,exam_name,class_name,sheet_type,grade_rules,data,published_at,"
+             "grandfathered,pub_token FROM mini_sheets WHERE owner_id=ANY(%s) AND published=1")
         args = [owners]
         if pub:
             q += " AND pub_token=%s"; args.append(pub)
-        cur.execute(q + " ORDER BY published_at DESC LIMIT 50", args)
+        cur.execute(q + " ORDER BY published_at DESC LIMIT 200", args)
         sheets = cur.fetchall()
         ids = [x[0] for x in sheets]
         if ids:
@@ -383,7 +393,8 @@ def mini_parent_results():
         anns = cur.fetchall()
     cur.close(); con.close()
     out = []
-    for sid, owner, school, exam, stype, rules, data, pubat in sheets:
+    for sid, owner, school, exam, cls, stype, rules, data, pubat, gf, ptoken in sheets:
+        locked = not (active or gf or not pubat or _covered(pubat, periods))
         ranked = M.compute(data, stype, rules)
         of = sum(1 for r in ranked if r["average"] is not None)
         subs = [x for x in data["subjects"] if x["name"]]
@@ -392,6 +403,9 @@ def mini_parent_results():
             nn = M.norm(r["name"])
             if (owner, nn) not in mine:
                 continue
+            if locked:                                           # no scores leave the server
+                kids.append({"student": r["name"], "locked": True})
+                continue
             if (sid, nn) in restr:
                 kids.append({"student": r["name"], "restricted": True, "reason": restr[(sid, nn)]})
                 continue
@@ -399,15 +413,16 @@ def mini_parent_results():
                          "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
                          "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"])} for x in subs]})
         if kids:
-            out.append({"school_name": school, "exam_name": exam, "sheet_type": stype,
-                        "published_at": pubat, "children": kids})
+            out.append({"token": ptoken, "school_name": school, "exam_name": exam, "class_name": cls,
+                        "sheet_type": stype, "published_at": str(pubat) if pubat else None,
+                        "locked": locked, "children": kids})
     ann_out = []
     for owner, title, body, at, exam, data in anns:
         if any((owner, M.norm(r["name"])) in mine for r in data["rows"]):
             ann_out.append({"title": title, "body": body, "posted_at": at, "exam_name": exam})
             if len(ann_out) >= 30:
                 break
-    return jsonify({"ok": True, "results": out, "announcements": ann_out})
+    return jsonify({"ok": True, "results": out, "announcements": ann_out, "subscribed": active})
 
 # ── parent link (shared on WhatsApp) ────────────────────────
 @mini_bp.route("/api/mini/link/<token>", methods=["GET"])

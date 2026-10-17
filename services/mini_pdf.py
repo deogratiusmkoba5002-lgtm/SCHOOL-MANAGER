@@ -65,6 +65,28 @@ def build_pdf(meta, ranked, logo_b64=None):
         story.append(Paragraph(_esc(meta["class_name"]), s_s))
     story.append(Spacer(1, 0.3 * cm))
 
+    if stype != "marks":                                        # results analysis table (grade sheets)
+        prim = stype == "primary"
+        keys = [g["grade"] for g in rules] if prim else ["I", "II", "III", "IV", "0"]
+        cnt, inc = {k: 0 for k in keys}, 0
+        for r in rows:
+            if prim:
+                if r["average"] is not None and r["grade"] in cnt:
+                    cnt[r["grade"]] += 1
+            elif r["division"] == "INC":
+                inc += 1
+            elif r["division"] in cnt:
+                cnt[r["division"]] += 1
+        if inc:
+            keys.append("INC"); cnt["INC"] = inc
+        story.append(Paragraph(f"<b>Results analysis ({'by average grade' if prim else 'by division'})</b>", s_s))
+        at = Table([keys, [str(cnt[k]) for k in keys]], colWidths=[1.6 * cm] * len(keys), hAlign="CENTER")
+        at.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), H_BG), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#A0C4E0")),
+                                ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        story += [at, Spacer(1, 0.3 * cm)]
     if stype == "marks":
         tail_h, tail_w = ["Total", "Avg", "Pos", "Grd"], [1.5 * cm, 1.3 * cm, 0.9 * cm, 1.0 * cm]
     elif stype == "primary":

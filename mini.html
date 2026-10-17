@@ -67,8 +67,21 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   #grid td:nth-child(2) input{min-width:120px}
   #grid th:nth-child(2),#grid td:nth-child(2){min-width:120px}
 }
+#analysis{padding:10px 16px 0;display:none}
+#analysis b.t{display:block;margin-bottom:6px;color:#00574B}
+#analysis table{border-collapse:collapse;background:#fff}
+#analysis th{position:static;background:#00897B;color:#fff;padding:6px 18px;text-align:center}
+#analysis td{padding:7px 18px;text-align:center;font-weight:700;border:1px solid #CFD8DC}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}
+.rc{background:#fff;border-radius:16px;padding:22px;cursor:pointer;box-shadow:0 4px 18px rgba(0,137,123,.16);border-top:5px solid #00897B;transition:transform .15s,box-shadow .15s}
+.rc:hover{transform:translateY(-3px);box-shadow:0 8px 26px rgba(0,137,123,.24)}
+.rc.lk2{border-top-color:#B0BEC5;background:#F4F7F7}
+.rc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.rc-exam{font-size:1.2rem;font-weight:800;color:#00574B;line-height:1.25}
+.rc-stu{font-size:1rem;font-weight:600;margin:6px 0 2px}
 </style></head><body>
-<div class="top"><a href="/">Home</a><a href="/mini" id="back">My sheets</a>
+<div class="top"><a href="/" id="home">Home</a><a href="/mini" id="back">My sheets</a>
+<a href="#" id="myres" style="display:none" onclick="showAll();return false">My results</a>
 <a href="#" id="subbtn" style="display:none" onclick="showSub();return false">Subscribe</a><span class="sp"></span>
 <button id="logout" onclick="logout()" style="display:none">Sign out</button></div>
 <div id="toast"></div>
@@ -103,10 +116,10 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <b>Please set your own password.</b>
     <div class="row" style="margin-top:8px"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (6+)"><button class="pri" onclick="changePw()">Save</button></div>
   </div>
-  <div class="row" style="margin-bottom:10px"><h2>My children's results</h2><span class="sp"></span>
+  <div class="row" style="margin-bottom:10px"><h2>Recent results</h2><span class="sp"></span>
     <button class="pri" onclick="openAnalytics()"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align:-2px"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Analytics</button></div>
   <div id="pres"></div>
-  <p id="pall" style="display:none;margin:6px 0 14px"><a href="/mini">View all my results</a></p>
+  <p id="pall" style="display:none;margin:10px 0 14px"><a href="#" onclick="showAll();return false"><b>View all my results →</b></a></p>
   <h2 style="margin:18px 0 10px">Announcements</h2><div id="pann"></div>
 </div>
 
@@ -134,6 +147,15 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 </div>
 <datalist id="subj-list"></datalist>
 
+<div id="v-all" class="wrap" style="display:none">
+  <div class="row"><h2>My results</h2></div>
+  <div id="allcards"></div>
+</div>
+<div id="v-res" class="wrap" style="display:none">
+  <div class="row"><button onclick="show(resBack)">← Back</button></div>
+  <div id="res-body"></div>
+</div>
+
 <div id="v-sheet" style="display:none">
   <div class="head">
     <label class="logo" onclick="$('logo-in').click()"><img id="logo-img" style="display:none" alt=""><span id="logo-plus">+</span></label>
@@ -158,6 +180,7 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <button onclick="showHistory()">History</button>
     <button onclick="openAnn()">Send Announcements</button>
   </div>
+  <div id="analysis"></div>
   <div class="grid-wrap"><table id="grid"></table></div>
   <div id="hbar"><div style="flex:1"><b id="hbar-t"></b><div id="hbar-x"></div></div><button onclick="exitChanges()">Exit history view</button></div>
 </div>
@@ -212,10 +235,13 @@ let S=null, dirty=false, mode="login", gtmp=[];
 window.onbeforeunload=e=>dirty?(e.preventDefault(),""):undefined;
 
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
-function show(v){["auth","dash","parent","sheet","link","an","sub"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+function show(v){["auth","dash","parent","sheet","link","an","sub","all","res"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+  const par=me&&me.role==="parent";
   $("logout").style.display=me?"inline-block":"none";
   $("back").style.display=me&&me.role==="owner"?"inline":"none";
-  $("subbtn").style.display=me&&me.role==="parent"?"inline":"none";}
+  $("subbtn").style.display=par?"inline":"none";
+  $("myres").style.display=par?"inline":"none";
+  $("home").href=par?"/mini":"/";}
 async function api(path,method="GET",body){
   const h={"Content-Type":"application/json"}; if(token)h.Authorization="Bearer "+token;
   let j; try{const r=await fetch("/api/mini"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
@@ -243,26 +269,65 @@ async function loadDash(){
     ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
 }
 async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
+const HOME_MAX=6;                         // cards shown on the parent home page
+let CMAP={}, CID=0, resBack="parent";
 async function loadParent(pub){
   show("parent"); if(me.must_change)$("pw").style.display="block";
   renderParent(await api("/parent/results"+(pub?"?pub="+encodeURIComponent(pub):"")));
 }
-function renderParent(r){
+function buildCards(r){
+  const out=[];
+  if(!r.ok)return out;
+  r.results.forEach(s=>s.children.forEach(k=>{
+    const c={...k,exam:s.exam_name,school:s.school_name,cls:s.class_name,type:s.sheet_type,at:s.published_at,locked:!!s.locked,cid:++CID};
+    CMAP[c.cid]=c;out.push(c);}));
+  return out;
+}
+function cardHTML(c,from){
+  const d=c.at?new Date(c.at.replace(" ","T")+"Z").toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}):"";
+  const kind={marks:"Marks",primary:"Primary",secondary:"Secondary",advanced:"Advanced"}[c.type]||"";
+  return `<div class="rc${c.locked?" lk2":""}" onclick="openCard(${c.cid},'${from}')">
+    <div class="rc-top"><span class="badge">${kind}</span>${c.locked?"<span>🔒</span>":c.restricted?"<span>🚫</span>":""}</div>
+    <div class="rc-exam">${esc(c.exam||"Exam results")}</div>
+    <div class="rc-stu">${esc(c.student)}</div>
+    <div class="muted">${esc(c.school)}${c.cls?" · "+esc(c.cls):""}</div>
+    <div class="muted" style="margin-top:8px">${d}</div></div>`;
+}
+function detailHTML(k){
   const v=x=>x==null?"-":x;
-  $("pres").innerHTML=r.ok&&r.results.length?r.results.map(s=>s.children.map(k=>k.restricted?`<div class="card" style="margin-bottom:14px;border-left:4px solid #C62828">
-    <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
+  const head=`<b>${esc(k.student)}</b> <span class="muted">· ${esc(k.exam||"Exam")} · ${esc(k.school)}</span>`;
+  if(k.restricted)return `<div class="card" style="border-left:4px solid #C62828">${head}
     <p style="margin-top:8px;color:#B71C1C"><b>🚫 These results are withheld by the school.</b>${k.reason?" Reason: "+esc(k.reason):""}</p>
-    <p class="muted">Please contact the school office.</p></div>`:`<div class="card" style="margin-bottom:14px">
-    <b>${esc(k.student)}</b> <span class="muted">· ${esc(s.exam_name||"Exam")} · ${esc(s.school_name)}</span>
+    <p class="muted">Please contact the school office.</p></div>`;
+  return `<div class="card">${head}
     <table class="res"><tr><th>Subject</th><th>Score</th></tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td></tr>`).join("")}</table>
-    <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; ${k.position!=null?`<b>Position:</b> ${k.position} / ${k.out_of} &nbsp;`:""} <b>Grade:</b> ${k.grade}
-    ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`).join("")).join(""):"<p class='muted'>No published results yet.</p>";
+    <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; ${k.position!=null?`<b>Position:</b> ${k.position} / ${k.out_of} &nbsp; `:""}<b>Grade:</b> ${k.grade}
+    ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`;
+}
+function openCard(cid,from){
+  const c=CMAP[cid];if(!c)return;
+  if(c.locked){
+    if(confirm("These results were published while you had no active subscription.\n\nSubscribe to view them?"))showSub();
+    return;
+  }
+  resBack=from||"parent";$("res-body").innerHTML=detailHTML(c);show("res");
+}
+async function showAll(){
+  show("all");$("allcards").innerHTML="<p class='muted'>Loading…</p>";
+  const cards=buildCards(await api("/parent/results"));
+  $("allcards").innerHTML=cards.length?`<div class="rgrid">${cards.map(c=>cardHTML(c,"all")).join("")}</div>`:"<p class='muted'>No published results yet.</p>";
+}
+function renderParent(r,auto){
+  const cards=buildCards(r);
+  $("pres").innerHTML=cards.length?`<div class="rgrid">${cards.slice(0,HOME_MAX).map(c=>cardHTML(c,"parent")).join("")}</div>`:"<p class='muted'>No published results yet.</p>";
+  $("pall").style.display=(cards.length>HOME_MAX||PUB)?"block":"none";
   const an=r.announcements||[];
   $("pann").innerHTML=an.length?an.map(a=>`<div class="card" style="margin-bottom:10px"><b>${esc(a.title)}</b>
     <div class="muted">${esc(a.exam_name||"")} · ${new Date(a.posted_at.replace(" ","T")+"Z").toLocaleString()}</div>
     <p style="margin-top:6px;white-space:pre-wrap">${esc(a.body)}</p></div>`).join(""):"<p class='muted'>No announcements.</p>";
-  $("pall").style.display=PUB?"block":"none";
+  if(auto&&cards.length===1&&!cards[0].locked)openCard(cards[0].cid,"parent");   // WhatsApp link: go straight in
 }
+
 async function bootLink(tok){
   PUB=tok;
   const info=await api("/link/"+encodeURIComponent(tok));
@@ -271,7 +336,7 @@ async function bootLink(tok){
   $("l-sub").textContent=[info.exam_name,info.class_name].filter(Boolean).join(" · ");
   if(token&&me&&me.role==="parent"){                       // already signed in? go straight to the results
     const r=await api("/parent/results?pub="+encodeURIComponent(tok));
-    if(r.ok&&r.results.length){show("parent");return renderParent(r);}
+    if(r.ok&&r.results.length){show("parent");return renderParent(r,true);}
   }
   show("link");
 }
@@ -323,7 +388,7 @@ function tailCells(i,r,c){const t=S.sheet_type;
   if(t==="primary")return `<td id="a${i}">${c.avg??""}</td><td id="g${i}">${c.avg==null?"":gradeFor(c.avg)}</td>`;
   return `<td id="q${i}">${c.points??""}</td><td id="d${i}">${c.division??""}</td>`;}
 function updTail(i){const c=calc(S.rows[i]),set=(p,v)=>{const e=$(p+i);if(e)e.textContent=v??""};
-  set("t",c.total);set("a",c.avg);set("g",c.avg==null?"":gradeFor(c.avg));set("q",c.points);set("d",c.division);}
+  set("t",c.total);set("a",c.avg);set("g",c.avg==null?"":gradeFor(c.avg));set("q",c.points);set("d",c.division);renderAnalysis();}
 function rowHTML(i){const r=S.rows[i],c=calc(r);
   return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
   +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${esc(cellVal(r,s))}"></td>`).join("")
@@ -332,8 +397,8 @@ function renderGrid(){
   $("grid").innerHTML=`<thead><tr><th>S/N</th><th>Student Name</th><th>Account/Phone Number</th>`
    +S.subjects.map((s,i)=>`<th><input class="h" list="subj-list" data-sub="${i}" value="${esc(s.name)}" placeholder="Subject"><button class="x" onclick="delSub(${i})" title="Remove subject">×</button></th>`).join("")
    +`<th><button onclick="addSub()">+ Add Subject</button></th>`+tailHead()+`</tr></thead><tbody></tbody>`;
-  ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL();
-}
+  ensureBlank(); S.rows.forEach((_,i)=>addRowEl(i)); applyHL(); renderAnalysis();
+  }
 function blank(){return{id:"r"+rid(),name:"",phone:"",marks:{}};}
 function ensureBlank(){const l=S.rows[S.rows.length-1];if(!l||l.name||l.phone||Object.keys(l.marks).length)S.rows.push(blank());}
 function isLinked(r){const n=norm(r.name);return !!n&&LK.has(n);}
@@ -664,6 +729,27 @@ $("grid").addEventListener("focusout",e=>{const t=e.target;
   if(!isGrade()||!t.classList||!t.classList.contains("num"))return;
   const r=S.rows[+t.dataset.r],s=S.subjects[+t.dataset.c-2];if(!r||!s)return;
   t.value=cellVal(r,s);});
+
+// ── results analysis (grade sheets only) ──
+function renderAnalysis(){
+  const el=$("analysis");
+  if(!S||!isGrade()){el.style.display="none";return;}
+  const prim=S.sheet_type==="primary";
+  const keys=prim?S.grade_rules.map(g=>g.grade):["I","II","III","IV","0"];
+  const n={};keys.forEach(k=>n[k]=0);let inc=0;
+  S.rows.forEach(r=>{
+    if(!r.name&&!Object.keys(r.marks).length)return;
+    const c=calc(r);
+    if(prim){if(c.avg==null)return;const g=gradeFor(c.avg);if(g in n)n[g]++;}
+    else if(c.division==="INC")inc++;
+    else if(c.division in n)n[c.division]++;
+  });
+  if(inc)keys.push("INC"),n.INC=inc;
+  el.style.display="block";
+  el.innerHTML=`<b class="t">Results analysis (${prim?"by average grade":"by division"})</b>
+    <table><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join("")}</tr>
+    <tr>${keys.map(k=>`<td>${n[k]}</td>`).join("")}</tr></table>`;
+}
 
 // ── boot ──
 (async function(){

@@ -33,6 +33,11 @@ def test_mini_end_to_end(client):
     done = client.post(link, json={"name": "High", "password": "0711000002",
                                    "new_password": "newpass1", "confirm_password": "newpass1"}).get_json()
     assert done["ok"] and done["token"]
+    from tests.factories import run
+    locked = client.get(f"/api/mini/parent/results?pub={token}", headers=_h(done["token"])).get_json()["results"]
+    assert locked[0]["locked"] is True and "subjects" not in locked[0]["children"][0]   # no scores leak
+    run("INSERT INTO mini_access(user_id,plan,expires_at) SELECT id,'6m',NOW()+INTERVAL '30 days' "
+        "FROM mini_users WHERE role='parent'")
     res = client.get(f"/api/mini/parent/results?pub={token}", headers=_h(done["token"])).get_json()["results"]
     assert len(res[0]["children"]) == 1 and res[0]["children"][0]["student"] == "High"
     assert client.post("/api/mini/sheets", headers=_h(done["token"])).status_code == 403
