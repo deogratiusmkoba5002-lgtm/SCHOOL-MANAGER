@@ -619,8 +619,10 @@ def mini_parent_analytics():
     owners = sorted({m[0] for m in mine})
     sheets, restr = [], set()
     if owners:
-        cur.execute("SELECT id,owner_id,exam_name,sheet_type,grade_rules,data FROM mini_sheets "
-                    "WHERE owner_id=ANY(%s) AND published=1 ORDER BY published_at DESC LIMIT 60", (owners,))
+        # stable order: published_at, then id as tie-breaker
+        cur.execute("SELECT id,owner_id,exam_name,sheet_type,grade_rules,data,published_at FROM mini_sheets "
+                    "WHERE owner_id=ANY(%s) AND published=1 "
+                    "ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 60", (owners,))
         sheets = cur.fetchall()
         ids = [x[0] for x in sheets]
         if ids:
@@ -628,8 +630,25 @@ def mini_parent_analytics():
             restr = set(cur.fetchall())
     cur.close(); con.close()
     sheets.reverse()                                            # oldest -> newest
+
+    # label every point uniquely so two exams never look like one
+    name_count = {}
+    for s in sheets:
+        n = (s[2] or "").strip() or "Exam"
+        name_count[n] = name_count.get(n, 0) + 1
+    seen = {}
+
+    def make_label(exam, pubat):
+        base = (exam or "").strip() or "Exam"
+        if name_count.get(base, 0) > 1:
+            seen[base] = seen.get(base, 0) + 1
+            d = pubat.strftime("%d %b") if pubat else ""
+            return f"{base} #{seen[base]}" + (f" ({d})" if d else "")
+        return base
+
     kids = {(o, nn): {"student": name, "points": []} for o, nn, name in mine}
-    for sid, owner, exam, stype, rules, data in sheets:
+    for sid, owner, exam, stype, rules, data, pubat in sheets:
+        label = make_label(exam, pubat)
         ranked = M.compute(data, stype, rules)
         of = sum(1 for r in ranked if r["average"] is not None)
         subs = {x["id"]: x["name"] for x in data["subjects"] if x["name"]}
@@ -638,11 +657,11 @@ def mini_parent_analytics():
             if key not in kids or (sid, key[1]) in restr or r["average"] is None:
                 continue
             scores = {}
-            for i, n in subs.items():                           # normalised: "English" == "english"
+            for i, n in subs.items():
                 v = r["marks"].get(i)
                 if v is not None:
                     scores[M.norm(n)] = v
-            kids[key]["points"].append({"label": exam or "Exam", "avg": r["average"],
+            kids[key]["points"].append({"sheet_id": sid, "label": label, "avg": r["average"],
                                         "position": r["position"], "out_of": of, "subjects": scores})
     out = []
     for c in kids.values():
