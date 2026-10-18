@@ -788,6 +788,12 @@ def init_db():
         expires_at      TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_mini_payments_user ON mini_payments(user_id);
+    CREATE TABLE IF NOT EXISTS mini_sheet_access (
+        user_id  INTEGER NOT NULL REFERENCES mini_users(id) ON DELETE CASCADE,
+        sheet_id INTEGER NOT NULL REFERENCES mini_sheets(id) ON DELETE CASCADE,
+        added_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(user_id, sheet_id)
+    );
     """)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
     cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")

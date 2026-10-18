@@ -28,10 +28,11 @@ def test_mini_end_to_end(client):
     token = pub["link"].rsplit("/", 1)[1]
     link = f"/api/mini/link/{token}/login"
 
-    assert client.post(link, json={"name": "High", "password": "0000"}).status_code == 401
-    assert client.post(link, json={"name": "high", "password": "0711000002"}).get_json()["need_password"] is True
-    done = client.post(link, json={"name": "High", "password": "0711000002",
-                                   "new_password": "newpass1", "confirm_password": "newpass1"}).get_json()
+    act = {"mode": "activate", "new_password": "newpass1", "confirm_password": "newpass1"}
+    assert client.post(link, json={**act, "name": "High", "phone": "0700000000"}).get_json()["code"] == "phone_mismatch"
+    assert client.post(link, json={**act, "name": "Nobody", "phone": "0711000002"}).get_json()["code"] == "no_such_child"
+    done = client.post(link, json={**act, "name": "high", "phone": "0711000002"}).get_json()
+    assert client.post(link, json={**act, "name": "High", "phone": "0711000002"}).status_code == 409
     assert done["ok"] and done["token"]
     from tests.factories import run
     locked = client.get(f"/api/mini/parent/results?pub={token}", headers=_h(done["token"])).get_json()["results"]
@@ -41,7 +42,7 @@ def test_mini_end_to_end(client):
     res = client.get(f"/api/mini/parent/results?pub={token}", headers=_h(done["token"])).get_json()["results"]
     assert len(res[0]["children"]) == 1 and res[0]["children"][0]["student"] == "High"
     assert client.post("/api/mini/sheets", headers=_h(done["token"])).status_code == 403
-    assert client.post(link, json={"name": "High", "password": "newpass1"}).get_json()["ok"]
+    assert client.post(link, json={"mode": "signin", "name": "High", "password": "newpass1"}).get_json()["ok"]
     assert "high" in client.get(url).get_json()["linked"]
 
     ann = client.post(url + "/announce", json={"title": "Meeting", "body": "Friday"}, headers=owner).get_json()

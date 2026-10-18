@@ -80,7 +80,7 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 .rc-exam{font-size:1.2rem;font-weight:800;color:#00574B;line-height:1.25}
 .rc-stu{font-size:1rem;font-weight:600;margin:6px 0 2px}
 </style></head><body>
-<div class="top"><a href="/" id="home">Home</a><a href="/mini" id="back">My sheets</a>
+<div class="top"><a href="/" id="home">Home</a><a href="/mini?all=1" id="back">My sheets</a>
 <a href="#" id="myres" style="display:none" onclick="showAll();return false">My results</a>
 <a href="#" id="subbtn" style="display:none" onclick="showSub();return false">Subscribe</a><span class="sp"></span>
 <button id="logout" onclick="logout()" style="display:none">Sign out</button></div>
@@ -88,30 +88,32 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 
 <div id="v-auth" class="box">
   <h2 id="a-title">Sign in</h2>
-  <p class="muted">Parents: open the link your teacher shared, or sign in with your child's full name.</p>
+  <p class="muted" id="a-hint">Parents: sign in with your child's full name, or open the link your teacher shared to activate your account.</p>
   <input id="a-user" placeholder="Username (parents: child's full name)">
-<div id="a-extra" style="display:none">
-  <input id="a-phone" type="tel" placeholder="Your phone number (for password recovery)">
-  <input id="a-pass2" type="password" placeholder="Repeat password" onkeydown="if(event.key==='Enter')doAuth()">
-  <label style="display:flex;gap:8px;align-items:flex-start;font-size:.8rem;margin:8px 0;line-height:1.4;cursor:pointer">
-    <input type="checkbox" id="a-agree" style="width:auto;margin:3px 0 0">
-    <span>I have read and agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms &amp; Conditions</a>, including that DrDemic Mini keeps its sheets safe only through the sheet link I share.</span>
-  </label>
-</div>
+  <input id="a-pass" type="password" placeholder="Password" onkeydown="if(mode==='login'&&event.key==='Enter')doAuth()">
+  <div id="a-extra" style="display:none">
+    <input id="a-pass2" type="password" placeholder="Repeat password">
+    <input id="a-phone" type="tel" placeholder="Your phone number (for password recovery)" onkeydown="if(event.key==='Enter')doAuth()">
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:.8rem;margin:8px 0;line-height:1.4;cursor:pointer">
+      <input type="checkbox" id="a-agree" style="width:auto;margin:3px 0 0">
+      <span>I have read and agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms &amp; Conditions</a>, including that DrDemic Mini keeps its sheets safe only through the sheet link I share.</span>
+    </label>
+  </div>
   <button class="pri" id="a-btn" onclick="doAuth()" style="width:100%;margin-top:6px">Sign in</button>
-  <p class="muted" style="margin-top:12px"><a href="#" id="a-switch" onclick="setMode(mode==='login'?'signup':'login');return false">New teacher/admin? Create an account</a></p>
+  <p class="muted" style="margin-top:12px"><a href="#" id="a-switch" onclick="setMode(mode==='login'?'signup':'login');return false">Teacher/admin without an account? Create one</a></p>
 </div>
 
 <div id="v-link" class="box">
   <h2 id="l-title">Results</h2><p class="muted" id="l-sub" style="margin-bottom:8px"></p>
-  <p class="muted">Sign in with your child's full name. First time? Your password is the phone number the school has for you, and you will then create your own password.</p>
-  <input id="l-name" placeholder="Child's full name">
-  <input id="l-pass" type="password" placeholder="Password (phone number the first time)" onkeydown="if(event.key==='Enter')linkLogin()">
-  <div id="l-new-box" style="display:none">
-    <input id="l-new" type="password" placeholder="Create a new password (6+ characters)">
-    <input id="l-new2" type="password" placeholder="Confirm new password" onkeydown="if(event.key==='Enter')linkLogin()">
+  <div class="tabs2">
+    <button class="tb on" id="lt-activate" onclick="setLinkMode('activate')">First time? Activate</button>
+    <button class="tb" id="lt-signin" onclick="setLinkMode('signin')">I have an account</button>
   </div>
-  <button class="pri" id="l-btn" onclick="linkLogin()" style="width:100%;margin-top:6px">Continue</button>
+  <input id="l-name" placeholder="Child's full name">
+  <input id="l-phone" type="tel" placeholder="Phone number the school has for you">
+  <input id="l-pass" type="password" placeholder="Create a password (6+ characters)" onkeydown="if(LMODE==='signin'&&event.key==='Enter')linkLogin()">
+  <input id="l-pass2" type="password" placeholder="Repeat password" onkeydown="if(event.key==='Enter')linkLogin()">
+  <button class="pri" id="l-btn" onclick="linkLogin()" style="width:100%;margin-top:6px">Activate &amp; view results</button>
 </div>
 
 <div id="pw" class="wrap" style="display:none;background:#FFF8E1;padding:12px;border-radius:10px;margin-bottom:14px">
@@ -124,8 +126,9 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <b>Add your phone number.</b> <span class="muted">It is how we verify you if you ever lose your password.</span>
     <div class="row" style="margin-top:8px"><input id="ph-in" type="tel" placeholder="e.g. 0712345678" style="padding:8px;border:1.5px solid #B0BEC5;border-radius:8px"><button class="pri" onclick="savePhone()">Save</button></div>
   </div>
-  <div class="row"><h2>My DrDemic Sheets</h2><span class="sp"></span><button onclick="openParents()">My parents</button><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
+  <div class="row"><h2 id="dash-title">My DrDemic Sheets</h2><span class="sp"></span><button onclick="openParents()">My parents</button><button class="pri" onclick="newSheet()">+ New DrDemic Sheet</button></div>
   <div id="sheets" class="cards"></div>
+  <p id="sheets-more" style="display:none;margin-top:14px"><a href="/mini?all=1"><b>View all my sheets →</b></a></p>
 </div>
 
 <div id="v-parent" class="wrap" style="display:none">
@@ -192,7 +195,7 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
     <button onclick="copyLink()">Copy Link</button>
     <span class="sp"></span>
     <button onclick="showHistory()">History</button>
-    <button onclick="openAnn()">Send Announcements</button>
+<button id="b-ann" onclick="openAnn()">Send Announcements</button>
   </div>
   <div id="analysis"></div>
   <div class="grid-wrap"><table id="grid"></table></div>
@@ -263,7 +266,7 @@ function show(v){["auth","dash","parent","sheet","link","an","sub","all","res"].
   $("back").style.display=me&&me.role==="owner"?"inline":"none";
   $("subbtn").style.display=par?"inline":"none";
   $("myres").style.display=par?"inline":"none";
-  $("home").href=par?"/mini":"/";}
+  $("home").href=me?"/mini":"/";}
 async function api(path,method="GET",body){
   const h={"Content-Type":"application/json"}; if(token)h.Authorization="Bearer "+token;
   let j; try{const r=await fetch("/api/mini"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
@@ -277,10 +280,14 @@ function setAuth(r){token=r.token;me={username:r.username,role:r.role,must_chang
 function logout(){localStorage.removeItem("mini_token");localStorage.removeItem("mini_me");dirty=false;location.href="/mini";}
 
 // ── auth / dashboard / parent ──
-function setMode(m){mode=m;$("a-title").textContent=m==="login"?"Sign in":"Create account";
+function setMode(m){mode=m;
+  $("a-title").textContent=m==="login"?"Sign in":"Create teacher/admin account";
   $("a-btn").textContent=m==="login"?"Sign in":"Create account";
   $("a-extra").style.display=m==="signup"?"block":"none";
-  $("a-switch").textContent=m==="login"?"New here? Create an account":"Already have an account? Sign in";}
+  $("a-hint").style.display=m==="login"?"block":"none";
+  $("a-user").placeholder=m==="login"?"Username (parents: child's full name)":"Choose a username";
+  $("a-pass").placeholder=m==="login"?"Password":"Create password";
+  $("a-switch").textContent=m==="login"?"Teacher/admin without an account? Create one":"Already have an account? Sign in";}
 async function doAuth(){
   const body={username:$("a-user").value,password:$("a-pass").value};
   if(mode==="signup"){
@@ -292,13 +299,16 @@ async function doAuth(){
   const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",body);
   if(!r.ok) return toast(r.error||"Failed"); setAuth(r); location.href="/mini";
 }
-async function loadDash(){
+async function loadDash(all){
   show("dash"); if(me.must_change)$("pw").style.display="block";
   const r=await api("/sheets");
   $("phone-banner").style.display=r.ok&&!r.has_phone?"block":"none";
-  $("sheets").innerHTML=r.ok&&r.sheets.length?r.sheets.map(s=>`<a class="card" href="/mini?s=${esc(s.key)}"><b>${esc(s.exam_name||"Untitled exam")}</b>
+  const list=r.ok?r.sheets:[], shown=all?list:list.slice(0,6);
+  $("dash-title").textContent=all?"All my sheets":"My DrDemic Sheets";
+  $("sheets-more").style.display=!all&&list.length>6?"block":"none";
+  $("sheets").innerHTML=shown.length?shown.map(s=>`<a class="card" href="/mini?s=${esc(s.key)}"><b>${esc(s.exam_name||"Untitled exam")}</b>
     <div class="muted">${esc(s.school_name||"No school name")}</div><div class="muted">${TYPES[s.sheet_type]} · ${s.students} students</div>
-    ${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
+    ${s.shared?'<span class="badge" style="background:#FFF3E0;color:#E65100">Shared with you</span> ':""}${s.published?'<span class="badge">Published</span>':""}</a>`).join(""):"<p class='muted'>No sheets yet. Create your first one.</p>";
 }
 async function savePhone(){
   const r=await api("/auth/phone","POST",{phone:$("ph-in").value});
@@ -322,9 +332,9 @@ async function resetParent(id){
 async function newSheet(){const r=await api("/sheets","POST");if(r.ok)location.href="/mini?s="+r.key;else toast(r.error);}
 const HOME_MAX=6;                         // cards shown on the parent home page
 let CMAP={}, CID=0, resBack="parent"; 
-async function loadParent(pub){
+async function loadParent(pub,auto){
   show("parent"); if(me.must_change)$("pw").style.display="block";
-  renderParent(await api("/parent/results"+(pub?"?pub="+encodeURIComponent(pub):"")));
+  renderParent(await api("/parent/results"+(pub?"?pub="+encodeURIComponent(pub):"")),auto);
 }
 function buildCards(r){
   const out=[];
@@ -351,7 +361,7 @@ function detailHTML(k){
     <p style="margin-top:8px;color:#B71C1C"><b>🚫 These results are withheld by the school.</b>${k.reason?" Reason: "+esc(k.reason):""}</p>
     <p class="muted">Please contact the school office.</p></div>`;
   return `<div class="card">${head}
-    <table class="res"><tr><th>Subject</th><th>Score</th></tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td></tr>`).join("")}</table>
+    <table class="res"><tr><th>Subject</th><th>Score</th>${k.type==="marks"?"<th>Position</th>":""}</tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td>${k.type==="marks"?`<td>${v(x.position)}</td>`:""}</tr>`).join("")}</table>
     <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; ${k.position!=null?`<b>Position:</b> ${k.position} / ${k.out_of} &nbsp; `:""}<b>Grade:</b> ${k.grade}
     ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`;
 }
@@ -389,22 +399,39 @@ async function bootLink(tok){
     const r=await api("/parent/results?pub="+encodeURIComponent(tok));
     if(r.ok&&r.results.length){show("parent");return renderParent(r,true);}
   }
-  show("link");
+  show("link"); setLinkMode("activate");
+}
+let LMODE="activate";
+function setLinkMode(m){
+  LMODE=m;
+  $("lt-activate").classList.toggle("on",m==="activate");
+  $("lt-signin").classList.toggle("on",m==="signin");
+  const vis=(id,on)=>{const e=$(id);(e.parentElement.tagName==="SPAN"?e.parentElement:e).style.display=on?"block":"none";};
+  vis("l-phone",m==="activate"); vis("l-pass2",m==="activate");
+  $("l-pass").placeholder=m==="activate"?"Create a password (6+ characters)":"Your password";
+  $("l-btn").textContent=m==="activate"?"Activate & view results":"Sign in";
 }
 async function linkLogin(){
-  const body={name:$("l-name").value,password:$("l-pass").value};
-  if(LSTEP===2){
-    body.new_password=$("l-new").value;body.confirm_password=$("l-new2").value;
-    if(body.new_password.length<6)return toast("Password must be at least 6 characters");
-    if(body.new_password!==body.confirm_password)return toast("Passwords do not match");
+  const name=$("l-name").value.trim(), pass=$("l-pass").value;
+  if(!name)return toast("Enter the child's full name");
+  let body;
+  if(LMODE==="activate"){
+    const phone=$("l-phone").value.trim(), p2=$("l-pass2").value;
+    if(!phone)return toast("Enter the phone number the school has for you");
+    if(pass.length<6)return toast("Password must be at least 6 characters");
+    if(pass!==p2)return toast("Passwords do not match");
+    body={mode:"activate",name,phone,new_password:pass,confirm_password:p2};
+  }else{
+    if(!pass)return toast("Enter your password");
+    body={mode:"signin",name,password:pass};
   }
   const r=await api(`/link/${encodeURIComponent(PUB)}/login`,"POST",body);
-  if(!r.ok)return toast(r.error||"Failed");
-  if(r.need_password){
-    LSTEP=2;$("l-new-box").style.display="block";$("l-btn").textContent="Create password & view results";
-    $("l-name").readOnly=true;$("l-pass").readOnly=true;return toast("Phone number confirmed. Now create your own password");
+  if(!r.ok){
+    if(r.code==="already_linked")setLinkMode("signin");
+    if(r.code==="not_activated")setLinkMode("activate");
+    return toast(r.error||"Failed");
   }
-  setAuth(r);loadParent(PUB);
+  setAuth(r);loadParent(PUB,true);
 }
 async function changePw(){const r=await api("/auth/change_password","POST",{old_password:$("op").value,new_password:$("np").value});
   if(r.ok){setAuth(r);$("pw").style.display="none";toast("Password updated");}else toast(r.error);}
@@ -503,7 +530,10 @@ function openNC(){
   $("m-nc").style.display="flex";
 }
 function applyNC(){S.noncredit=[...document.querySelectorAll("#nc-list input:checked")].map(i=>i.value);mark();closeM();renderGrid();}
-function updatePub(){$("b-pub").textContent=S.published?"Published ✓ Manage":"Publish";}
+function updatePub(){
+  $("b-pub").style.display=S.is_owner?"inline-block":"none";
+  $("b-ann").style.display=S.is_owner?"inline-block":"none";
+  $("b-pub").textContent=S.published?"Published ✓ Manage":"Publish";}
 function pubMode(){$("pub-except").style.display=document.querySelector('input[name=pm]:checked').value==="except"?"block":"none";}
 function openPublish(){
   if(!S.is_owner)return toast("Only the signed-in owner of this sheet can publish");
@@ -824,6 +854,6 @@ addEyes();
   const key=new URLSearchParams(location.search).get("s");
   if(key){const r=await api("/sheet/"+key);if(!r.ok){show("auth");setMode("login");return toast(r.error||"Sheet not found");}show("sheet");return apply(r);}
   if(!token||!me){show("auth");return setMode("login");}
-  me.role==="parent"?loadParent():loadDash();
+  me.role==="parent"?loadParent():loadDash(new URLSearchParams(location.search).get("all")==="1");
 })();
 </script></body></html>

@@ -171,13 +171,16 @@ NOT_FOUND = ({"ok": False, "error": "Sheet not found"}, 404)
 @mini_bp.route("/api/mini/sheets", methods=["GET"])
 @need_user("owner")
 def mini_list():
+    uid = g.mini_user["id"]
     con = get_db(); cur = con.cursor()
     cur.execute("""SELECT share_key,school_name,exam_name,sheet_type,published,CAST(updated_at AS TEXT),
-                          jsonb_array_length(data->'rows') FROM mini_sheets WHERE owner_id=%s
-                   ORDER BY updated_at DESC""", (g.mini_user["id"],))
+                          jsonb_array_length(data->'rows'), owner_id<>%s
+                   FROM mini_sheets
+                   WHERE owner_id=%s OR id IN (SELECT sheet_id FROM mini_sheet_access WHERE user_id=%s)
+                   ORDER BY updated_at DESC""", (uid, uid, uid))
     rows = [{"key": r[0], "school_name": r[1], "exam_name": r[2], "sheet_type": r[3], "published": bool(r[4]),
-             "updated_at": r[5], "students": r[6]} for r in cur.fetchall()]
-    cur.execute("SELECT phone FROM mini_users WHERE id=%s", (g.mini_user["id"],))
+             "updated_at": r[5], "students": r[6], "shared": bool(r[7])} for r in cur.fetchall()]
+    cur.execute("SELECT phone FROM mini_users WHERE id=%s", (uid,))
     has_phone = bool(cur.fetchone()[0])
     cur.close(); con.close()
     return jsonify({"ok": True, "sheets": rows, "has_phone": has_phone})
@@ -197,7 +200,15 @@ def mini_create():
 @mini_bp.route("/api/mini/sheet/<key>", methods=["GET"])
 def mini_get(key):
     s = _load(key)
-    return _payload(key, s, _current_user()) if s else NOT_FOUND
+    if not s:
+        return NOT_FOUND
+    viewer = _current_user()
+    if viewer and viewer["role"] == "owner" and viewer["id"] != s["owner_id"]:
+        con = get_db(); cur = con.cursor()
+        cur.execute("INSERT INTO mini_sheet_access(user_id,sheet_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                    (viewer["id"], s["id"]))
+        con.commit(); cur.close(); con.close()
+    return _payload(key, s, viewer)
 
 
 @mini_bp.route("/api/mini/sheet/<key>/save", methods=["POST"])
@@ -407,6 +418,11 @@ def mini_parent_results():
         ranked = M.compute(data, stype, rules)
         of = sum(1 for r in ranked if r["average"] is not None)
         subs = [x for x in data["subjects"] if x["name"]]
+        def _pos(x, r, ranked=ranked, stype=stype):
+            v = r["marks"].get(x["id"])
+            if stype != "marks" or v is None:
+                return None
+            return 1 + sum(1 for o in ranked if o["marks"].get(x["id"]) is not None and o["marks"][x["id"]] > v)
         kids = []
         for r in ranked:
             nn = M.norm(r["name"])
@@ -420,7 +436,8 @@ def mini_parent_results():
                 continue
             kids.append({"student": r["name"], "total": r["total"], "average": r["average"], "position": r["position"],
                          "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
-                         "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"])} for x in subs]})
+                         "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"]),
+                                       "position": _pos(x, r)} for x in subs]})
         if kids:
             out.append({"token": ptoken, "school_name": school, "exam_name": exam, "class_name": cls,
                         "sheet_type": stype, "published_at": str(pubat) if pubat else None,
@@ -448,10 +465,14 @@ def mini_link_info(token):
 @rate_limit("mini_link_login", max_attempts=30, window_minutes=15, by="ip")
 def mini_link_login(token):
     d = request.get_json(silent=True) or {}
-    nn, pw = M.norm(d.get("name")), d.get("password") or ""
-    if not nn or not pw:
-        return jsonify({"ok": False, "error": "Enter the child's full name and password"}), 400
-    bad = (jsonify({"ok": False, "error": "We could not match that name and password/phone number"}), 401)
+    mode = d.get("mode") or "signin"
+    nn = M.norm(d.get("name"))
+
+    def fail(msg, code=None, status=401):
+        return jsonify({"ok": False, "error": msg, "code": code}), status
+
+    if not nn:
+        return fail("Enter the child's full name", "no_name", 400)
     con = get_db(); cur = con.cursor()
     try:
         cur.execute("SELECT owner_id,data FROM mini_sheets WHERE pub_token=%s AND published=1", (token,))
@@ -460,34 +481,51 @@ def mini_link_login(token):
             return NOT_FOUND
         owner, data = sh
         if nn not in {M.norm(r["name"]) for r in data["rows"]}:
-            return bad
+            return fail("That name is not on this results sheet. Type the child's full name exactly as the school wrote it.",
+                        "no_such_child")
         cur.execute("SELECT id,name,phone,parent_user_id FROM mini_students "
                     "WHERE owner_id=%s AND name_norm=%s FOR UPDATE", (owner, nn))
         st = cur.fetchone()
         if not st:
-            return bad
+            return fail("These results are not ready yet. Please ask the teacher to publish again.", "not_ready", 404)
         sid, name, phone, puid = st
-        if puid:                                             # already linked: normal sign-in
-            cur.execute("SELECT password,token_version,must_change_password FROM mini_users WHERE id=%s", (puid,))
-            u = cur.fetchone()
-            if not u or not verify_password(pw, u[0]):
-                return bad
-            return _token_reply(puid, name, "parent", u[2], u[1])
-        if not phone or normalize_phone(pw) != phone:        # first time: phone number is the password
-            return bad
-        new = d.get("new_password") or ""
-        if not new:
-            return jsonify({"ok": True, "need_password": True})
-        if len(new) < 6:
-            return jsonify({"ok": False, "error": "Password must be at least 6 characters"}), 400
-        if new != (d.get("confirm_password") or ""):
-            return jsonify({"ok": False, "error": "Passwords do not match"}), 400
-        cur.execute("INSERT INTO mini_users(username,password,role) VALUES(%s,%s,'parent') RETURNING id",
-                    (f"p{owner}:{nn}"[:200], hash_password(new)))
-        uid = cur.fetchone()[0]
-        cur.execute("UPDATE mini_students SET parent_user_id=%s WHERE id=%s", (uid, sid))
-        con.commit()
-        return _token_reply(uid, name, "parent", False, 0)
+
+        if mode == "activate":
+            if puid:
+                return fail("This child already has an account. Choose 'I have an account' and sign in.",
+                            "already_linked", 409)
+            if not phone:
+                return fail("The school has no phone number saved for this child. Please ask the teacher to add it, then try again.",
+                            "no_phone", 400)
+            given = normalize_phone(d.get("phone"))
+            if not given:
+                return fail("Enter a valid phone number, e.g. 0712345678", "bad_phone", 400)
+            if given != phone:
+                return fail("This phone number does not match the one the school has for this child. Check it, or ask the teacher to correct it.",
+                            "phone_mismatch")
+            new = d.get("new_password") or ""
+            if len(new) < 6:
+                return fail("Password must be at least 6 characters", "weak_password", 400)
+            if new != (d.get("confirm_password") or ""):
+                return fail("Passwords do not match", "pw_mismatch", 400)
+            cur.execute("INSERT INTO mini_users(username,password,role) VALUES(%s,%s,'parent') RETURNING id",
+                        (f"p{owner}:{nn}"[:200], hash_password(new)))
+            uid = cur.fetchone()[0]
+            cur.execute("UPDATE mini_students SET parent_user_id=%s WHERE id=%s", (uid, sid))
+            con.commit()
+            return _token_reply(uid, name, "parent", False, 0)
+
+        # sign in
+        pw = d.get("password") or ""
+        if not pw:
+            return fail("Enter your password", "no_password", 400)
+        if not puid:
+            return fail("No account exists for this child yet. Choose 'First time? Activate'.", "not_activated")
+        cur.execute("SELECT password,token_version,must_change_password FROM mini_users WHERE id=%s", (puid,))
+        u = cur.fetchone()
+        if not u or not verify_password(pw, u[0]):
+            return fail("Wrong password. If you forgot it, ask the teacher for a reset code.", "bad_password")
+        return _token_reply(puid, name, "parent", u[2], u[1])
     except Exception:
         con.rollback(); raise
     finally:
