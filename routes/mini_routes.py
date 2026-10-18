@@ -83,7 +83,7 @@ def mini_signup():
 
 
 @mini_bp.route("/api/mini/auth/login", methods=["POST"])
-@rate_limit("mini_login", max_attempts=15, window_minutes=15, by="ip")
+@rate_limit("mini_login", max_attempts=60, window_minutes=15, by="ip")
 def mini_login():
     d = request.get_json(silent=True) or {}
     u, p = (d.get("username") or "").strip(), d.get("password") or ""
@@ -99,9 +99,13 @@ def mini_login():
                 "FROM mini_students s JOIN mini_users u ON u.id=s.parent_user_id WHERE s.name_norm=%s", (M.norm(u),))
     rows += cur.fetchall()
     cur.close(); con.close()
-    for r in rows:
-        if verify_password(p, r[2]):
-            return _token_reply(r[0], r[1], r[3], r[4], r[5])
+    matches = {r[0]: r for r in rows if verify_password(p, r[2])}
+    if len(matches) == 1:
+        r = next(iter(matches.values()))
+        return _token_reply(r[0], r[1], r[3], r[4], r[5])
+    if len(matches) > 1:
+        return jsonify({"ok": False, "error": "Several children share this name and password. "
+                        "Please sign in through the results link your teacher shared."}), 409
     return jsonify({"ok": False, "error": "Wrong username/name or password"}), 401
 
 
@@ -279,6 +283,17 @@ def mini_publish(key):
         if not s or s["owner_id"] != g.mini_user["id"]:
             cur.close(); con.close(); return NOT_FOUND
         if publish:
+            seen_names, dupes = set(), set()
+            for r in s["data"]["rows"]:
+                nn = M.norm(r["name"])
+                if nn and nn in seen_names:
+                    dupes.add(r["name"].strip())
+                seen_names.add(nn)
+            if dupes:
+                con.rollback(); cur.close(); con.close()
+                return jsonify({"ok": False, "error": "These names appear more than once: "
+                                + ", ".join(sorted(dupes)[:5])
+                                + ". Make each name unique (add a middle name) before publishing."}), 400
             token = s["pub_token"] or secrets.token_urlsafe(6)
             cur.execute("UPDATE mini_sheets SET published=1, pub_token=%s, published_at=CASE WHEN published=1 "
                         "THEN published_at ELSE NOW() END WHERE id=%s", (token, s["id"]))
@@ -464,7 +479,7 @@ def mini_link_info(token):
 
 
 @mini_bp.route("/api/mini/link/<token>/login", methods=["POST"])
-@rate_limit("mini_link_login", max_attempts=30, window_minutes=15, by="ip")
+@rate_limit("mini_link_login", max_attempts=120, window_minutes=15, by="ip")
 def mini_link_login(token):
     d = request.get_json(silent=True) or {}
     mode = d.get("mode") or "signin"

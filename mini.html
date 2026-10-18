@@ -257,6 +257,7 @@ let PUB=null, LSTEP=1, RSL=[], LK=new Set();
 const norm=s=>String(s||"").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 let token=localStorage.getItem("mini_token"), me=JSON.parse(localStorage.getItem("mini_me")||"null");
 let S=null, dirty=false, mode="login", gtmp=[];
+let EDITS={};
 window.onbeforeunload=e=>dirty?(e.preventDefault(),""):undefined;
 
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
@@ -484,7 +485,10 @@ function phoneInner(i){const r=S.rows[i];
   return isLinked(r)?`<span class="lk" title="Linked to a parent account, no phone number needed">...</span><span class="tick">✓</span>`
    :`<input data-r="${i}" data-c="1" value="${esc(r.phone)}">`;}
 function addRowEl(i){$("grid").tBodies[0].insertAdjacentHTML("beforeend",rowHTML(i));}
-function setCell(r,c,v){if(c===0)r.name=v;else if(c===1){if(!isLinked(r))r.phone=v;}else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}}
+function setCell(r,c,v){
+  EDITS[r.id+"|"+(c===0?"name":c===1?"phone":S.subjects[c-2].id)]=v;
+  if(c===0)r.name=v;else if(c===1){if(!isLinked(r))r.phone=v;}else{const id=S.subjects[c-2].id;if(String(v).trim()==="")delete r.marks[id];else r.marks[id]=v;}
+}
 $("grid").addEventListener("input",e=>{
   const t=e.target; if(t.dataset.sub!==undefined){S.subjects[+t.dataset.sub].name=t.value;return mark();}
   if(t.dataset.r===undefined)return;
@@ -521,6 +525,10 @@ function sortAlpha(){
   S.rows=real;
 }
 function setType(v){S.sheet_type=v;mark();
+  if(v==="advanced"&&S.grade_rules.length!==7&&confirm("Advanced-Level uses 7 grades (A, B, C, D, E, S, F). Load the standard NECTA boundaries?"))
+    S.grade_rules=[{min:80,grade:"A"},{min:70,grade:"B"},{min:60,grade:"C"},{min:50,grade:"D"},{min:40,grade:"E"},{min:35,grade:"S"},{min:0,grade:"F"}];
+  if(v==="secondary"&&S.grade_rules.length!==5&&confirm("Secondary uses 5 grades (A, B, C, D, F). Load the standard boundaries?"))
+    S.grade_rules=[{min:80,grade:"A"},{min:70,grade:"B"},{min:60,grade:"C"},{min:50,grade:"D"},{min:0,grade:"F"}];
   $("b-nc").style.display=v==="marks"?"none":"inline-block";
   if(v!=="marks"){sortAlpha();renderGrid();openNC();return;}
   renderGrid();}
@@ -595,17 +603,38 @@ function apply(p){
   S={...p,rows:p.rows.map(r=>({id:r.id,name:r.name,phone:r.phone,marks:r.marks,position:r.position,points:r.points,division:r.division}))};
   LK=new Set(S.linked||[]);
   $("subj-list").innerHTML=(S.subject_suggestions||[]).map(n=>`<option value="${esc(n)}">`).join("");
-  dirty=false; $("school").value=S.school_name; $("exam").value=S.exam_name; $("cls").value=S.class_name||""; HL=null; $("hbar").style.display="none";
+  dirty=false; EDITS={}; $("school").value=S.school_name; $("exam").value=S.exam_name; $("cls").value=S.class_name||""; HL=null; $("hbar").style.display="none";
   $("type").innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join(""); $("type").value=S.sheet_type;
   $("b-nc").style.display=S.sheet_type==="marks"?"none":"inline-block";
   showLogo(); renderGrid(); updatePub();
 }
 function editorName(){if(S.is_owner)return"";let n=localStorage.getItem("mini_editor");
   if(!n){n=(prompt("Your name (shown in the sheet history):")||"Guest").trim().slice(0,60);localStorage.setItem("mini_editor",n);}return n;}
-async function saveSheet(){
+async function mergeAndRetry(){
+  const fresh=await api("/sheet/"+S.key);
+  if(!fresh.ok) return false;
+  const mine=EDITS, hdr={school:$("school").value,exam:$("exam").value,cls:$("cls").value};
+  apply(fresh);
+  $("school").value=hdr.school;$("exam").value=hdr.exam;$("cls").value=hdr.cls;
+  const subIds=new Set(S.subjects.map(s=>s.id));
+  Object.entries(mine).forEach(([k,v])=>{
+    const [rowId,field]=k.split("|");
+    let row=S.rows.find(r=>r.id===rowId);
+    if(!row){row=blank();row.id=rowId;S.rows.push(row);}
+    if(field==="name")row.name=v;
+    else if(field==="phone"){if(!isLinked(row))row.phone=v;}
+    else if(subIds.has(field)){if(String(v).trim()==="")delete row.marks[field];else row.marks[field]=v;}
+  });
+  EDITS=mine;mark();renderGrid();
+  toast("Another teacher saved first. Your changes were merged, saving again…");
+  return true;
+}
+async function saveSheet(retried){
   const r=await api(`/sheet/${S.key}/save`,"POST",{editor:editorName(),version:S.version,school_name:$("school").value,exam_name:$("exam").value, class_name: $("cls").value,
     sheet_type:S.sheet_type,grade_rules:S.grade_rules,subjects:S.subjects,noncredit:S.noncredit||[],rows:S.rows});
-  if(r.ok){apply(r);toast("Saved");return true;} toast(r.error||"Save failed"); return false;
+  if(r.ok){apply(r);toast("Saved");return true;}
+  if(r._status===409&&!retried&&await mergeAndRetry())return saveSheet(true);
+  toast(r.error||"Save failed"); return false;
 }
 
 async function dl(kind){if(dirty&&!(await saveSheet()))return;window.open(`/api/mini/sheet/${S.key}/${kind==="download"?"download.pdf":"template.xlsx"}`);}
