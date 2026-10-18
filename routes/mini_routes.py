@@ -421,8 +421,9 @@ def mini_parent_results():
         def _pos(x, r, ranked=ranked, stype=stype):
             v = r["marks"].get(x["id"])
             if stype != "marks" or v is None:
-                return None
-            return 1 + sum(1 for o in ranked if o["marks"].get(x["id"]) is not None and o["marks"][x["id"]] > v)
+                return None, None
+            col = [o["marks"][x["id"]] for o in ranked if o["name"] and o["marks"].get(x["id"]) is not None]
+            return 1 + sum(1 for m in col if m > v), len(col)
         kids = []
         for r in ranked:
             nn = M.norm(r["name"])
@@ -437,7 +438,8 @@ def mini_parent_results():
             kids.append({"student": r["name"], "total": r["total"], "average": r["average"], "position": r["position"],
                          "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
                          "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"]),
-                                       "position": _pos(x, r)} for x in subs]})
+                                       "position": p, "out_of": n}
+                                       for x in subs for p, n in [_pos(x, r)]]})
         if kids:
             out.append({"token": ptoken, "school_name": school, "exam_name": exam, "class_name": cls,
                         "sheet_type": stype, "published_at": str(pubat) if pubat else None,

@@ -361,7 +361,7 @@ function detailHTML(k){
     <p style="margin-top:8px;color:#B71C1C"><b>🚫 These results are withheld by the school.</b>${k.reason?" Reason: "+esc(k.reason):""}</p>
     <p class="muted">Please contact the school office.</p></div>`;
   return `<div class="card">${head}
-    <table class="res"><tr><th>Subject</th><th>Score</th>${k.type==="marks"?"<th>Position</th>":""}</tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td>${k.type==="marks"?`<td>${v(x.position)}</td>`:""}</tr>`).join("")}</table>
+    <table class="res"><tr><th>Subject</th><th>Score</th>${k.type==="marks"?"<th>Position</th>":""}</tr>${k.subjects.map(x=>`<tr><td>${esc(x.name)}</td><td>${v(x.score)}</td>${k.type==="marks"?`<td>${x.position!=null?x.position+"/"+x.out_of:"-"}</td>`:""}</tr>`).join("")}</table>
     <b>Total:</b> ${v(k.total)} &nbsp; <b>Average:</b> ${v(k.average)} &nbsp; ${k.position!=null?`<b>Position:</b> ${k.position} / ${k.out_of} &nbsp; `:""}<b>Grade:</b> ${k.grade}
     ${k.division?` &nbsp; <b>Points:</b> ${k.points} &nbsp; <b>Division:</b> ${k.division}`:""}</div>`;
 }
@@ -817,19 +817,20 @@ function renderAnalysis(){
   if(!S||!isGrade()){el.style.display="none";return;}
   const prim=S.sheet_type==="primary";
   const keys=prim?S.grade_rules.map(g=>g.grade):["I","II","III","IV","0"];
-  const n={};keys.forEach(k=>n[k]=0);let inc=0;
+  const n={};keys.forEach(k=>n[k]=0);let inc=0,counted=0;
   S.rows.forEach(r=>{
     if(!r.name&&!Object.keys(r.marks).length)return;
+    if(!Object.keys(r.marks).length)return;          // named but no marks yet: not counted
     const c=calc(r);
-    if(prim){if(c.avg==null)return;const g=gradeFor(c.avg);if(g in n)n[g]++;}
-    else if(c.division==="INC")inc++;
-    else if(c.division in n)n[c.division]++;
+    if(prim){if(c.avg==null)return;const g=gradeFor(c.avg);if(g in n){n[g]++;counted++;}}
+    else if(c.division==="INC"){inc++;counted++;}
+    else if(c.division in n){n[c.division]++;counted++;}
   });
   if(inc)keys.push("INC"),n.INC=inc;
   el.style.display="block";
   el.innerHTML=`<b class="t">Results analysis (${prim?"by average grade":"by division"})</b>
-    <table><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join("")}</tr>
-    <tr>${keys.map(k=>`<td>${n[k]}</td>`).join("")}</tr></table>`;
+    <table><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join("")}<th>Total</th></tr>
+    <tr>${keys.map(k=>`<td>${n[k]}</td>`).join("")}<td>${counted}</td></tr></table>`;
 }
 
 // ── eye icon on every password field ──

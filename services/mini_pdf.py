@@ -68,19 +68,22 @@ def build_pdf(meta, ranked, logo_b64=None):
     if stype != "marks":                                        # results analysis table (grade sheets)
         prim = stype == "primary"
         keys = [g["grade"] for g in rules] if prim else ["I", "II", "III", "IV", "0"]
-        cnt, inc = {k: 0 for k in keys}, 0
+        cnt, inc, counted = {k: 0 for k in keys}, 0, 0
         for r in rows:
+            if not r["marks"]:                      # named but no marks yet: not counted
+                continue
             if prim:
                 if r["average"] is not None and r["grade"] in cnt:
-                    cnt[r["grade"]] += 1
+                    cnt[r["grade"]] += 1; counted += 1
             elif r["division"] == "INC":
-                inc += 1
+                inc += 1; counted += 1
             elif r["division"] in cnt:
-                cnt[r["division"]] += 1
+                cnt[r["division"]] += 1; counted += 1
         if inc:
             keys.append("INC"); cnt["INC"] = inc
         story.append(Paragraph(f"<b>Results analysis ({'by average grade' if prim else 'by division'})</b>", s_s))
-        at = Table([keys, [str(cnt[k]) for k in keys]], colWidths=[1.6 * cm] * len(keys), hAlign="CENTER")
+        at = Table([keys + ["Total"], [str(cnt[k]) for k in keys] + [str(counted)]],
+                   colWidths=[1.6 * cm] * (len(keys) + 1), hAlign="CENTER")
         at.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), H_BG), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                                 ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
                                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
