@@ -14,6 +14,7 @@ from services.access import normalize_phone, SnippeError
 from services import mini as M
 from services import mini_access as MA
 from services.mini_pdf import build_pdf
+from services.mini_agents import attach_referral
 
 mini_bp = Blueprint("mini", __name__)
 _ser = URLSafeTimedSerializer(SECRET_KEY, salt="drdemic-mini-session")
@@ -79,6 +80,7 @@ def mini_signup():
     row = cur.fetchone(); con.commit(); cur.close(); con.close()
     if not row:
         return jsonify({"ok": False, "error": "That username is taken"}), 409
+    attach_referral(row[0], phone, d.get("ref"))
     return _token_reply(row[0], u, "owner", False, 0)
 
 

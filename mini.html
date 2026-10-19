@@ -296,9 +296,12 @@ async function doAuth(){
     if(body.password!==$("a-pass2").value)return toast("Passwords do not match");
     if(!$("a-agree").checked)return toast("Please tick the box to accept the Privacy Policy and Terms");
     body.phone=$("a-phone").value.trim(); body.confirm_password=$("a-pass2").value; body.agree_terms=true;
+    body.ref=localStorage.getItem("mini_ref")||"";
   }
   const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",body);
-  if(!r.ok) return toast(r.error||"Failed"); setAuth(r); location.href="/mini";
+  if(!r.ok) return toast(r.error||"Failed");
+  if(mode==="signup")localStorage.removeItem("mini_ref");
+  setAuth(r); location.href="/mini";
 }
 async function loadDash(all){
   show("dash"); if(me.must_change)$("pw").style.display="block";
@@ -880,10 +883,12 @@ addEyes();
 
 // ── boot ──
 (async function(){
+  const _q=new URLSearchParams(location.search).get("ref");
+  if(_q&&/^[A-Za-z0-9_-]{6,40}$/.test(_q)&&!localStorage.getItem("mini_ref"))localStorage.setItem("mini_ref",_q);   // first click wins
   const lm=location.pathname.match(/^\/mini\/parents\/[^/]+\/([^/]+)\/?$/); if(lm) return bootLink(lm[1]);
   const key=new URLSearchParams(location.search).get("s");
   if(key){const r=await api("/sheet/"+key);if(!r.ok){show("auth");setMode("login");return toast(r.error||"Sheet not found");}show("sheet");return apply(r);}
-  if(!token||!me){show("auth");return setMode("login");}
+  if(!token||!me){show("auth");return setMode(localStorage.getItem("mini_ref")?"signup":"login");}
   me.role==="parent"?loadParent():loadDash(new URLSearchParams(location.search).get("all")==="1");
 })();
 </script></body></html>

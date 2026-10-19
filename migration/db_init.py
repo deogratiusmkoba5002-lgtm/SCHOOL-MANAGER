@@ -795,6 +795,68 @@ def init_db():
         PRIMARY KEY(user_id, sheet_id)
     );
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mini_agents (
+        id                   SERIAL PRIMARY KEY,
+        username             TEXT NOT NULL,
+        password             TEXT NOT NULL,
+        full_name            TEXT NOT NULL,
+        phone                TEXT NOT NULL,
+        status               TEXT NOT NULL DEFAULT 'new',
+        ref_token            TEXT UNIQUE,
+        token_version        INTEGER NOT NULL DEFAULT 0,
+        requested_at         TIMESTAMP,
+        decided_at           TIMESTAMP,
+        decided_by           TEXT,
+        decision_note        TEXT DEFAULT '',
+        created_at           TIMESTAMP DEFAULT NOW(),
+        CHECK (status IN ('new','requested','approved','rejected','suspended'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mini_agents_username ON mini_agents (LOWER(username));
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mini_agents_phone ON mini_agents (phone);
+    CREATE TABLE IF NOT EXISTS mini_agent_referrals (
+        owner_id   INTEGER PRIMARY KEY REFERENCES mini_users(id) ON DELETE CASCADE,
+        agent_id   INTEGER NOT NULL REFERENCES mini_agents(id),
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_agent_ref_agent ON mini_agent_referrals(agent_id);
+    CREATE TABLE IF NOT EXISTS mini_agent_qualifying (
+        id             SERIAL PRIMARY KEY,
+        owner_id       INTEGER NOT NULL REFERENCES mini_agent_referrals(owner_id) ON DELETE CASCADE,
+        agent_id       INTEGER NOT NULL,
+        parent_user_id INTEGER NOT NULL UNIQUE,
+        payment_id     INTEGER NOT NULL UNIQUE,
+        payer_phone    TEXT NOT NULL,
+        qualified_at   TIMESTAMP DEFAULT NOW(),
+        UNIQUE(owner_id, payer_phone)
+    );
+    CREATE TABLE IF NOT EXISTS mini_agent_rewards (
+        id         SERIAL PRIMARY KEY,
+        agent_id   INTEGER NOT NULL REFERENCES mini_agents(id),
+        owner_id   INTEGER NOT NULL UNIQUE,
+        amount     INTEGER NOT NULL,
+        status     TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TIMESTAMP DEFAULT NOW(),
+        decided_at TIMESTAMP,
+        decided_by TEXT,
+        note       TEXT DEFAULT '',
+        CHECK (status IN ('PENDING','PAID','REJECTED'))
+    );
+    """)
+    for _m in (
+        "ALTER TABLE mini_agent_rewards ADD COLUMN IF NOT EXISTS payout_reference TEXT",
+        "ALTER TABLE mini_agent_rewards ADD COLUMN IF NOT EXISTS payout_started_at TIMESTAMP",
+        "ALTER TABLE mini_agent_rewards DROP CONSTRAINT IF EXISTS mini_agent_rewards_status_check",
+        "ALTER TABLE mini_agent_rewards ADD CONSTRAINT mini_agent_rewards_status_check "
+        "CHECK (status IN ('PENDING','PROCESSING','PAID','FAILED','REJECTED'))",
+    ):
+        try:
+            cur.execute("SAVEPOINT sp_agent_mig")
+            cur.execute(_m)
+            cur.execute("RELEASE SAVEPOINT sp_agent_mig")
+        except Exception as e:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_agent_mig")
+            print(f"agent rewards migration note: {e}")
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
     cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")
     if cur.fetchone()[0] == 0:

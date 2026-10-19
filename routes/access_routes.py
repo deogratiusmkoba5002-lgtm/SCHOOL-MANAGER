@@ -114,7 +114,15 @@ def api_access_webhook():
     elif etype.startswith("payout.") and ref:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM star_withdrawals WHERE payout_reference=%s", (ref,))
-        row = cur.fetchone(); cur.close(); con.close()
+        row = cur.fetchone()
+        mrow = None
+        if not row:
+            cur.execute("SELECT id FROM mini_agent_rewards WHERE payout_reference=%s", (ref,))
+            mrow = cur.fetchone()
+        cur.close(); con.close()
         if row:
             check_payout(row[0], ref)           # re-verifies with Snippe; body isn't trusted
+        elif mrow:
+            from services.mini_payouts import check_payout as mini_check
+            mini_check(mrow[0], ref)
     return "OK", 200

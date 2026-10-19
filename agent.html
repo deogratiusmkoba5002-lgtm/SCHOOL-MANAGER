@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DrDemic Mini – Agents</title><meta name="robots" content="noindex"/>
+<link rel="icon" type="image/png" href="/DRDEMIC-LOGO.png"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F0F6F5;color:#0D1B2A;font-size:14px}
+.top{background:#00574B;color:#fff;padding:12px 16px;display:flex;align-items:center}.sp{flex:1}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1.5px solid #00897B;background:#fff;color:#00897B;cursor:pointer;font-weight:600}
+button.pri{background:#00897B;color:#fff}
+.box{max-width:400px;margin:50px auto;background:#fff;padding:26px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1)}
+.box input{width:100%;margin:7px 0;padding:10px;border:1.5px solid #B0BEC5;border-radius:8px;font:inherit}
+.wrap{max-width:760px;margin:24px auto;padding:0 16px}
+.panel{background:#fff;border-radius:12px;padding:18px;box-shadow:0 3px 14px rgba(0,137,123,.14);margin-bottom:16px}
+.muted{color:#546E7A;font-size:.85rem}.big{font-size:1.8rem;font-weight:800;color:#00574B}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.bar{height:8px;background:#E0F2F1;border-radius:4px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:#00897B}
+.badge{background:#E0F2F1;color:#00695C;border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:700}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00574B;color:#fff;padding:10px 18px;border-radius:10px;display:none}
+</style></head><body>
+<div class="top"><b>DrDemic Mini · Agents</b><span class="sp"></span><button id="out" style="display:none" onclick="logout()">Sign out</button></div>
+<div id="toast"></div>
+
+<div id="v-auth" class="box">
+  <h2 id="a-title">Agent sign in</h2>
+  <input id="a-name" placeholder="Full name" style="display:none">
+  <input id="a-user" placeholder="Username" autocomplete="username">
+  <input id="a-phone" type="tel" placeholder="Mobile-money number (rewards are paid here)" style="display:none">
+  <input id="a-pass" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
+  <input id="a-pass2" type="password" placeholder="Repeat password" style="display:none">
+  <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I accept that rewards are paid only for genuine, verified paying parents, and that fraud forfeits all rewards.</label>
+  <button class="pri" style="width:100%;margin-top:6px" onclick="doAuth()" id="a-btn">Sign in</button>
+  <p class="muted" style="margin-top:12px"><a href="#" onclick="setMode(mode==='login'?'signup':'login');return false" id="a-sw">No account? Create one</a></p>
+</div>
+
+<div id="v-home" class="wrap" style="display:none">
+  <div class="panel" id="status"></div>
+  <div id="dash"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const tzs=n=>Number(n).toLocaleString("en-US")+" TZS";
+let token=localStorage.getItem("agent_token"), mode="login";
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
+function logout(){localStorage.removeItem("agent_token");location.reload();}
+async function api(path,method="GET",body){
+  const h={"Content-Type":"application/json"};if(token)h.Authorization="Bearer "+token;
+  let j;try{const r=await fetch("/api/mini/agent"+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+    try{j=await r.json()}catch(e){j={ok:false,error:"Server error"}}j._s=r.status;}catch(e){j={ok:false,error:"Network error"}}
+  if(j._s===401&&token&&!path.startsWith("/login")&&!path.startsWith("/signup"))logout();
+  return j;
+}
+function setMode(m){mode=m;const s=m==="signup";
+  $("a-title").textContent=s?"Become an agent":"Agent sign in";
+  ["a-name","a-phone","a-pass2"].forEach(i=>$(i).style.display=s?"block":"none");
+  $("a-agree-l").style.display=s?"block":"none";
+  $("a-btn").textContent=s?"Create account":"Sign in";
+  $("a-sw").textContent=s?"Have an account? Sign in":"No account? Create one";}
+async function doAuth(){
+  const b={username:$("a-user").value,password:$("a-pass").value};
+  if(mode==="signup"){
+    if($("a-pass2").value!==b.password)return toast("Passwords do not match");
+    Object.assign(b,{full_name:$("a-name").value,phone:$("a-phone").value,confirm_password:$("a-pass2").value,agree_terms:$("a-agree").checked});
+  }
+  const r=await api(mode==="login"?"/login":"/signup","POST",b);
+  if(!r.ok)return toast(r.error||"Failed");
+  token=r.token;localStorage.setItem("agent_token",token);home();
+}
+async function reqLink(){const r=await api("/request_link","POST",{});if(!r.ok)return toast(r.error);toast("Requested. Wait for approval.");home();}
+function copy(){const u=$("lnk").value;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>toast("Link copied")).catch(()=>prompt("Copy:",u));}
+async function home(){
+  const me=await api("/me");if(!me.ok)return;
+  $("v-auth").style.display="none";$("v-home").style.display="block";$("out").style.display="inline-block";
+  const st=$("status");
+  if(me.status==="new"||me.status==="rejected")
+    st.innerHTML=`<b>Hello ${esc(me.full_name)}.</b><p class="muted" style="margin:6px 0 10px">${me.status==="rejected"?"Your last request was rejected. You may ask again.":"You need an approved link before you can earn."}</p><button class="pri" onclick="reqLink()">Request my link</button>`;
+  else if(me.status==="requested")st.innerHTML=`<b>Request sent ⏳</b><p class="muted">You will see your link here once it is approved.</p>`;
+  else if(me.status==="suspended")st.innerHTML=`<b>Your agent account is suspended.</b><p class="muted">Contact DrDemic.</p>`;
+  else{
+    st.innerHTML=`<b>Your link</b><div style="display:flex;gap:8px;margin-top:8px"><input id="lnk" readonly value="${esc(me.link)}" style="flex:1;padding:9px;border:1.5px solid #B0BEC5;border-radius:8px"><button class="pri" onclick="copy()">Copy</button></div>
+      <p class="muted" style="margin-top:8px">Send it to teachers/admins. A school earns you a ⭐ when 10 different parents have paid.</p>`;
+    dash();
+  }
+}
+async function dash(){
+  const d=await api("/dashboard");if(!d.ok)return;
+  $("dash").innerHTML=`<div class="stats">
+    <div class="panel"><div class="big">⭐ ${d.stars}</div><div class="muted">Stars earned</div></div>
+    <div class="panel"><div class="big">${tzs(d.pending_tzs)}</div><div class="muted">Awaiting payout</div></div>
+    <div class="panel"><div class="big">${tzs(d.paid_tzs)}</div><div class="muted">Paid out</div></div></div>
+    <div class="panel"><b>My schools (${d.schools.length})</b>${d.schools.length?d.schools.map(s=>`
+      <div style="padding:10px 0;border-bottom:1px solid #E0F2F1"><div style="display:flex;justify-content:space-between"><b>${esc(s.label)}</b>
+        ${s.reward_status?`<span class="badge">${s.reward_status==="PAID"?"Paid ✓":s.reward_status==="PROCESSING"?"Sending to your phone…":s.reward_status==="REJECTED"?"Rejected":s.reward_status==="FAILED"?"Payout failed, we'll sort it":"⭐ Earned, paid automatically soon"}</span>`:""}
+        <div class="muted">${s.paid_parents} / ${d.required} paying parents</div>
+        <div class="bar"><i style="width:${Math.round(s.paid_parents/d.required*100)}%"></i></div></div>`).join(""):"<p class='muted' style='margin-top:8px'>No schools yet. Share your link.</p>"}</div>
+    <p class="muted">Rewards (${tzs(d.reward)} each) are sent automatically to your registered number shortly after a school qualifies.</p>`;
+}
+if(token)home();else setMode("login");
+</script></body></html>

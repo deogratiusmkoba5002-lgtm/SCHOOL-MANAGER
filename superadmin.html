@@ -298,6 +298,7 @@ textarea{resize:vertical;min-height:90px}
     <button class="tab-btn" data-tab="monitoring" onclick="showTab('monitoring')">Monitoring <span class="tab-badge" id="badge-monitoring" style="display:none"></span></button>
     <button class="tab-btn" data-tab="verification" onclick="showTab('verification')">Verification <span class="tab-badge" id="badge-verification" style="display:none"></span></button>
     <button class="tab-btn" data-tab="withdrawals" onclick="showTab('withdrawals')">Star Withdrawals <span class="tab-badge" id="badge-withdrawals" style="display:none"></span></button>
+    <button class="tab-btn" data-tab="agents" onclick="showTab('agents');loadAgents()">Mini Agents</button>
     <button class="tab-btn" data-tab="settings" onclick="showTab('settings')">Settings</button>
   </div>
 
@@ -400,6 +401,19 @@ textarea{resize:vertical;min-height:90px}
           </div>
         </div>
         <div id="sw-list"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-tab="agents">
+      <div class="section-title">Mini Agent Rewards</div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="list-toolbar"><select id="ar-status" onchange="loadAgents()"><option value="PENDING">Pending payout</option><option value="PAID">Paid</option><option value="REJECTED">Rejected</option><option value="ALL">All</option><option value="PROCESSING">Processing</option><option value="FAILED">Failed</option></select></div>
+        <div id="ar-list"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="section-title">Mini Agents</div>
+      <div class="card">
+        <div class="list-toolbar"><select id="ag-status" onchange="loadAgents()"><option value="requested">Requested</option><option value="approved">Approved</option><option value="suspended">Suspended</option><option value="rejected">Rejected</option><option value="new">No request yet</option><option value="">All</option></select></div>
+        <div id="ag-list"><div class="empty">Loading…</div></div>
       </div>
     </div>
 
@@ -919,6 +933,45 @@ async function resetMiniOwner(btn){
   const r = await saApi(`/mini/owners/${id}/reset_password`, "POST", {});
   if(!r.ok){ toast(r.error||"Failed","error"); return; }
   prompt("Temporary password (shown once). Send it through a verified channel:", r.temp_password);
+}
+
+// ── MINI AGENTS ─────────────────────────────────────────────
+async function loadAgents(){
+  const [a, r] = await Promise.all([saApi("/mini/agents?status="+document.getElementById("ag-status").value),
+                                    saApi("/mini/agent_rewards?status="+document.getElementById("ar-status").value)]);
+  document.getElementById("ar-list").innerHTML = r.ok && r.rewards.length ? r.rewards.map(w=>`
+    <div class="notice-item"><div class="notice-meta"><span class="notice-title">⭐ ${esc(w.agent)} — ${w.amount.toLocaleString()} TZS</span><span class="notice-date">${esc((w.created_at||"").slice(0,16))}</span></div>
+      <div class="notice-body">Pay to: <b>${esc(w.agent_phone)}</b><br>School: ${esc(w.school||"(no name)")} · teacher login: ${esc(w.teacher)}<br>Paying phones (last 4): ${esc((w.payers_last4||[]).join(", "))}${w.note?"<br>Note: "+esc(w.note):""}</div>
+      <span class="notice-target">${esc(w.status)}</span>
+      ${["PENDING","FAILED"].includes(w.status)?`<div style="margin-top:8px;display:flex;gap:8px">
+      <button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="decideReward(${w.id},'paid')">Mark paid</button>
+        <button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="decideReward(${w.id},'reject')">Reject</button></div>`:""}</div>`).join("")
+    : `<div class="empty">No rewards.</div>`;
+  document.getElementById("ag-list").innerHTML = a.ok && a.agents.length ? a.agents.map(g=>`
+    <div class="notice-item"><div class="notice-meta"><span class="notice-title">${esc(g.full_name)} (${esc(g.username)})</span><span class="notice-date">${esc((g.created_at||"").slice(0,10))}</span></div>
+      <div class="notice-body">Phone: <b>${esc(g.phone)}</b> · Schools: ${g.schools}${g.note?"<br>Note: "+esc(g.note):""}</div>
+      <span class="notice-target">${esc(g.status)}</span>
+      <div style="margin-top:8px;display:flex;gap:8px">
+      ${["requested","suspended","rejected"].includes(g.status)?`<button class="btn btn-purple" style="padding:5px 14px;font-size:.78rem" onclick="decideAgent(${g.id},'approve')">Approve</button>`:""}
+      ${g.status==="requested"?`<button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="decideAgent(${g.id},'reject')">Reject</button>`:""}
+      ${g.status==="approved"?`<button class="btn btn-danger" style="padding:5px 14px;font-size:.78rem" onclick="decideAgent(${g.id},'suspend')">Suspend</button>`:""}</div></div>`).join("")
+    : `<div class="empty">No agents.</div>`;
+}
+async function decideAgent(id, action){
+  let note = "";
+  if(action!=="approve"){ note = prompt("Reason (required):"); if(!note||!note.trim()) return; }
+  else if(!confirm("Approve this agent and give them a referral link?")) return;
+  const d = await saApi(`/mini/agents/${id}/decide`,"POST",{action,note});
+  if(!d.ok){ toast(d.error||"Failed","error"); return; }
+  toast("Done","success"); loadAgents();
+}
+async function decideReward(id, action){
+  let note = "";
+  if(action==="reject"){ note = prompt("Reason for rejecting (required):"); if(!note||!note.trim()) return; }
+  else if(!confirm("Confirm you have SENT the money to the agent's number? This cannot be undone.")) return;
+  const d = await saApi(`/mini/agent_rewards/${id}/decide`,"POST",{action,note});
+  if(!d.ok){ toast(d.error||"Failed","error"); return; }
+  toast("Done","success"); loadAgents();
 }
 
 // ── UTILS ──────────────────────────────────────────────────

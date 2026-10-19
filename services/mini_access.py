@@ -127,7 +127,13 @@ def finalize_payment(pid):
         new_exp = cur.fetchone()[0]
         cur.execute("""UPDATE mini_payments SET status='completed', applied=1, paid_at=%s, expires_at=%s WHERE id=%s""",
                     (A._parse_ts(data.get("completed_at")) or datetime.utcnow(), new_exp, pid))
-        con.commit(); return "completed"
+        con.commit()
+        try:
+            from services.mini_agents import on_payment_completed
+            on_payment_completed(pid)
+        except Exception:
+            log.exception("agent qualification failed for mini payment %s", pid)
+        return "completed"
     except Exception:
         con.rollback(); raise
     finally:
