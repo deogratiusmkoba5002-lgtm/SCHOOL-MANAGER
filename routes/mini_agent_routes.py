@@ -83,6 +83,8 @@ def agent_signup():
     phone = normalize_phone(d.get("phone"))
     if not phone:
         return jsonify({"ok": False, "error": "Enter a valid mobile-money number, e.g. 0712345678. Rewards are paid to it."}), 400
+    if normalize_phone(d.get("phone_confirm")) != phone:
+        return jsonify({"ok": False, "error": "The two phone numbers do not match. Check the number rewards will be sent to."}), 400
     con = get_db(); cur = con.cursor()
     cur.execute("INSERT INTO mini_agents(username,password,full_name,phone) VALUES(%s,%s,%s,%s) "
                 "ON CONFLICT DO NOTHING RETURNING id", (u, hash_password(p), name, phone))

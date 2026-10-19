@@ -26,7 +26,8 @@ button.pri{background:#00897B;color:#fff}
   <h2 id="a-title">Agent sign in</h2>
   <input id="a-name" placeholder="Full name" style="display:none">
   <input id="a-user" placeholder="Username" autocomplete="username">
-  <input id="a-phone" type="tel" placeholder="Mobile-money number (rewards are paid here)" style="display:none">
+<input id="a-phone" type="tel" placeholder="Mobile-money number (rewards are paid here)" style="display:none">
+<input id="a-phone2" type="tel" placeholder="Confirm the number (type it again)" style="display:none">
   <input id="a-pass" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
   <input id="a-pass2" type="password" placeholder="Repeat password" style="display:none">
   <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I accept that rewards are paid only for genuine, verified paying parents, and that fraud forfeits all rewards.</label>
@@ -55,7 +56,7 @@ async function api(path,method="GET",body){
 }
 function setMode(m){mode=m;const s=m==="signup";
   $("a-title").textContent=s?"Become an agent":"Agent sign in";
-  ["a-name","a-phone","a-pass2"].forEach(i=>$(i).style.display=s?"block":"none");
+["a-name","a-phone","a-phone2","a-pass2"].forEach(i=>$(i).style.display=s?"block":"none");
   $("a-agree-l").style.display=s?"block":"none";
   $("a-btn").textContent=s?"Create account":"Sign in";
   $("a-sw").textContent=s?"Have an account? Sign in":"No account? Create one";}
@@ -63,7 +64,9 @@ async function doAuth(){
   const b={username:$("a-user").value,password:$("a-pass").value};
   if(mode==="signup"){
     if($("a-pass2").value!==b.password)return toast("Passwords do not match");
-    Object.assign(b,{full_name:$("a-name").value,phone:$("a-phone").value,confirm_password:$("a-pass2").value,agree_terms:$("a-agree").checked});
+    const ph=$("a-phone").value.replace(/\D/g,""), ph2=$("a-phone2").value.replace(/\D/g,"");
+    if(ph!==ph2)return toast("The two phone numbers do not match. Check the number rewards will be sent to.");
+    Object.assign(b,{full_name:$("a-name").value,phone:$("a-phone").value,phone_confirm:$("a-phone2").value,confirm_password:$("a-pass2").value,agree_terms:$("a-agree").checked});
   }
   const r=await api(mode==="login"?"/login":"/signup","POST",b);
   if(!r.ok)return toast(r.error||"Failed");
@@ -81,19 +84,22 @@ async function home(){
   else if(me.status==="suspended")st.innerHTML=`<b>Your agent account is suspended.</b><p class="muted">Contact DrDemic.</p>`;
   else{
     st.innerHTML=`<b>Your link</b><div style="display:flex;gap:8px;margin-top:8px"><input id="lnk" readonly value="${esc(me.link)}" style="flex:1;padding:9px;border:1.5px solid #B0BEC5;border-radius:8px"><button class="pri" onclick="copy()">Copy</button></div>
-      <p class="muted" style="margin-top:8px">Send it to teachers/admins. A school earns you a ⭐ when 10 different parents have paid.</p>`;
+      <p class="muted" style="margin-top:8px">Send it to teachers/admins. You earn a reward when 10 different parents of a school have paid.</p>`;
     dash();
   }
 }
 async function dash(){
   const d=await api("/dashboard");if(!d.ok)return;
+  const qualified=d.schools.filter(s=>s.reward_status).length;
+  const badge=s=>s==="PAID"?"Paid ✓":s==="PROCESSING"?"Sending to your phone…":s==="REJECTED"?"Rejected":s==="FAILED"?"Payout failed, we'll sort it":"Qualified, paid automatically soon";
   $("dash").innerHTML=`<div class="stats">
-    <div class="panel"><div class="big">⭐ ${d.stars}</div><div class="muted">Stars earned</div></div>
+    <div class="panel"><div class="big">${qualified}</div><div class="muted">Schools qualified</div></div>
     <div class="panel"><div class="big">${tzs(d.pending_tzs)}</div><div class="muted">Awaiting payout</div></div>
     <div class="panel"><div class="big">${tzs(d.paid_tzs)}</div><div class="muted">Paid out</div></div></div>
     <div class="panel"><b>My schools (${d.schools.length})</b>${d.schools.length?d.schools.map(s=>`
-      <div style="padding:10px 0;border-bottom:1px solid #E0F2F1"><div style="display:flex;justify-content:space-between"><b>${esc(s.label)}</b>
-        ${s.reward_status?`<span class="badge">${s.reward_status==="PAID"?"Paid ✓":s.reward_status==="PROCESSING"?"Sending to your phone…":s.reward_status==="REJECTED"?"Rejected":s.reward_status==="FAILED"?"Payout failed, we'll sort it":"⭐ Earned, paid automatically soon"}</span>`:""}
+      <div style="padding:10px 0;border-bottom:1px solid #E0F2F1">
+        <div style="display:flex;justify-content:space-between"><b>${esc(s.label)}</b>
+          ${s.reward_status?`<span class="badge">${badge(s.reward_status)}</span>`:""}</div>
         <div class="muted">${s.paid_parents} / ${d.required} paying parents</div>
         <div class="bar"><i style="width:${Math.round(s.paid_parents/d.required*100)}%"></i></div></div>`).join(""):"<p class='muted' style='margin-top:8px'>No schools yet. Share your link.</p>"}</div>
     <p class="muted">Rewards (${tzs(d.reward)} each) are sent automatically to your registered number shortly after a school qualifies.</p>`;

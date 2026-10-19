@@ -940,7 +940,7 @@ async function loadAgents(){
   const [a, r] = await Promise.all([saApi("/mini/agents?status="+document.getElementById("ag-status").value),
                                     saApi("/mini/agent_rewards?status="+document.getElementById("ar-status").value)]);
   document.getElementById("ar-list").innerHTML = r.ok && r.rewards.length ? r.rewards.map(w=>`
-    <div class="notice-item"><div class="notice-meta"><span class="notice-title">⭐ ${esc(w.agent)} — ${w.amount.toLocaleString()} TZS</span><span class="notice-date">${esc((w.created_at||"").slice(0,16))}</span></div>
+    <div class="notice-item"><div class="notice-meta"><span class="notice-title">${esc(w.agent)} — ${w.amount.toLocaleString()} TZS</span><span class="notice-date">${esc((w.created_at||"").slice(0,16))}</span></div>
       <div class="notice-body">Pay to: <b>${esc(w.agent_phone)}</b><br>School: ${esc(w.school||"(no name)")} · teacher login: ${esc(w.teacher)}<br>Paying phones (last 4): ${esc((w.payers_last4||[]).join(", "))}${w.note?"<br>Note: "+esc(w.note):""}</div>
       <span class="notice-target">${esc(w.status)}</span>
       ${["PENDING","FAILED"].includes(w.status)?`<div style="margin-top:8px;display:flex;gap:8px">
