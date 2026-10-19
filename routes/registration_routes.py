@@ -16,7 +16,8 @@ registration_bp = Blueprint("registration", __name__)
 
 
 @registration_bp.route("/api/register/school", methods=["POST"])
-@rate_limit("school_registration", max_attempts=5, window_minutes=60, by="ip")
+@rate_limit("school_registration_attempts", max_attempts=60, window_minutes=60, by="ip")
+@rate_limit("school_registration", max_attempts=10, window_minutes=60, by="ip", count_on="success")
 def api_register_school():
     data         = request.form
     school_name  = data.get("school_name","").strip()

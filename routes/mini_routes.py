@@ -59,7 +59,8 @@ def _token_reply(uid, username, role, must_change, tv):
 
 
 @mini_bp.route("/api/mini/auth/signup", methods=["POST"])
-@rate_limit("mini_signup", max_attempts=5, window_minutes=60, by="ip")
+@rate_limit("mini_signup_attempts", max_attempts=60, window_minutes=60, by="ip")
+@rate_limit("mini_signup", max_attempts=10, window_minutes=60, by="ip", count_on="success")
 def mini_signup():
     d = request.get_json(silent=True) or {}
     u, p = (d.get("username") or "").strip(), d.get("password") or ""
