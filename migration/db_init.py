@@ -857,6 +857,34 @@ def init_db():
         except Exception as e:
             cur.execute("ROLLBACK TO SAVEPOINT sp_agent_mig")
             print(f"agent rewards migration note: {e}")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mini_student_access (
+        owner_id   INTEGER NOT NULL REFERENCES mini_users(id) ON DELETE CASCADE,
+        name_norm  TEXT NOT NULL,
+        plan       TEXT NOT NULL DEFAULT '',
+        expires_at TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(owner_id, name_norm)
+    );
+    CREATE TABLE IF NOT EXISTS mini_student_payments (
+        id              SERIAL PRIMARY KEY,
+        owner_id        INTEGER NOT NULL REFERENCES mini_users(id) ON DELETE CASCADE,
+        name_norm       TEXT NOT NULL,
+        plan            TEXT NOT NULL,
+        duration_days   INTEGER NOT NULL,
+        amount          INTEGER NOT NULL,
+        reference       TEXT UNIQUE,
+        idempotency_key TEXT,
+        phone           TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        failure_reason  TEXT,
+        applied         INTEGER NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP DEFAULT NOW(),
+        paid_at         TIMESTAMP,
+        expires_at      TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_mini_student_pay_owner ON mini_student_payments(owner_id, name_norm);
+    """)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
     cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")
     if cur.fetchone()[0] == 0:

@@ -13,7 +13,7 @@ from core.security import hash_password, verify_password
 from services.access import normalize_phone, SnippeError
 from services import mini as M
 from services import mini_access as MA
-from services.mini_pdf import build_pdf
+from services.mini_pdf import build_pdf, build_student_pdf
 from services.mini_agents import attach_referral
 
 mini_bp = Blueprint("mini", __name__)
@@ -731,3 +731,119 @@ def mini_parent_reset(sid):
     if not row:
         return jsonify({"ok": False, "error": "This parent has not signed up yet, or is not yours"}), 404
     return jsonify({"ok": True, "temp_password": temp, "student": row[0]})
+
+# ── single-student result: admin view, PDF, pay on behalf of a parent ──
+def _student_card(s, rid=None, nn=None):
+    """Same shape as one 'child' in mini_parent_results (what the parent sees) plus sheet info."""
+    ranked = M.compute(s["data"], s["sheet_type"], s["grade_rules"])
+    of = sum(1 for r in ranked if r["average"] is not None)
+    subs = [x for x in s["data"]["subjects"] if x["name"]]
+    r = next((x for x in ranked if x["name"] and ((rid and x["id"] == rid) or (nn and M.norm(x["name"]) == nn))), None)
+    if not r:
+        return None
+
+    def pos(x):
+        v = r["marks"].get(x["id"])
+        if s["sheet_type"] != "marks" or v is None:
+            return None, None
+        col = [o["marks"][x["id"]] for o in ranked if o["name"] and o["marks"].get(x["id"]) is not None]
+        return 1 + sum(1 for m in col if m > v), len(col)
+    return {"student": r["name"], "total": r["total"], "average": r["average"], "position": r["position"],
+            "out_of": of, "grade": r["grade"], "points": r["points"], "division": r["division"],
+            "subjects": [{"name": x["name"], "score": r["marks"].get(x["id"]), "position": p, "out_of": n}
+                         for x in subs for p, n in [pos(x)]],
+            "exam": s["exam_name"], "school": s["school_name"], "cls": s["class_name"], "type": s["sheet_type"]}
+
+
+def _pdf_response(s, card):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT logo_data FROM mini_sheets WHERE id=%s", (s["id"],))
+    row = cur.fetchone(); cur.close(); con.close()
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", card["student"]).strip("_") or "student"
+    return send_file(build_student_pdf(card, row[0] if row else None), as_attachment=True,
+                     download_name=f"{name}_results.pdf", mimetype="application/pdf")
+
+
+def _owned_sheet(key):
+    con = get_db(); cur = con.cursor()
+    s = _sheet(cur, key); cur.close(); con.close()
+    return s if s and s["owner_id"] == g.mini_user["id"] else None
+
+
+@mini_bp.route("/api/mini/sheet/<key>/student/<rid>", methods=["GET"])
+@need_user("owner")
+def mini_student_view(key, rid):
+    s = _owned_sheet(key)
+    card = _student_card(s, rid=rid) if s else None
+    if not card:
+        return NOT_FOUND
+    return jsonify({"ok": True, "card": card, "plans": MA.plans_public()})
+
+
+@mini_bp.route("/api/mini/sheet/<key>/student/<rid>/report.pdf", methods=["GET"])
+@need_user("owner")
+def mini_student_pdf(key, rid):
+    s = _owned_sheet(key)
+    card = _student_card(s, rid=rid) if s else None
+    if not card:
+        return NOT_FOUND
+    if not MA.has_pdf_access(s["owner_id"], M.norm(card["student"])):
+        return jsonify({"ok": False, "error": "Parent subscription required", "code": "subscription_required"}), 402
+    return _pdf_response(s, card)
+
+
+@mini_bp.route("/api/mini/sheet/<key>/student/<rid>/pay", methods=["POST"])
+@need_user("owner")
+def mini_student_pay(key, rid):
+    d = request.get_json(silent=True) or {}
+    s = _owned_sheet(key)
+    row = next((r for r in s["data"]["rows"] if r["id"] == rid and r["name"]), None) if s else None
+    if not row:
+        return NOT_FOUND
+    con = get_db(); cur = con.cursor()
+    M.sync_students(cur, s["owner_id"], s["data"]["rows"])      # makes sure the student exists on the roster
+    con.commit(); cur.close(); con.close()
+    try:
+        res = MA.start_student_payment(s["owner_id"], M.norm(row["name"]), row["name"],
+                                       (d.get("plan") or "").strip(), d.get("phone") or "")
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except SnippeError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, **res})
+
+
+@mini_bp.route("/api/mini/student_pay/check/<int:pid>", methods=["POST"])
+@need_user("owner")
+def mini_student_pay_check(pid):
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT owner_id FROM mini_student_payments WHERE id=%s", (pid,))
+    row = cur.fetchone(); cur.close(); con.close()
+    if not row or row[0] != g.mini_user["id"]:
+        return jsonify({"ok": False, "error": "Payment not found"}), 404
+    return jsonify({"ok": True, "status": MA.finalize_student_payment(pid)})
+
+
+@mini_bp.route("/api/mini/parent/report.pdf", methods=["GET"])
+@need_user("parent")
+def mini_parent_pdf():
+    pub = (request.args.get("pub") or "").strip()
+    nn = M.norm(request.args.get("student"))
+    con = get_db(); cur = con.cursor()
+    cur.execute("SELECT share_key FROM mini_sheets WHERE pub_token=%s AND published=1", (pub,))
+    k = cur.fetchone()
+    s = _sheet(cur, k[0]) if k else None
+    mine = restricted = False
+    if s:
+        cur.execute("SELECT 1 FROM mini_students WHERE owner_id=%s AND name_norm=%s AND parent_user_id=%s",
+                    (s["owner_id"], nn, g.mini_user["id"]))
+        mine = cur.fetchone() is not None
+        cur.execute("SELECT 1 FROM mini_restrictions WHERE sheet_id=%s AND name_norm=%s", (s["id"], nn))
+        restricted = cur.fetchone() is not None
+    cur.close(); con.close()
+    card = _student_card(s, nn=nn) if s and mine and not restricted else None
+    if not card:
+        return NOT_FOUND
+    if not MA.has_pdf_access(s["owner_id"], nn):
+        return jsonify({"ok": False, "error": "Subscription required", "code": "subscription_required"}), 402
+    return _pdf_response(s, card)

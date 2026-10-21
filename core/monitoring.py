@@ -32,7 +32,7 @@ MAX_EVENTS_PER_GROUP = 25                      # newest N occurrences kept per g
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Unexpected failures in these endpoints involve money -> always CRITICAL.
-PAYMENT_ENDPOINTS = {"access.api_access_pay", "access.api_access_check", "access.api_access_webhook", "mini.mini_access_pay", "mini.mini_access_check"}
+PAYMENT_ENDPOINTS = {"access.api_access_pay", "access.api_access_check", "access.api_access_webhook", "mini.mini_access_pay", "mini.mini_access_check","mini.mini_student_pay","mini.mini_student_pay_check"}
 
 OPERATIONS = [
     ("pdf.", "PDF generation"), ("student_import.", "Student import"),

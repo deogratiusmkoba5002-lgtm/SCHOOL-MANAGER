@@ -62,7 +62,8 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 #grid tbody tr:focus-within td:not(.hl){background:#FFF9C4!important}
 #grid tbody tr:focus-within td input:focus{background:#FFEE58}
 #grid tbody tr:focus-within td:nth-child(2) input{font-weight:700}
-
+#grid td:nth-child(2) input{padding-right:34px}
+#grid td:nth-child(2) .vw{position:absolute;right:3px;top:50%;transform:translateY(-50%);padding:1px 7px;border:none;background:#E0F2F1;border-radius:6px;font-size:.85rem}
 @media(max-width:600px){
   #grid td:nth-child(2) input{min-width:120px}
   #grid th:nth-child(2),#grid td:nth-child(2){min-width:120px}
@@ -79,6 +80,45 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
 .rc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .rc-exam{font-size:1.2rem;font-weight:800;color:#00574B;line-height:1.25}
 .rc-stu{font-size:1rem;font-weight:600;margin:6px 0 2px}
+/* ── Mobile: calmer toolbar + compact grid ── */
+@media(max-width:700px){
+  .top{padding:8px 12px;gap:8px;font-size:.8rem}
+  .head{padding:8px 12px;gap:10px}
+  .logo{width:48px;height:48px;font-size:1.4rem}
+  .big{width:100%;font-size:1rem}
+  .big.sm{font-size:.85rem}
+
+  /* toolbar: one scrollable row instead of a wall of buttons */
+  .bar{flex-wrap:nowrap;overflow-x:auto;gap:5px;padding:6px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .bar::-webkit-scrollbar{display:none}
+  .bar button,.bar select{flex:0 0 auto;padding:4px 9px;font-size:.72rem;border-width:1px;border-radius:6px;font-weight:600;white-space:nowrap}
+  .bar .sp{display:none}
+
+  /* grid */
+  .grid-wrap{padding:6px;max-height:calc(100vh - 210px)}
+  table{font-size:11px}
+  th{padding:4px 5px;font-size:.68rem}
+  th input.h{width:62px;font-size:.68rem}
+  th button,th .x{padding:0 3px;font-size:.7rem}
+  th button:not(.x){padding:3px 6px;font-size:.66rem;border-width:1px}
+  td input{padding:5px 4px;font-size:11px;min-width:46px}
+  td input.num{width:46px}
+  #grid td:nth-child(2) input{min-width:100px}
+  #grid th:nth-child(2),#grid td:nth-child(2){min-width:100px;left:34px}
+  #grid th:nth-child(1),#grid td:nth-child(1){min-width:34px;width:34px;max-width:34px}
+  #grid td:nth-child(2) .vw{font-size:.7rem;padding:0 5px}
+  td.sn{font-size:.68rem}
+  #grid td[id]{padding:4px;font-size:.72rem}
+
+  /* analysis strip */
+  #analysis{padding:6px 10px 0}
+  #analysis th,#analysis td{padding:4px 9px;font-size:.72rem}
+
+  /* history bar + modals */
+  #hbar{padding:8px 12px;font-size:.78rem}
+  .modal>div{padding:14px;font-size:.85rem}
+  .modal button,.modal select{padding:5px 10px;font-size:.78rem}
+}
 </style></head><body>
 <div class="top"><a href="/" id="home">Home</a><a href="/mini?all=1" id="back">My sheets</a>
 <a href="#" id="myres" style="display:none" onclick="showAll();return false">My results</a>
@@ -201,6 +241,19 @@ table.res{width:100%;margin:8px 0 18px}.res td,.res th{padding:7px 10px}.res th{
   <div class="grid-wrap"><table id="grid"></table></div>
   <div id="hbar"><div style="flex:1"><b id="hbar-t"></b><div id="hbar-x"></div></div><button onclick="exitChanges()">Exit history view</button></div>
 </div>
+
+<div class="modal" id="m-stu"><div style="width:min(640px,94vw)">
+  <div class="row"><button class="pri" onclick="stuPdf()">⬇ PDF</button><span class="sp"></span><button onclick="closeStu()">Close</button></div>
+  <div id="stu-body"></div>
+</div></div>
+<div class="modal" id="m-pay"><div>
+  <h3>Pay for <span id="pay-name"></span></h3>
+  <p class="muted" style="margin:6px 0 10px">Unlocks the PDF for this student. Any mobile-money phone works, no smartphone needed. A payment prompt is sent to the number below and the PIN is entered on that phone.</p>
+  <input id="pay-phone2" type="tel" placeholder="Number that will pay, e.g. 0712345678" style="width:100%;padding:10px">
+  <div id="pay-plans" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"></div>
+  <div id="pay-st" class="muted" style="margin-top:10px"></div>
+  <div style="text-align:right;margin-top:10px"><button onclick="closePay()">Close</button></div>
+</div></div>
 
 <div class="modal" id="m-grades"><div>
   <h3>Edit Grades</h3><p class="muted" style="margin:6px 0 10px">Boundaries drive every grade on the sheet. Points: top grade = 1, next = 2 and so on. Divisions use the NECTA bands.</p>
@@ -344,7 +397,7 @@ function buildCards(r){
   const out=[];
   if(!r.ok)return out;
   r.results.forEach(s=>s.children.forEach(k=>{
-    const c={...k,exam:s.exam_name,school:s.school_name,cls:s.class_name,type:s.sheet_type,at:s.published_at,locked:!!s.locked,cid:++CID};
+    const c={...k,exam:s.exam_name,school:s.school_name,cls:s.class_name,type:s.sheet_type,at:s.published_at,locked:!!s.locked,token:s.token,cid:++CID};
     CMAP[c.cid]=c;out.push(c);}));
   return out;
 }
@@ -374,8 +427,8 @@ function openCard(cid,from){
   if(c.locked){
     if(confirm("These results were published while you had no active subscription.\n\nSubscribe to view them?"))showSub();
     return;
-  }
-  resBack=from||"parent";$("res-body").innerHTML=detailHTML(c);show("res");
+  }resBack=from||"parent";$("res-body").innerHTML=(c.restricted?"":pdfBtnHTML(`pdfParent(${cid})`))+detailHTML(c);show("res");
+  
 }
 async function showAll(){
   show("all");$("allcards").innerHTML="<p class='muted'>Loading…</p>";
@@ -472,7 +525,7 @@ function tailCells(i,r,c){const t=S.sheet_type;
 function updTail(i){const c=calc(S.rows[i]),set=(p,v)=>{const e=$(p+i);if(e)e.textContent=v??""};
   set("t",c.total);set("a",c.avg);set("g",c.avg==null?"":gradeFor(c.avg));set("q",c.points);set("d",c.division);renderAnalysis();}
 function rowHTML(i){const r=S.rows[i],c=calc(r);
-  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}"></td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
+  return `<tr><td class="sn">${i+1}</td><td><input data-r="${i}" data-c="0" value="${esc(r.name)}">${S.is_owner?`<button class="vw" title="View result" onclick="viewStudent(${i})">👁</button>`:""}</td><td class="phc" data-r="${i}">${phoneInner(i)}</td>`
   +S.subjects.map((s,k)=>`<td><input class="num" data-r="${i}" data-c="${k+2}" value="${esc(cellVal(r,s))}"></td>`).join("")
   +`<td></td>`+tailCells(i,r,c)+`</tr>`;}
 function renderGrid(){
@@ -880,6 +933,72 @@ function addEyes(){
   });
 }
 addEyes();
+
+// ── student result view, PDF, pay on behalf ──
+let PCARD=null, PAYCTX=null;
+const pdfBtnHTML=fn=>`<div class="row"><button class="pri" onclick="${fn}">⬇ PDF</button></div>`;
+function closeStu(){$("m-stu").style.display="none";}
+function closePay(){clearInterval(payTimer);$("m-pay").style.display="none";}
+
+async function fetchPdf(path,fname){
+  const r=await fetch("/api/mini"+path,{headers:{Authorization:"Bearer "+token}});
+  if(r.status===402)return {need:true};
+  if(!r.ok){let j={};try{j=await r.json()}catch(e){}toast(j.error||"Could not create PDF");return {};}
+  const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download=fname||"results.pdf";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  return {ok:true};
+}
+
+async function viewStudent(i){
+  const row=S.rows[i]; if(!row||!row.name.trim())return toast("Type the student's name first");
+  const rid=row.id;
+  if(dirty&&!(await saveSheet()))return;               // results are read from the saved sheet
+  const d=await api(`/sheet/${S.key}/student/${rid}`);
+  if(!d.ok)return toast(d.error||"Could not load result");
+  PCARD={rid,plans:d.plans,card:d.card};
+  $("stu-body").innerHTML=detailHTML(d.card);
+  $("m-stu").style.display="flex";
+}
+async function stuPdf(){
+  const c=PCARD; if(!c)return;
+  const x=await fetchPdf(`/sheet/${S.key}/student/${c.rid}/report.pdf`,c.card.student+"_results.pdf");
+  if(x.need)openPay({kind:"owner",rid:c.rid,plans:c.plans,name:c.card.student,after:stuPdf});
+}
+async function pdfParent(cid){
+  const c=CMAP[cid]; if(!c)return;
+  const x=await fetchPdf(`/parent/report.pdf?pub=${encodeURIComponent(c.token||"")}&student=${encodeURIComponent(c.student)}`,c.student+"_results.pdf");
+  if(x.need){const st=await api("/access/status");
+    openPay({kind:"parent",plans:st.plans||[],name:c.student,after:()=>pdfParent(cid)});}
+}
+
+function openPay(ctx){
+  PAYCTX=ctx;clearInterval(payTimer);
+  $("pay-name").textContent=ctx.name||"";$("pay-phone2").value="";$("pay-st").textContent="";
+  $("pay-plans").innerHTML=ctx.plans.map(p=>`<button class="pri payb2" style="flex:1;min-width:140px;padding:12px" onclick="payGo('${p.key}')">${esc(p.label)}<br>${tzs(p.amount)}</button>`).join("");
+  $("m-pay").style.display="flex";
+}
+async function payGo(plan){
+  const phone=$("pay-phone2").value.trim();
+  if(!phone)return toast("Enter the mobile-money number that will pay");
+  const c=PAYCTX, btns=document.querySelectorAll(".payb2"), on=v=>btns.forEach(b=>b.disabled=!v);
+  on(false);
+  const r=c.kind==="owner"?await api(`/sheet/${S.key}/student/${c.rid}/pay`,"POST",{plan,phone})
+                          :await api("/access/pay","POST",{plan,phone});
+  if(!r.ok){on(true);return toast(r.error||"Could not start payment");}
+  $("pay-st").textContent="⏳ Payment prompt sent. Approve it on that phone with the mobile-money PIN…";
+  clearInterval(payTimer);let tries=0;
+  payTimer=setInterval(async()=>{
+    tries++;
+    const q=await api(c.kind==="owner"?`/student_pay/check/${r.payment_id}`:`/access/check/${r.payment_id}`,"POST",{});
+    if(!q.ok)return;
+    if(q.status==="completed"){clearInterval(payTimer);closePay();toast("Payment confirmed");if(c.after)c.after();}
+    else if(["failed","voided","expired","amount_mismatch"].includes(q.status)){
+      clearInterval(payTimer);on(true);
+      $("pay-st").textContent=q.status==="amount_mismatch"?"Amount didn't match. Contact support.":"Payment "+q.status+". You can try again.";}
+    else if(tries>=36){clearInterval(payTimer);on(true);
+      $("pay-st").textContent="Still waiting. If it was approved, close this and press PDF again in a minute.";}
+  },5000);
+}
 
 // ── boot ──
 (async function(){

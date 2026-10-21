@@ -144,3 +144,62 @@ def build_pdf(meta, ranked, logo_b64=None):
     doc.build(story)
     buf.seek(0)
     return buf
+
+def build_student_pdf(card, logo_b64=None):
+    """One student's result, laid out like what the parent sees on screen."""
+    H_BG, ODD = colors.HexColor("#1A6FA8"), colors.HexColor("#E8F4FC")
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=1.8 * cm, leftMargin=1.8 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    st = getSampleStyleSheet()
+    t_s = ParagraphStyle("T", parent=st["Title"], fontSize=16, textColor=H_BG, spaceAfter=2, alignment=1)
+    s_s = ParagraphStyle("S", parent=st["Normal"], fontSize=9, alignment=1, spaceAfter=4)
+    story = []
+    school = _esc(card["school"] or "School")
+    logo = _logo(logo_b64)
+    if logo:
+        box = Table([[logo, [Paragraph(f"<b>{school}</b>", t_s)]]], colWidths=[2.4 * cm, None])
+        box.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(box)
+    else:
+        story.append(Paragraph(school, t_s))
+    story.append(Paragraph("<b>STUDENT RESULTS</b>", s_s))
+    story.append(Spacer(1, 0.3 * cm))
+
+    info = Table([["Name:", card["student"], "Class:", card["cls"] or "-"],
+                  ["Exam:", card["exam"] or "-", "", ""]], colWidths=[2.2 * cm, 7 * cm, 2.2 * cm, 5 * cm])
+    info.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                              ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9)]))
+    story += [info, Spacer(1, 0.4 * cm)]
+
+    marks = card["type"] == "marks"
+    data = [["Subject", "Score"] + (["Position"] if marks else [])]
+    for x in card["subjects"]:
+        line = [x["name"], "-" if x["score"] is None else f"{x['score']:g}"]
+        if marks:
+            line.append(f"{x['position']}/{x['out_of']}" if x["position"] else "-")
+        data.append(line)
+    cw = [8 * cm, 3 * cm] + ([3 * cm] if marks else [])
+    tbl = Table(data, colWidths=cw, repeatRows=1)
+    tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), H_BG), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+                             ("ALIGN", (1, 0), (-1, -1), "CENTER"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [ODD, colors.white]),
+                             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#A0C4E0")),
+                             ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    story += [tbl, Spacer(1, 0.4 * cm)]
+
+    v = lambda x: "-" if x is None else (f"{x:g}" if isinstance(x, float) else str(x))
+    sm = [["Total", v(card["total"]), "Average", v(card["average"]), "Grade", card["grade"] or "-"]]
+    if card.get("position") is not None:
+        sm[0] += ["Position", f"{card['position']}/{card['out_of']}"]
+    if card.get("division"):
+        sm.append(["Points", v(card["points"]), "Division", card["division"], "", ""])
+    stbl = Table(sm)
+    stbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), H_BG), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                              ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+                              ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                              ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    story.append(stbl)
+    doc.build(story)
+    buf.seek(0)
+    return buf
