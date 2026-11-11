@@ -99,3 +99,12 @@ MINI_AGENT_PAYOUT_ENABLED         = os.environ.get("MINI_AGENT_PAYOUT_ENABLED", 
 MINI_AGENT_PAYOUT_HOLD_HOURS      = _price("MINI_AGENT_PAYOUT_HOLD_HOURS", 48)
 MINI_AGENT_PAYOUT_AGENT_DAILY_TZS = _price("MINI_AGENT_PAYOUT_AGENT_DAILY_TZS", 100000)
 MINI_AGENT_PAYOUT_GLOBAL_DAILY_TZS = _price("MINI_AGENT_PAYOUT_GLOBAL_DAILY_TZS", 300000)
+# ── DrDemic Tuition ──
+TUITION_FEE_PERCENT  = _price("TUITION_FEE_PERCENT", 10)    # platform commission, recorded per payment
+TUITION_MAX_STUDENTS = _price("TUITION_MAX_STUDENTS", 15)
+TUITION_MAX_VIDEO_MB = _price("TUITION_MAX_VIDEO_MB", 700)
+TUITION_VIDEO_DIR    = os.path.join(BASE_DIR, "storage", "tuition_videos")
+TUITION_FILE_DIR     = os.path.join(BASE_DIR, "storage", "tuition_files")
+TUITION_USE_XACCEL   = os.environ.get("TUITION_USE_XACCEL", "0") == "1"
+os.makedirs(TUITION_VIDEO_DIR, exist_ok=True)
+os.makedirs(TUITION_FILE_DIR, exist_ok=True)

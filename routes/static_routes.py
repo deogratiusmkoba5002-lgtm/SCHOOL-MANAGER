@@ -25,6 +25,9 @@ def app_page(): return send_from_directory(BASE_DIR, "index.html")
 @static_bp.route("/mini")
 def mini_page(): return send_from_directory(BASE_DIR, "mini.html")
 
+@static_bp.route("/tuition")
+def tuition_page(): return send_from_directory(BASE_DIR, "tuition.html")
+
 @static_bp.route("/exam")
 def exam_page(): return send_from_directory(BASE_DIR, "exam.html")
 

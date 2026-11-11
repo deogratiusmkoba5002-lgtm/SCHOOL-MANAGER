@@ -885,6 +885,115 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_mini_student_pay_owner ON mini_student_payments(owner_id, name_norm);
     """)
+    # ── DRDEMIC TUITION ──────────────────────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS tuition_users (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        full_name TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        token_version INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        CHECK (role IN ('teacher','student'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_users_username ON tuition_users (LOWER(username));
+    CREATE TABLE IF NOT EXISTS tuition_courses (
+        id SERIAL PRIMARY KEY,
+        teacher_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+        subject TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        price_tzs INTEGER NOT NULL DEFAULT 0,
+        access_days INTEGER NOT NULL DEFAULT 30,
+        max_students INTEGER NOT NULL DEFAULT 15,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS tuition_enrollments (
+        course_id INTEGER NOT NULL REFERENCES tuition_courses(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(course_id, student_id)
+    );
+    CREATE TABLE IF NOT EXISTS tuition_sessions (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES tuition_courses(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        scheduled_at TIMESTAMP NOT NULL,
+        video_file TEXT,
+        video_size BIGINT,
+        video_seconds INTEGER,
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        teacher_available INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMP,
+        ended_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        CHECK (status IN ('scheduled','active','ended'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_tuition_sessions_course ON tuition_sessions(course_id, scheduled_at);
+    CREATE TABLE IF NOT EXISTS tuition_messages (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES tuition_sessions(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL,
+        sender_role TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        video_ts INTEGER,
+        image_file TEXT,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_tuition_msgs ON tuition_messages(session_id, student_id, id);
+    CREATE TABLE IF NOT EXISTS tuition_assignments (
+        id SERIAL PRIMARY KEY,
+        course_id INTEGER NOT NULL REFERENCES tuition_courses(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        instructions TEXT NOT NULL DEFAULT '',
+        due_at TIMESTAMP,
+        max_score INTEGER NOT NULL DEFAULT 100,
+        file_path TEXT,
+        file_name TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS tuition_submissions (
+        id SERIAL PRIMARY KEY,
+        assignment_id INTEGER NOT NULL REFERENCES tuition_assignments(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+        body TEXT NOT NULL DEFAULT '',
+        file_path TEXT,
+        file_name TEXT,
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        score REAL,
+        feedback TEXT NOT NULL DEFAULT '',
+        marked_at TIMESTAMP,
+        UNIQUE(assignment_id, student_id)
+    );
+    CREATE TABLE IF NOT EXISTS tuition_access (
+        student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+        course_id INTEGER NOT NULL REFERENCES tuition_courses(id) ON DELETE CASCADE,
+        expires_at TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY(student_id, course_id)
+    );
+    CREATE TABLE IF NOT EXISTS tuition_payments (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+        course_id INTEGER NOT NULL REFERENCES tuition_courses(id) ON DELETE CASCADE,
+        amount INTEGER NOT NULL,
+        fee_tzs INTEGER NOT NULL DEFAULT 0,
+        duration_days INTEGER NOT NULL,
+        reference TEXT UNIQUE,
+        idempotency_key TEXT,
+        phone TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        failure_reason TEXT,
+        applied INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        paid_at TIMESTAMP,
+        expires_at TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tuition_payments_student ON tuition_payments(student_id, course_id);
+    """)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
     cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")
     if cur.fetchone()[0] == 0:

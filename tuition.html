@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DrDemic Tuition</title><meta name="robots" content="noindex"/>
+<link rel="icon" type="image/png" href="/DRDEMIC-LOGO.png"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F3FA;color:#0D1B2A;font-size:14px}
+.top{background:#283593;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
+.top a{color:#C5CAE9;text-decoration:none}.sp{flex:1}
+button,select{font:inherit;padding:7px 12px;border-radius:8px;border:1.5px solid #3949AB;background:#fff;color:#3949AB;cursor:pointer;font-weight:600}
+button.pri{background:#3949AB;color:#fff}button.red{border-color:#C62828;color:#C62828}button:disabled{opacity:.5}
+input,textarea{font:inherit;padding:9px;border:1.5px solid #B0BEC5;border-radius:8px;width:100%}
+.box{max-width:400px;margin:50px auto;background:#fff;padding:26px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1);display:none}
+.box input{margin:7px 0}
+.wrap{max-width:900px;margin:20px auto;padding:0 14px;display:none}
+.panel{background:#fff;border-radius:12px;padding:16px;box-shadow:0 3px 14px rgba(57,73,171,.13);margin-bottom:14px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}.row>input,.row>select{width:auto;flex:1;min-width:120px}
+.muted{color:#546E7A;font-size:.85rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.badge{background:#E8EAF6;color:#283593;border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:700}
+.badge.on{background:#C8E6C9;color:#1B5E20}.badge.end{background:#ECEFF1;color:#546E7A}.badge.warn{background:#FFF3E0;color:#E65100}
+.tabs{display:flex;gap:4px;background:#E8EAF6;padding:4px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button{border:none;background:none}.tabs button.on{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.msg{padding:8px 10px;border-radius:8px;margin-bottom:6px;background:#F5F5F5}.msg.me{background:#E8EAF6}
+.alert{background:#FFF3E0;border-left:4px solid #FF6D00;padding:10px 14px;border-radius:8px;margin-bottom:12px}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;padding:8px;text-align:left}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#283593;color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:50}
+.stu{padding:8px;border-bottom:1px solid #E8EAF6;cursor:pointer}.stu:hover{background:#F1F3FA}
+</style></head><body>
+<div class="top"><b>DrDemic Tuition</b><a href="/">Home</a><span class="sp"></span><span id="who"></span><button id="out" onclick="logout()" style="display:none">Sign out</button></div>
+<div id="toast"></div>
+
+<div id="v-auth" class="box">
+  <h2 id="a-title">Sign in</h2>
+  <p class="muted" id="a-hint">Students: use the username and code your teacher gave you.</p>
+  <input id="a-name" placeholder="Full name" style="display:none">
+  <input id="a-user" placeholder="Username" autocomplete="username">
+  <input id="a-phone" type="tel" placeholder="Your phone number" style="display:none">
+  <input id="a-pass" type="password" placeholder="Password" autocomplete="current-password">
+  <input id="a-pass2" type="password" placeholder="Repeat password" style="display:none">
+  <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms</a>.</label>
+  <button class="pri" style="width:100%;margin-top:6px" id="a-btn" onclick="doAuth()">Sign in</button>
+  <p class="muted" style="margin-top:12px"><a href="#" id="a-sw" onclick="setMode(mode==='login'?'signup':'login');return false">Teacher without an account? Create one</a></p>
+</div>
+
+<div id="v-pw" class="box">
+  <h2>Set your own password</h2>
+  <input id="op" type="password" placeholder="Current password (from your teacher)">
+  <input id="np" type="password" placeholder="New password (6+ characters)">
+  <button class="pri" style="width:100%" onclick="changePw()">Save</button>
+</div>
+
+<div id="v-home" class="wrap"></div>
+<div id="v-course" class="wrap"></div>
+<div id="v-room" class="wrap"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const fmtT=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+const fdt=i=>i?new Date(i).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):"—";
+const tzs=n=>Number(n).toLocaleString("en-US")+" TZS";
+let token=localStorage.getItem("tu_token"), me=JSON.parse(localStorage.getItem("tu_me")||"null");
+let mode="login", COURSES={}, CUR=null, ROOM=null, timers=[];
+
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",3500);}
+function clearTimers(){timers.forEach(clearInterval);timers=[];}
+function show(v){clearTimers();if(ROOM&&ROOM.url)URL.revokeObjectURL(ROOM.url);ROOM=null;
+  ["auth","pw","home","course","room"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+  $("out").style.display=me?"inline-block":"none";$("who").textContent=me?(me.full_name||me.username):"";}
+function logout(){localStorage.removeItem("tu_token");localStorage.removeItem("tu_me");location.href="/tuition";}
+async function api(path,method="GET",body,isForm){
+  const h={};if(token)h.Authorization="Bearer "+token;const o={method,headers:h};
+  if(body){if(isForm)o.body=body;else{h["Content-Type"]="application/json";o.body=JSON.stringify(body);}}
+  let j;try{const r=await fetch("/api/tuition"+path,o);try{j=await r.json()}catch(e){j={ok:false,error:"Server error"}}j._s=r.status;}
+  catch(e){j={ok:false,error:"No internet connection",_s:0};}
+  if(j._s===401&&token&&!path.startsWith("/auth/login"))logout();
+  return j;
+}
+const U=(p)=>`/api/tuition${p}${p.includes("?")?"&":"?"}token=${encodeURIComponent(token)}`;
+
+// ── auth ──
+function setMode(m){mode=m;const s=m==="signup";
+  $("a-title").textContent=s?"Create teacher account":"Sign in";
+  ["a-name","a-phone","a-pass2"].forEach(i=>$(i).style.display=s?"block":"none");
+  $("a-agree-l").style.display=s?"block":"none";$("a-hint").style.display=s?"none":"block";
+  $("a-btn").textContent=s?"Create account":"Sign in";
+  $("a-sw").textContent=s?"Have an account? Sign in":"Teacher without an account? Create one";}
+async function doAuth(){
+  const b={username:$("a-user").value,password:$("a-pass").value};
+  if(mode==="signup"){
+    if($("a-pass2").value!==b.password)return toast("Passwords do not match");
+    if(!$("a-agree").checked)return toast("Please accept the Privacy Policy and Terms");
+    Object.assign(b,{full_name:$("a-name").value,phone:$("a-phone").value,confirm_password:$("a-pass2").value,agree_terms:true});
+  }
+  const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",b);
+  if(!r.ok)return toast(r.error||"Failed");
+  setAuth(r);boot();
+}
+function setAuth(r){token=r.token;me={username:r.username,role:r.role,full_name:r.full_name,must_change:!!r.must_change_password};
+  localStorage.setItem("tu_token",token);localStorage.setItem("tu_me",JSON.stringify(me));}
+async function changePw(){const r=await api("/auth/change_password","POST",{old_password:$("op").value,new_password:$("np").value});
+  if(!r.ok)return toast(r.error);setAuth(r);toast("Password updated");boot();}
+
+// ── home ──
+async function loadHome(){
+  show("home");const T=me.role==="teacher";
+  const r=await api("/courses");COURSES={};(r.courses||[]).forEach(c=>COURSES[c.id]=c);
+  const form=T?`<div class="panel"><b>New course</b><div class="row" style="margin-top:8px">
+    <input id="nc-subj" placeholder="Subject (e.g. Physics)"><input id="nc-title" placeholder="Title (optional, e.g. Form 4 Physics)">
+    <input id="nc-price" type="number" placeholder="Price TZS (0 = free)" value="0"><input id="nc-days" type="number" placeholder="Access days" value="30">
+    <input id="nc-max" type="number" placeholder="Max students" value="15"><button class="pri" onclick="newCourse()">Create</button></div></div>`:"";
+  const cards=Object.values(COURSES).map(c=>T?`<div class="panel"><b>${esc(c.subject)}</b> <span class="muted">${esc(c.title)}</span>
+      <div class="muted" style="margin:6px 0">${c.students}/${c.max_students} students · ${c.sessions} sessions · ${c.price?tzs(c.price)+" / "+c.access_days+" days":"Free"}</div>
+      <button class="pri" onclick="openCourse(${c.id})">Open</button></div>`
+    :`<div class="panel"><b>${esc(c.subject)}</b> <span class="muted">${esc(c.title)}</span>
+      <div class="muted" style="margin:6px 0">Teacher: ${esc(c.teacher)}</div>
+      ${c.active?`<span class="badge on">Access active${c.expires_at?" until "+new Date(c.expires_at).toLocaleDateString():""}</span><div style="margin-top:8px"><button class="pri" onclick="openCourse(${c.id})">Open</button></div>`
+      :`<span class="badge warn">${tzs(c.price)} for ${c.access_days} days</span>
+        <div class="row" style="margin-top:8px"><input id="pp-${c.id}" type="tel" placeholder="Mobile-money number"><button class="pri" onclick="payCourse(${c.id})">Pay</button></div>
+        <div id="ps-${c.id}" class="muted"></div><button onclick="openCourse(${c.id})" style="margin-top:6px">View sessions</button>`}</div>`).join("");
+  $("v-home").innerHTML=`<div id="due"></div>${form}<h2 style="margin-bottom:10px">${T?"My courses":"My lessons"}</h2><div class="cards">${cards||"<p class='muted'>Nothing here yet.</p>"}</div>`;
+  if(T){checkDue();timers.push(setInterval(checkDue,30000));}
+}
+async function checkDue(){const r=await api("/due");if(!r.ok)return;const el=$("due");if(!el)return;
+  el.innerHTML=r.due.map(d=>`<div class="alert"><b>${esc(d.subject)}: ${esc(d.title)}</b> starts at ${fdt(d.scheduled_at)}.
+    <button class="pri" onclick="goAvail(${d.course_id},${d.id})">Go available</button></div>`).join("");}
+async function goAvail(cid,sid){await api(`/sessions/${sid}/availability`,"POST",{available:true});CUR=COURSES[cid];openRoom(sid);}
+async function newCourse(){
+  const r=await api("/courses","POST",{subject:$("nc-subj").value,title:$("nc-title").value,price:$("nc-price").value,access_days:$("nc-days").value,max_students:$("nc-max").value});
+  if(!r.ok)return toast(r.error);toast("Course created");loadHome();}
+async function payCourse(cid){
+  const phone=$("pp-"+cid).value.trim();if(!phone)return toast("Enter the mobile-money number that will pay");
+  const r=await api("/pay","POST",{course_id:cid,phone});if(!r.ok)return toast(r.error);
+  toast("Approve the payment on your phone");let n=0;const el=$("ps-"+cid);el.textContent="⏳ Waiting for approval…";
+  const t=setInterval(async()=>{n++;const c=await api("/pay/check/"+r.payment_id,"POST",{});
+    if(c.status==="completed"){clearInterval(t);toast("Payment confirmed!");loadHome();}
+    else if(["failed","voided","expired","amount_mismatch"].includes(c.status)){clearInterval(t);el.textContent="Payment "+c.status+". You can try again.";}
+    else if(n>=36){clearInterval(t);el.textContent="Still waiting. Reopen this page in a minute.";}},5000);timers.push(t);}
+
+// ── course ──
+function openCourse(id){CUR=COURSES[id]||CUR;show("course");
+  $("v-course").innerHTML=`<div class="row"><button onclick="loadHome()">← Back</button><h2>${esc(CUR.subject)} <span class="muted">${esc(CUR.title||"")}</span></h2></div>
+  <div class="tabs" id="tabs"></div><div id="tab"></div>`;
+  const T=me.role==="teacher",names=[["sessions","Sessions"],...(T?[["students","Students"]]:[]),["assign","Assignments"],["progress","Progress"]];
+  $("tabs").innerHTML=names.map(([k,l])=>`<button id="tb-${k}" onclick="tab('${k}')">${l}</button>`).join("");tab("sessions");}
+function tab(k){clearTimers();document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.id==="tb-"+k));
+  ({sessions:tabSessions,students:tabStudents,assign:tabAssign,progress:tabProgress})[k]();}
+const stBadge=s=>s.status==="active"?`<span class="badge on">Live</span>`:s.status==="ended"?`<span class="badge end">Ended</span>`:`<span class="badge">Scheduled</span>`;
+
+async function tabSessions(){
+  const T=me.role==="teacher";const r=await api(`/courses/${CUR.id}/sessions`);
+  const form=T?`<div class="panel"><b>Schedule a session</b><div class="row" style="margin-top:8px"><input id="ns-title" placeholder="Lesson title">
+    <input id="ns-when" type="datetime-local"><button class="pri" onclick="newSession()">Add</button></div></div>`:"";
+  const rows=(r.sessions||[]).map(s=>{
+    const soon=T&&s.status==="scheduled"&&!s.teacher_available&&new Date(s.scheduled_at)-Date.now()<15*60000;
+    return `<div class="panel" ${soon?'style="border-left:4px solid #FF6D00"':""}><div class="row"><b>${esc(s.title)}</b> ${stBadge(s)}
+      <span class="muted">${fdt(s.scheduled_at)}</span><span class="sp"></span>${s.unread?`<span class="badge warn">${s.unread} new</span>`:""}</div>
+      <div class="muted" style="margin-bottom:8px">${s.has_video?`Video ${fmtT(s.video_seconds)} · ${(s.video_size/1048576).toFixed(0)} MB`:"No video yet"}
+        ${s.teacher_available?" · Teacher available":""}</div>
+      <div class="row">${T?`${s.status!=="ended"?`<label class="muted">Video: <input type="file" accept="video/*" style="display:none" onchange="upVideo(${s.id},this)"><button onclick="this.previousElementSibling.click()">${s.has_video?"Replace":"Upload"}</button></label>`:""}
+        <button onclick="openRoom(${s.id})" class="pri">${s.status==="ended"?"View":"Open room"}</button>`
+        :`<button class="pri" onclick="openRoom(${s.id})" ${r.paid?"":"disabled"}>${r.paid?"Enter session":"Pay to enter"}</button>`}</div>
+      <div id="up-${s.id}" class="muted"></div></div>`}).join("");
+  $("tab").innerHTML=form+(rows||"<p class='muted'>No sessions yet.</p>");
+}
+async function newSession(){const w=$("ns-when").value;if(!w)return toast("Pick the start time");
+  const r=await api(`/courses/${CUR.id}/sessions`,"POST",{title:$("ns-title").value,scheduled_at:new Date(w).toISOString()});
+  if(!r.ok)return toast(r.error);tabSessions();}
+function vidSeconds(f){return new Promise(res=>{const v=document.createElement("video");v.preload="metadata";
+  v.onloadedmetadata=()=>{URL.revokeObjectURL(v.src);res(Math.ceil(v.duration))};v.onerror=()=>res(0);v.src=URL.createObjectURL(f);});}
+async function upVideo(sid,inp){
+  const f=inp.files[0];if(!f)return;const el=$("up-"+sid);
+  const secs=await vidSeconds(f);
+  if(!secs)return toast("Could not read this video. Use an MP4 (H.264).");
+  if(secs>40*60)return toast("This video is "+fmtT(secs)+" long. The maximum is 40:00.");
+  const fd=new FormData();fd.append("video",f);fd.append("seconds",secs);
+  const x=new XMLHttpRequest();x.open("POST","/api/tuition/sessions/"+sid+"/video");x.setRequestHeader("Authorization","Bearer "+token);
+  x.upload.onprogress=e=>{if(e.lengthComputable)el.textContent="Uploading… "+Math.round(e.loaded/e.total*100)+"%";};
+  x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}if(j.ok){toast("Video uploaded");tabSessions();}else el.textContent=j.error||"Upload failed";};
+  x.onerror=()=>el.textContent="Upload failed (connection)";x.send(fd);el.textContent="Uploading… 0%";}
+
+async function tabStudents(){
+  const r=await api(`/courses/${CUR.id}/students`);
+  $("tab").innerHTML=`<div class="panel"><b>Add a student</b><div class="row" style="margin-top:8px"><input id="st-name" placeholder="Student full name">
+    <input id="st-phone" type="tel" placeholder="Parent phone"><button class="pri" onclick="addStudent()">Add</button></div><div id="st-creds"></div></div>
+    <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Paid</th><th></th></tr>${(r.students||[]).map(s=>`<tr><td>${esc(s.name)}</td><td>0${esc(s.phone.slice(3))}</td>
+    <td>${CUR.price?(s.paid?"✅ until "+new Date(s.expires_at).toLocaleDateString():"—"):"Free"}</td>
+    <td><button onclick="resetStu(${s.id})">Reset password</button> <button class="red" onclick="rmStu(${s.id})">Remove</button></td></tr>`).join("")}</table></div>`;}
+async function addStudent(){const r=await api(`/courses/${CUR.id}/students`,"POST",{name:$("st-name").value,phone:$("st-phone").value});
+  if(!r.ok)return toast(r.error);await tabStudents();
+  if(r.credentials)$("st-creds").innerHTML=`<div class="alert">Give these to the parent (shown once):<br>Username <b>${esc(r.credentials.username)}</b> · Temporary password <b>${esc(r.credentials.password)}</b></div>`;}
+async function resetStu(id){if(!confirm("Reset this student's password?"))return;const r=await api(`/students/${id}/reset_password`,"POST",{});
+  if(!r.ok)return toast(r.error);prompt("Username "+r.username+". Temporary password (shown once):",r.temp_password);}
+async function rmStu(id){if(!confirm("Remove this student from the course?"))return;await api(`/courses/${CUR.id}/students/${id}`,"DELETE");tabStudents();}
+
+async function tabAssign(){
+  const T=me.role==="teacher";const r=await api(`/courses/${CUR.id}/assignments`);
+  const form=T?`<div class="panel"><b>New assignment</b><input id="as-title" placeholder="Title" style="margin:8px 0"><textarea id="as-ins" rows="3" placeholder="Instructions"></textarea>
+    <div class="row" style="margin-top:8px"><label class="muted">Due <input id="as-due" type="datetime-local"></label><label class="muted">Max score <input id="as-max" type="number" value="100"></label></div>
+    <div class="row"><input id="as-file" type="file"><button class="pri" onclick="addAssign()">Create</button></div></div>`:"";
+  const rows=(r.assignments||[]).map(a=>{const link=a.file_name?`<a href="${U(`/assignments/${a.id}/file`)}" target="_blank">📎 ${esc(a.file_name)}</a>`:"";
+    if(T)return `<div class="panel"><b>${esc(a.title)}</b> <span class="muted">due ${fdt(a.due_at)} · /${a.max_score}</span><p>${esc(a.instructions)}</p>${link}
+      <div class="row" style="margin-top:6px"><span class="badge">${a.submitted} submitted · ${a.marked} marked</span><button onclick="viewSubs(${a.id})">View submissions</button></div><div id="subs-${a.id}"></div></div>`;
+    const m=a.mine;return `<div class="panel"><b>${esc(a.title)}</b> <span class="muted">due ${fdt(a.due_at)} · /${a.max_score}</span><p>${esc(a.instructions)}</p>${link}
+      ${m&&m.score!=null?`<div class="alert" style="background:#E8F5E9;border-color:#2E7D32">Score <b>${m.score}/${a.max_score}</b>${m.feedback?"<br>"+esc(m.feedback):""}</div>`
+      :`${m?`<p class="muted">Submitted ${fdt(m.submitted_at)}. You can resubmit until it is marked.</p>`:""}
+        <textarea id="sb-${a.id}" rows="3" placeholder="Your answer">${m?esc(m.body):""}</textarea>
+        <div class="row" style="margin-top:6px"><input id="sf-${a.id}" type="file"><button class="pri" onclick="submitAssign(${a.id})">Submit</button></div>`}</div>`}).join("");
+  $("tab").innerHTML=form+(rows||"<p class='muted'>No assignments yet.</p>");}
+async function addAssign(){const fd=new FormData();fd.append("title",$("as-title").value);fd.append("instructions",$("as-ins").value);
+  if($("as-due").value)fd.append("due_at",new Date($("as-due").value).toISOString());fd.append("max_score",$("as-max").value);
+  const f=$("as-file").files[0];if(f)fd.append("file",f);
+  const r=await api(`/courses/${CUR.id}/assignments`,"POST",fd,true);if(!r.ok)return toast(r.error);toast("Assignment created");tabAssign();}
+async function submitAssign(id){const fd=new FormData();fd.append("body",$("sb-"+id).value);const f=$("sf-"+id).files[0];if(f)fd.append("file",f);
+  const r=await api(`/assignments/${id}/submit`,"POST",fd,true);if(!r.ok)return toast(r.error);toast(r.late?"Submitted (late)":"Submitted");tabAssign();}
+async function viewSubs(id){const r=await api(`/assignments/${id}/submissions`);if(!r.ok)return toast(r.error);
+  $("subs-"+id).innerHTML=r.rows.map(x=>{const s=x.sub;return `<div style="border-top:1px solid #E8EAF6;padding:8px 0"><b>${esc(x.name)}</b> ${!s?'<span class="badge warn">Not submitted</span>':s.late?'<span class="badge warn">Late</span>':""}
+    ${s?`<p>${esc(s.body)}</p>${s.file_name?`<a href="${U(`/submissions/${s.id}/file`)}" target="_blank">📎 ${esc(s.file_name)}</a>`:""}
+    <div class="row" style="margin-top:6px"><input id="sc-${s.id}" type="number" placeholder="Score /${r.max_score}" value="${s.score??""}" style="max-width:130px">
+    <input id="fb-${s.id}" placeholder="Feedback / corrections" value="${esc(s.feedback)}"><button class="pri" onclick="markSub(${s.id},${id})">Save</button></div>`:""}</div>`}).join("");}
+async function markSub(sid,aid){const r=await api(`/submissions/${sid}/mark`,"POST",{score:$("sc-"+sid).value,feedback:$("fb-"+sid).value});
+  if(!r.ok)return toast(r.error);toast("Saved");}
+async function tabProgress(){const r=await api(`/courses/${CUR.id}/progress`);
+  $("tab").innerHTML=`<div class="panel"><table><tr><th>Student</th><th>Assignments</th><th>Submitted</th><th>Marked</th><th>Average</th></tr>${(r.rows||[]).map(x=>
+    `<tr><td>${esc(x.name)}</td><td>${x.assigned}</td><td>${x.submitted}</td><td>${x.marked}</td><td><b>${x.avg_pct==null?"—":x.avg_pct+"%"}</b></td></tr>`).join("")}</table></div>`;}
+
+// ── session room ──
+const CACHE="tuition-videos-v1", okey=sid=>`/__offline/${me.id}/${sid}`;
+const msgHTML=m=>`<div class="msg ${m.sender_role===me.role?"me":""}"><b>${m.sender_role===me.role?"You":(me.role==="student"?"Teacher":"Student")}</b>
+  ${m.video_ts!=null?`<span class="muted"> @ ${fmtT(m.video_ts)}</span>`:""}<div>${esc(m.body)}</div>
+  ${m.has_image?`<a href="${U(`/messages/${m.id}/image`)}" target="_blank"><img src="${U(`/messages/${m.id}/image`)}" style="max-width:220px;border-radius:6px;margin-top:4px"></a>`:""}</div>`;
+
+async function openRoom(sid){
+  const r=await api("/sessions/"+sid);if(!r.ok)return toast(r.error);
+  show("room");const s=r.session;ROOM={sid,last:0,student:null,status:s.status,s,paid:r.paid};
+  const T=me.role==="teacher";
+  const head=`<div class="row"><button onclick="openCourse(CUR.id)">← Back</button><h2>${esc(s.title)}</h2><span id="st"></span><span class="sp"></span><span id="av" class="muted"></span></div>`;
+  if(T){
+    $("v-room").innerHTML=head+`<div class="panel"><div class="row"><button id="avbtn" onclick="toggleAvail()"></button><button class="red" onclick="endSession()">End session</button>
+      <span class="muted">Starts ${fdt(s.scheduled_at)}. The session stays open while you are available.</span></div></div>
+      <div class="panel"><b>Students</b><div id="inbox"></div></div>
+      <div class="panel" id="tp" style="display:none"><b id="tn"></b><div id="thr" style="margin:8px 0"></div>
+      <textarea id="q" rows="2" placeholder="Reply…"></textarea><div class="row" style="margin-top:6px"><input id="qi" type="file" accept="image/*"><button class="pri" onclick="sendMsg()">Send</button></div></div>`;
+    pollTeacher();timers.push(setInterval(pollTeacher,4000));
+  }else{
+    $("v-room").innerHTML=head+`<div id="end" class="alert" style="display:none">This session has ended. Thank you!</div>
+      <div id="wait" class="alert" style="display:none">The session has not started yet. It begins ${fdt(s.scheduled_at)} once your teacher is available. You can download the lesson now.</div>
+      <div class="panel"><video id="vid" controls playsinline controlsList="nodownload" style="width:100%;max-height:60vh;background:#000;display:none"></video>
+      <div class="row" style="margin-top:8px"><label class="muted">Speed <select id="spd" onchange="$('vid').playbackRate=+this.value"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option><option>2</option></select></label>
+      ${s.has_video?`<button id="dlb" onclick="toggleOffline()"></button><span id="dls" class="muted"></span>`:`<span class="muted">The teacher has not uploaded the video yet.</span>`}</div></div>
+      <div class="panel"><b>Ask the teacher</b><textarea id="q" rows="2" placeholder="Type your question. The video pauses and your current time is attached." style="margin-top:6px"></textarea>
+      <div class="row" style="margin-top:6px"><input id="qi" type="file" accept="image/*"><button class="pri" onclick="sendMsg()">Pause &amp; send</button></div></div>
+      <div class="panel"><b>Conversation</b><div id="thr" style="margin-top:8px"></div></div>`;
+    await refreshOfflineBtn();applyStatus(s);await setupVideo();pollStudent();timers.push(setInterval(pollStudent,4000));
+  }
+  applyStatus(s);
+}
+function applyStatus(s){ROOM.status=s.status;
+  $("st").innerHTML=s.status==="active"?'<span class="badge on">Live</span>':s.status==="ended"?'<span class="badge end">Ended</span>':'<span class="badge">Scheduled</span>';
+  $("av").textContent=s.status==="ended"?"":(s.teacher_available?"🟢 Teacher available":"⚪ Teacher not available");
+  if(me.role==="teacher"){const b=$("avbtn");if(b){b.textContent=s.teacher_available?"Set unavailable":"I'm available";b.className=s.teacher_available?"":"pri";b.disabled=s.status==="ended";}}
+  else{const e=$("end"),w=$("wait");if(e)e.style.display=s.status==="ended"?"block":"none";if(w)w.style.display=s.status==="scheduled"?"block":"none";}}
+async function toggleAvail(){const on=!ROOM.s.teacher_available;const r=await api(`/sessions/${ROOM.sid}/availability`,"POST",{available:on});
+  if(!r.ok)return toast(r.error);ROOM.s.teacher_available=on;pollTeacher();}
+async function endSession(){if(!confirm("End this session? Students will be told it has finished."))return;
+  const r=await api(`/sessions/${ROOM.sid}/end`,"POST",{});if(!r.ok)return toast(r.error);pollTeacher();}
+async function pollTeacher(){if(!ROOM)return;const r=await api(`/sessions/${ROOM.sid}/inbox`);if(!r.ok)return;ROOM.s.teacher_available=r.session.teacher_available;
+  applyStatus({...ROOM.s,status:r.session.status,teacher_available:r.session.teacher_available});
+  $("inbox").innerHTML=r.students.map(x=>`<div class="stu" onclick="openThread(${x.id},'${esc(x.name).replace(/'/g,"\\'")}')"><b>${esc(x.name)}</b>
+    ${x.unread?`<span class="badge warn">${x.unread} new${x.video_ts!=null?" · @ "+fmtT(x.video_ts):""}</span>`:""}<div class="muted">${esc(x.last.slice(0,80))}</div></div>`).join("")||"<p class='muted'>No students.</p>";
+  if(ROOM.student)pollThread();}
+function openThread(id,name){ROOM.student=id;ROOM.last=0;$("thr").innerHTML="";$("tn").textContent=name;$("tp").style.display="block";pollThread();}
+async function pollThread(){const r=await api(`/sessions/${ROOM.sid}/messages?student_id=${ROOM.student}&after=${ROOM.last}`);if(!r.ok)return;
+  r.messages.forEach(m=>{ROOM.last=m.id;$("thr").insertAdjacentHTML("beforeend",msgHTML(m));});}
+async function sendMsg(){const fd=new FormData();fd.append("body",$("q").value);const f=$("qi").files[0];if(f)fd.append("image",f);
+  if(me.role==="teacher"){if(!ROOM.student)return;fd.append("student_id",ROOM.student);}
+  else{const v=$("vid");fd.append("video_ts",Math.floor(v.currentTime||0));v.pause();}
+  const r=await api(`/sessions/${ROOM.sid}/messages`,"POST",fd,true);if(!r.ok)return toast(r.error);
+  $("q").value="";$("qi").value="";me.role==="teacher"?pollThread():pollStudent();}
+async function pollStudent(){if(!ROOM)return;const r=await api(`/sessions/${ROOM.sid}/messages?after=${ROOM.last}`);if(!r.ok)return;
+  const was=ROOM.status;ROOM.s={...ROOM.s,...r.session};applyStatus(ROOM.s);if(was==="scheduled"&&r.session.status!=="scheduled")setupVideo();
+  r.messages.forEach(m=>{ROOM.last=m.id;$("thr").insertAdjacentHTML("beforeend",msgHTML(m));});}
+
+// video + offline copy (Cache API; plays from a local blob once downloaded)
+async function hasOffline(){if(!window.caches)return false;return !!(await (await caches.open(CACHE)).match(okey(ROOM.sid)));}
+async function refreshOfflineBtn(){const b=$("dlb");if(!b)return;b.textContent=(await hasOffline())?"Remove offline copy":"Download for offline";}
+async function setupVideo(){
+  const v=$("vid");if(!v||!ROOM.s.has_video||ROOM.status==="scheduled"||!ROOM.paid)return;
+  v.style.display="block";if(v.dataset.ready)return;v.dataset.ready=1;
+  if(await hasOffline()){const m=await (await caches.open(CACHE)).match(okey(ROOM.sid));ROOM.url=URL.createObjectURL(await m.blob());v.src=ROOM.url;}
+  else v.src=U(`/sessions/${ROOM.sid}/video`);
+  v.playbackRate=+$("spd").value;}
+async function toggleOffline(){
+  if(!window.caches)return toast("This browser cannot store videos offline");
+  const c=await caches.open(CACHE),b=$("dlb"),st=$("dls");
+  if(await hasOffline()){await c.delete(okey(ROOM.sid));toast("Offline copy removed");return refreshOfflineBtn();}
+  b.disabled=true;st.textContent="Starting download…";
+  try{
+    const r=await fetch(`/api/tuition/sessions/${ROOM.sid}/video?dl=1`,{headers:{Authorization:"Bearer "+token}});
+    if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw new Error(j.error||"Download not available");}
+    const total=+r.headers.get("content-length")||ROOM.s.video_size||0,copy=r.clone(),rd=copy.body.getReader();let got=0;
+    const put=c.put(okey(ROOM.sid),r);
+    for(;;){const {done,value}=await rd.read();if(done)break;got+=value.length;if(total)st.textContent=Math.round(got/total*100)+"%";}
+    await put;if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+    st.textContent="Saved on this device ✓";toast("Downloaded. You can keep watching without internet.");
+  }catch(e){await c.delete(okey(ROOM.sid));st.textContent="";toast(e.message||"Download failed. Try again on a stronger connection.");}
+  b.disabled=false;refreshOfflineBtn();}
+
+// ── boot ──
+function boot(){
+  if(!token||!me){show("auth");return setMode("login");}
+  if(me.must_change){show("pw");return;}
+  loadHome();}
+boot();
+</script></body></html>
