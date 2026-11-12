@@ -33,15 +33,20 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;
 
 <div id="v-auth" class="box">
   <h2 id="a-title">Sign in</h2>
-  <p class="muted" id="a-hint">Students: use the username and code your teacher gave you.</p>
-  <input id="a-name" placeholder="Full name" style="display:none">
+  <div id="a-join" class="alert" style="display:none"></div>
+  <p class="muted" id="a-hint">Sign in with your username and password.</p>
+  <select id="a-role" onchange="setMode('signup')" style="display:none;width:100%;margin-bottom:6px">
+    <option value="student">I am a student / parent</option>
+    <option value="teacher">I am a teacher</option>
+  </select>
+  <input id="a-name" placeholder="Full name (teachers: your brand name)" style="display:none">
   <input id="a-user" placeholder="Username" autocomplete="username">
   <input id="a-phone" type="tel" placeholder="Your phone number" style="display:none">
   <input id="a-pass" type="password" placeholder="Password" autocomplete="current-password">
   <input id="a-pass2" type="password" placeholder="Repeat password" style="display:none">
   <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms</a>.</label>
   <button class="pri" style="width:100%;margin-top:6px" id="a-btn" onclick="doAuth()">Sign in</button>
-  <p class="muted" style="margin-top:12px"><a href="#" id="a-sw" onclick="setMode(mode==='login'?'signup':'login');return false">Teacher without an account? Create one</a></p>
+  <p class="muted" style="margin-top:12px"><a href="#" id="a-sw" onclick="setMode(mode==='login'?'signup':'login');return false">No account? Create one</a></p>
 </div>
 
 <div id="v-pw" class="box">
@@ -81,18 +86,20 @@ async function api(path,method="GET",body,isForm){
 const U=(p)=>`/api/tuition${p}${p.includes("?")?"&":"?"}token=${encodeURIComponent(token)}`;
 
 // ── auth ──
-function setMode(m){mode=m;const s=m==="signup";
-  $("a-title").textContent=s?"Create teacher account":"Sign in";
-  ["a-name","a-phone","a-pass2"].forEach(i=>$(i).style.display=s?"block":"none");
+function setMode(m){mode=m;const s=m==="signup",t=s&&$("a-role").value==="teacher";
+  $("a-title").textContent=s?"Create account":"Sign in";
+  $("a-role").style.display=s?"block":"none";
+  $("a-name").style.display=s?"block":"none";$("a-pass2").style.display=s?"block":"none";
+  $("a-phone").style.display=t?"block":"none";
   $("a-agree-l").style.display=s?"block":"none";$("a-hint").style.display=s?"none":"block";
   $("a-btn").textContent=s?"Create account":"Sign in";
-  $("a-sw").textContent=s?"Have an account? Sign in":"Teacher without an account? Create one";}
+  $("a-sw").textContent=s?"Have an account? Sign in":"No account? Create one";}
 async function doAuth(){
   const b={username:$("a-user").value,password:$("a-pass").value};
   if(mode==="signup"){
     if($("a-pass2").value!==b.password)return toast("Passwords do not match");
     if(!$("a-agree").checked)return toast("Please accept the Privacy Policy and Terms");
-    Object.assign(b,{full_name:$("a-name").value,phone:$("a-phone").value,confirm_password:$("a-pass2").value,agree_terms:true});
+    Object.assign(b,{role:$("a-role").value,full_name:$("a-name").value,phone:$("a-phone").value,confirm_password:$("a-pass2").value,agree_terms:true});
   }
   const r=await api(mode==="login"?"/auth/login":"/auth/signup","POST",b);
   if(!r.ok)return toast(r.error||"Failed");
@@ -107,20 +114,22 @@ async function changePw(){const r=await api("/auth/change_password","POST",{old_
 async function loadHome(){
   show("home");const T=me.role==="teacher";
   const r=await api("/courses");COURSES={};(r.courses||[]).forEach(c=>COURSES[c.id]=c);
-  const form=T?`<div class="panel"><b>New course</b><div class="row" style="margin-top:8px">
-    <input id="nc-subj" placeholder="Subject (e.g. Physics)"><input id="nc-title" placeholder="Title (optional, e.g. Form 4 Physics)">
-    <input id="nc-price" type="number" placeholder="Price TZS (0 = free)" value="0"><input id="nc-days" type="number" placeholder="Access days" value="30">
-    <input id="nc-max" type="number" placeholder="Max students" value="15"><button class="pri" onclick="newCourse()">Create</button></div></div>`:"";
+  const form=T?`<div class="row"><button class="pri" onclick="const p=$('nc-panel');p.style.display=p.style.display==='block'?'none':'block'">+ Create course</button></div>
+    <div class="panel" id="nc-panel" style="display:none;max-width:420px">
+      <label class="muted">Course name</label>
+      <input id="nc-subj" placeholder="e.g. Physics - Newton's laws of motion" style="margin:4px 0 12px">
+      <label class="muted">How do you charge?</label>
+      <select id="nc-mode" style="width:100%;margin:4px 0 12px"><option value="session">Per session</option><option value="course">Per topic (whole course)</option></select>
+      <button class="pri" onclick="newCourse()">Create course</button></div>`:"";
   const cards=Object.values(COURSES).map(c=>T?`<div class="panel"><b>${esc(c.subject)}</b> <span class="muted">${esc(c.title)}</span>
-      <div class="muted" style="margin:6px 0">${c.students}/${c.max_students} students · ${c.sessions} sessions · ${c.price?tzs(c.price)+" / "+c.access_days+" days":"Free"}</div>
+      <div class="muted" style="margin:6px 0">${c.students}/${c.max_students} students · ${c.sessions} sessions · ${c.charge_mode==="session"?"Per session":(c.price?tzs(c.price)+" / "+c.access_days+" days":"Free (set price inside)")}</div>
       <button class="pri" onclick="openCourse(${c.id})">Open</button></div>`
     :`<div class="panel"><b>${esc(c.subject)}</b> <span class="muted">${esc(c.title)}</span>
       <div class="muted" style="margin:6px 0">Teacher: ${esc(c.teacher)}</div>
       ${c.active?`<span class="badge on">Access active${c.expires_at?" until "+new Date(c.expires_at).toLocaleDateString():""}</span><div style="margin-top:8px"><button class="pri" onclick="openCourse(${c.id})">Open</button></div>`
       :`<span class="badge warn">${tzs(c.price)} for ${c.access_days} days</span>
-        <div class="row" style="margin-top:8px"><input id="pp-${c.id}" type="tel" placeholder="Mobile-money number"><button class="pri" onclick="payCourse(${c.id})">Pay</button></div>
-        <div id="ps-${c.id}" class="muted"></div><button onclick="openCourse(${c.id})" style="margin-top:6px">View sessions</button>`}</div>`).join("");
-  $("v-home").innerHTML=`<div id="due"></div>${form}<h2 style="margin-bottom:10px">${T?"My courses":"My lessons"}</h2><div class="cards">${cards||"<p class='muted'>Nothing here yet.</p>"}</div>`;
+        <div style="margin-top:8px"><button class="pri" onclick="openCourse(${c.id})">Open &amp; unlock</button></div>`}</div>`).join("");
+  $("v-home").innerHTML=`<div id="due"></div>${form}<h2 style="margin-bottom:10px">${T?"My courses":"My lessons"}</h2><div class="cards">${cards||"<p class='muted'>"+(T?"No courses yet.":"Open a course link from your teacher to join a course.")+"</p>"}</div>`;
   if(T){checkDue();timers.push(setInterval(checkDue,30000));}
 }
 async function checkDue(){const r=await api("/due");if(!r.ok)return;const el=$("due");if(!el)return;
@@ -128,29 +137,42 @@ async function checkDue(){const r=await api("/due");if(!r.ok)return;const el=$("
     <button class="pri" onclick="goAvail(${d.course_id},${d.id})">Go available</button></div>`).join("");}
 async function goAvail(cid,sid){await api(`/sessions/${sid}/availability`,"POST",{available:true});CUR=COURSES[cid];openRoom(sid);}
 async function newCourse(){
-  const r=await api("/courses","POST",{subject:$("nc-subj").value,title:$("nc-title").value,price:$("nc-price").value,access_days:$("nc-days").value,max_students:$("nc-max").value});
-  if(!r.ok)return toast(r.error);toast("Course created");loadHome();}
+  const r=await api("/courses","POST",{name:$("nc-subj").value,charge_mode:$("nc-mode").value});
+  if(!r.ok)return toast(r.error);toast("Course created");await loadHome();openCourse(r.id);}
 async function payCourse(cid){
   const phone=$("pp-"+cid).value.trim();if(!phone)return toast("Enter the mobile-money number that will pay");
   const r=await api("/pay","POST",{course_id:cid,phone});if(!r.ok)return toast(r.error);
   toast("Approve the payment on your phone");let n=0;const el=$("ps-"+cid);el.textContent="⏳ Waiting for approval…";
   const t=setInterval(async()=>{n++;const c=await api("/pay/check/"+r.payment_id,"POST",{});
-    if(c.status==="completed"){clearInterval(t);toast("Payment confirmed!");loadHome();}
+    if(c.status==="completed"){clearInterval(t);toast("Payment confirmed!");await loadHome();openCourse(cid);}
     else if(["failed","voided","expired","amount_mismatch"].includes(c.status)){clearInterval(t);el.textContent="Payment "+c.status+". You can try again.";}
     else if(n>=36){clearInterval(t);el.textContent="Still waiting. Reopen this page in a minute.";}},5000);timers.push(t);}
 
 // ── course ──
-function openCourse(id){CUR=COURSES[id]||CUR;show("course");
-  $("v-course").innerHTML=`<div class="row"><button onclick="loadHome()">← Back</button><h2>${esc(CUR.subject)} <span class="muted">${esc(CUR.title||"")}</span></h2></div>
+function openCourse(id){CUR=COURSES[id]||CUR;show("course");const T=me.role==="teacher";
+  const link=T?location.origin+"/tuition/c/"+CUR.join_token:"";
+  const top=T?`<div class="panel"><b>Course link</b> <span class="muted">send this to parents and students</span>
+    <div class="row" style="margin-top:6px"><input id="cl" readonly value="${esc(link)}"><button class="pri" onclick="copyCL()">Copy</button></div>
+    ${CUR.charge_mode==="course"
+      ?`<div class="row"><label class="muted">Price (TZS, 0 = free) <input id="cp-price" type="number" value="${CUR.price}"></label>
+         <label class="muted">Access days <input id="cp-days" type="number" value="${CUR.access_days}"></label><button onclick="savePricing()">Save price</button></div>`
+      :`<p class="muted">Charging per session. Per-session pricing arrives in the next update; sessions are free until then.</p>`}</div>`:"";
+  $("v-course").innerHTML=`<div class="row"><button onclick="loadHome()">← Back</button><h2>${esc(CUR.subject)} <span class="muted">${esc(CUR.title||"")}</span></h2></div>${top}
   <div class="tabs" id="tabs"></div><div id="tab"></div>`;
-  const T=me.role==="teacher",names=[["sessions","Sessions"],...(T?[["students","Students"]]:[]),["assign","Assignments"],["progress","Progress"]];
+  const names=[["sessions","Sessions"],...(T?[["students","Students"]]:[]),["assign","Assignments"],["progress","Progress"]];
   $("tabs").innerHTML=names.map(([k,l])=>`<button id="tb-${k}" onclick="tab('${k}')">${l}</button>`).join("");tab("sessions");}
+function copyCL(){const u=$("cl").value;(navigator.clipboard?navigator.clipboard.writeText(u).then(()=>toast("Link copied")):Promise.reject()).catch(()=>prompt("Copy this link:",u));}
+async function savePricing(){
+  const r=await api(`/courses/${CUR.id}/pricing`,"POST",{price:$("cp-price").value,access_days:$("cp-days").value});
+  if(!r.ok)return toast(r.error);CUR.price=+$("cp-price").value;CUR.access_days=+$("cp-days").value;COURSES[CUR.id]=CUR;toast("Saved");}
 function tab(k){clearTimers();document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.id==="tb-"+k));
   ({sessions:tabSessions,students:tabStudents,assign:tabAssign,progress:tabProgress})[k]();}
 const stBadge=s=>s.status==="active"?`<span class="badge on">Live</span>`:s.status==="ended"?`<span class="badge end">Ended</span>`:`<span class="badge">Scheduled</span>`;
 
 async function tabSessions(){
   const T=me.role==="teacher";const r=await api(`/courses/${CUR.id}/sessions`);
+  const cta=(!T&&!r.paid&&CUR.price>0)?`<div class="alert">This course is accessed as a whole. Pay <b>${tzs(CUR.price)}</b> to unlock every session for ${CUR.access_days} days.
+    <div class="row" style="margin-top:8px"><input id="pp-${CUR.id}" type="tel" placeholder="Mobile-money number"><button class="pri" onclick="payCourse(${CUR.id})">Pay now</button></div><div id="ps-${CUR.id}" class="muted"></div></div>`:"";
   const form=T?`<div class="panel"><b>Schedule a session</b><div class="row" style="margin-top:8px"><input id="ns-title" placeholder="Lesson title">
     <input id="ns-when" type="datetime-local"><button class="pri" onclick="newSession()">Add</button></div></div>`:"";
   const rows=(r.sessions||[]).map(s=>{
@@ -163,7 +185,7 @@ async function tabSessions(){
         <button onclick="openRoom(${s.id})" class="pri">${s.status==="ended"?"View":"Open room"}</button>`
         :`<button class="pri" onclick="openRoom(${s.id})" ${r.paid?"":"disabled"}>${r.paid?"Enter session":"Pay to enter"}</button>`}</div>
       <div id="up-${s.id}" class="muted"></div></div>`}).join("");
-  $("tab").innerHTML=form+(rows||"<p class='muted'>No sessions yet.</p>");
+  $("tab").innerHTML=cta+form+(rows||"<p class='muted'>No sessions yet.</p>");
 }
 async function newSession(){const w=$("ns-when").value;if(!w)return toast("Pick the start time");
   const r=await api(`/courses/${CUR.id}/sessions`,"POST",{title:$("ns-title").value,scheduled_at:new Date(w).toISOString()});
@@ -183,16 +205,10 @@ async function upVideo(sid,inp){
 
 async function tabStudents(){
   const r=await api(`/courses/${CUR.id}/students`);
-  $("tab").innerHTML=`<div class="panel"><b>Add a student</b><div class="row" style="margin-top:8px"><input id="st-name" placeholder="Student full name">
-    <input id="st-phone" type="tel" placeholder="Parent phone"><button class="pri" onclick="addStudent()">Add</button></div><div id="st-creds"></div></div>
-    <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Paid</th><th></th></tr>${(r.students||[]).map(s=>`<tr><td>${esc(s.name)}</td><td>0${esc(s.phone.slice(3))}</td>
+  $("tab").innerHTML=`<div class="panel"><p class="muted" style="margin-bottom:8px">Students join by opening your course link.</p>
+    <table><tr><th>Name</th><th>Paid</th><th></th></tr>${(r.students||[]).map(s=>`<tr><td>${esc(s.name)}</td>
     <td>${CUR.price?(s.paid?"✅ until "+new Date(s.expires_at).toLocaleDateString():"—"):"Free"}</td>
-    <td><button onclick="resetStu(${s.id})">Reset password</button> <button class="red" onclick="rmStu(${s.id})">Remove</button></td></tr>`).join("")}</table></div>`;}
-async function addStudent(){const r=await api(`/courses/${CUR.id}/students`,"POST",{name:$("st-name").value,phone:$("st-phone").value});
-  if(!r.ok)return toast(r.error);await tabStudents();
-  if(r.credentials)$("st-creds").innerHTML=`<div class="alert">Give these to the parent (shown once):<br>Username <b>${esc(r.credentials.username)}</b> · Temporary password <b>${esc(r.credentials.password)}</b></div>`;}
-async function resetStu(id){if(!confirm("Reset this student's password?"))return;const r=await api(`/students/${id}/reset_password`,"POST",{});
-  if(!r.ok)return toast(r.error);prompt("Username "+r.username+". Temporary password (shown once):",r.temp_password);}
+    <td><button class="red" onclick="rmStu(${s.id})">Remove</button></td></tr>`).join("")||"<tr><td colspan='3' class='muted'>No students yet.</td></tr>"}</table></div>`;}
 async function rmStu(id){if(!confirm("Remove this student from the course?"))return;await api(`/courses/${CUR.id}/students/${id}`,"DELETE");tabStudents();}
 
 async function tabAssign(){
@@ -309,9 +325,26 @@ async function toggleOffline(){
   b.disabled=false;refreshOfflineBtn();}
 
 // ── boot ──
-function boot(){
+let JT=(location.pathname.match(/^\/tuition\/c\/([^/]+)/)||[])[1]||null;
+async function boot(){
+  if(JT&&(!token||!me)){
+    const r=await api("/join/"+JT);show("auth");
+    if(r.ok){
+      $("a-join").style.display="block";
+      $("a-join").innerHTML=`You are joining <b>${esc(r.subject)}</b> by ${esc(r.teacher)}. Create a student account or sign in to continue.`;
+      $("a-role").value="student";setMode("signup");
+    }else{toast("This course link is not valid");JT=null;setMode("login");}
+    return;
+  }
   if(!token||!me){show("auth");return setMode("login");}
   if(me.must_change){show("pw");return;}
+  if(JT){
+    const t=JT;JT=null;history.replaceState(null,"","/tuition");
+    if(me.role!=="student"){await loadHome();return toast("Course links are for student accounts.");}
+    const r=await api("/join/"+t,"POST",{});await loadHome();
+    if(!r.ok)return toast(r.error);
+    return openCourse(r.course_id);
+  }
   loadHome();}
 boot();
 </script></body></html>

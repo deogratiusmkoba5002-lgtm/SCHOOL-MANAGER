@@ -994,6 +994,13 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_tuition_payments_student ON tuition_payments(student_id, course_id);
     """)
+    for _m in (
+        "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS charge_mode TEXT NOT NULL DEFAULT 'course'",
+        "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS join_token TEXT",
+        "UPDATE tuition_courses SET join_token = md5(random()::text || id::text) WHERE join_token IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_courses_token ON tuition_courses(join_token)",
+    ):
+        cur.execute(_m)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
     cur.execute("SELECT applied FROM _mini_gf_migration WHERE id=1")
     if cur.fetchone()[0] == 0:

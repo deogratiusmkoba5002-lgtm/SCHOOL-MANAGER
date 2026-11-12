@@ -28,6 +28,9 @@ def mini_page(): return send_from_directory(BASE_DIR, "mini.html")
 @static_bp.route("/tuition")
 def tuition_page(): return send_from_directory(BASE_DIR, "tuition.html")
 
+@static_bp.route("/tuition/c/<token>")
+def tuition_join_page(token): return send_from_directory(BASE_DIR, "tuition.html")
+
 @static_bp.route("/exam")
 def exam_page(): return send_from_directory(BASE_DIR, "exam.html")
 
