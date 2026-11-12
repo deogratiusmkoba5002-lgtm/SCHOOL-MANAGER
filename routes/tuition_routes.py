@@ -87,7 +87,8 @@ def _activate_due():
     """A session becomes active the moment the teacher is available AND the start time has arrived."""
     with db() as (con, cur):
         cur.execute("""UPDATE tuition_sessions SET status='active', started_at=NOW() AT TIME ZONE 'utc'
-                       WHERE status='scheduled' AND teacher_available=1
+                       WHERE status='scheduled'
+                         AND teacher_last_seen > (NOW() AT TIME ZONE 'utc') - INTERVAL '25 seconds'
                          AND scheduled_at <= NOW() AT TIME ZONE 'utc'""")
         con.commit()
 
@@ -309,6 +310,39 @@ def join_post(token):
             con.commit()
     return jsonify({"ok": True, "course_id": c[0]})
 
+@tuition_bp.route("/api/tuition/join_session/<token>", methods=["GET"])
+def session_join_info(token):
+    with db() as (con, cur):
+        cur.execute("""SELECT s.title,s.scheduled_at,s.price_tzs,c.subject,c.charge_mode,t.full_name
+                       FROM tuition_sessions s JOIN tuition_courses c ON c.id=s.course_id
+                       JOIN tuition_users t ON t.id=c.teacher_id WHERE s.share_token=%s""", (token,))
+        r = cur.fetchone()
+    if not r:
+        return _err("Session not found", 404)
+    return jsonify({"ok": True, "title": r[0], "scheduled_at": _iso(r[1]), "price": r[2],
+                    "subject": r[3], "charge_mode": r[4], "teacher": r[5]})
+
+
+@tuition_bp.route("/api/tuition/join_session/<token>", methods=["POST"])
+@need_user("student")
+def session_join_post(token):
+    with db() as (con, cur):
+        cur.execute("""SELECT s.id,c.id,c.max_students FROM tuition_sessions s
+                       JOIN tuition_courses c ON c.id=s.course_id WHERE s.share_token=%s""", (token,))
+        r = cur.fetchone()
+        if not r:
+            return _err("Session not found", 404)
+        sid, cid, mx = r
+        cur.execute("SELECT 1 FROM tuition_enrollments WHERE course_id=%s AND student_id=%s", (cid, g.tu["id"]))
+        if not cur.fetchone():
+            cur.execute("SELECT COUNT(*) FROM tuition_enrollments WHERE course_id=%s", (cid,))
+            if cur.fetchone()[0] >= mx:
+                return _err("This course is full", 409)
+            cur.execute("INSERT INTO tuition_enrollments(course_id,student_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                        (cid, g.tu["id"]))
+            con.commit()
+    return jsonify({"ok": True, "course_id": cid, "session_id": sid})
+
 
 @tuition_bp.route("/api/tuition/courses/<int:cid>/students", methods=["GET"])
 @need_user("teacher")
@@ -339,16 +373,19 @@ def student_remove(cid, sid):
 
 
 # ── sessions ────────────────────────────────────────────────
-_SC = "s.id,s.course_id,s.title,s.scheduled_at,s.video_file,s.video_size,s.video_seconds,s.status,s.teacher_available"
+_SC = ("s.id,s.course_id,s.title,s.scheduled_at,s.video_file,s.video_size,s.video_seconds,s.status,"
+       "(s.teacher_last_seen IS NOT NULL AND s.teacher_last_seen > (NOW() AT TIME ZONE 'utc') - INTERVAL '25 seconds')::int,"
+       "s.price_tzs,s.share_token")
 
 
 def _sj(r):
     return {"id": r[0], "course_id": r[1], "title": r[2], "scheduled_at": _iso(r[3]), "has_video": bool(r[4]),
-            "video_size": r[5], "video_seconds": r[6], "status": r[7], "teacher_available": bool(r[8])}
+            "video_size": r[5], "video_seconds": r[6], "status": r[7], "teacher_available": bool(r[8]),
+            "session_price": r[9], "share_token": r[10]}
 
 
 def _session(cur, sid, u):
-    q = (f"SELECT {_SC}, c.teacher_id, c.price_tzs, c.subject FROM tuition_sessions s "
+    q = (f"SELECT {_SC}, c.teacher_id, c.price_tzs, c.subject, c.charge_mode FROM tuition_sessions s "
          "JOIN tuition_courses c ON c.id=s.course_id ")
     if u["role"] == "teacher":
         cur.execute(q + "WHERE s.id=%s AND c.teacher_id=%s", (sid, u["id"]))
@@ -358,7 +395,7 @@ def _session(cur, sid, u):
     if not r:
         return None
     d = _sj(r)
-    d.update(video_file=r[4], raw_scheduled=r[3], teacher_id=r[9], price=r[10], subject=r[11])
+    d.update(video_file=r[4], raw_scheduled=r[3], teacher_id=r[11], price=r[12], subject=r[13], charge_mode=r[14])
     return d
 
 
@@ -371,15 +408,23 @@ def sessions_list(cid):
         c = _course(cur, cid, u)
         if not c:
             return _err("Course not found", 404)
-        paid = T.has_access(cur, u["id"], cid, c["price"]) if u["role"] == "student" else True
-        sender = "student" if u["role"] == "teacher" else "teacher"
-        extra, params = ("", [sender]) if u["role"] == "teacher" else ("AND m.student_id=%s", [sender, u["id"]])
+        student = u["role"] == "student"
+        paid = T.has_access(cur, u["id"], cid, c["price"]) if student else True
+        sender = "teacher" if student else "student"
+        extra, params = ("AND m.student_id=%s", [sender, u["id"]]) if student else ("", [sender])
         cur.execute(f"""SELECT {_SC}, (SELECT COUNT(*) FROM tuition_messages m WHERE m.session_id=s.id
                                        AND m.sender_role=%s AND m.is_read=0 {extra})
                         FROM tuition_sessions s WHERE s.course_id=%s ORDER BY s.scheduled_at DESC""", params + [cid])
-        out = [dict(_sj(r), unread=r[9]) for r in cur.fetchall()]
+        out = [dict(_sj(r), unread=r[11]) for r in cur.fetchall()]
+        for s in out:
+            if student and c["charge_mode"] == "session":
+                s["paid"] = T.has_session_access(cur, u["id"], {"id": s["id"], "course_id": cid, "charge_mode": "session",
+                                                                "session_price": s["session_price"], "price": c["price"]})
+            else:
+                s["paid"] = paid
+            if student:
+                s.pop("share_token", None)
     return jsonify({"ok": True, "sessions": out, "paid": paid})
-
 
 @tuition_bp.route("/api/tuition/courses/<int:cid>/sessions", methods=["POST"])
 @need_user("teacher")
@@ -387,13 +432,20 @@ def session_create(cid):
     d = request.get_json(silent=True) or {}
     title = " ".join((d.get("title") or "").split())[:120]
     when = _parse_dt(d.get("scheduled_at"))
+    price = _int(d.get("price"), 0)
     if not title or not when:
         return _err("Enter a title and the start time")
     with db() as (con, cur):
-        if not _course(cur, cid, g.tu):
+        c = _course(cur, cid, g.tu)
+        if not c:
             return _err("Course not found", 404)
-        cur.execute("INSERT INTO tuition_sessions(course_id,title,scheduled_at) VALUES(%s,%s,%s) RETURNING id",
-                    (cid, title, when))
+        if c["charge_mode"] == "session":
+            if price < 500:
+                return _err("Set a price of at least 500 TZS for this session")
+        else:
+            price = 0
+        cur.execute("INSERT INTO tuition_sessions(course_id,title,scheduled_at,price_tzs,share_token) "
+                    "VALUES(%s,%s,%s,%s,%s) RETURNING id", (cid, title, when, price, secrets.token_urlsafe(8)))
         sid = cur.fetchone()[0]; con.commit()
     return jsonify({"ok": True, "id": sid})
 
@@ -407,7 +459,7 @@ def session_get(sid):
         s = _session(cur, sid, u)
         if not s:
             return _err("Session not found", 404)
-        paid = T.has_access(cur, u["id"], s["course_id"], s["price"]) if u["role"] == "student" else True
+        paid = T.has_access(cur, u["id"], s) if u["role"] == "student" else True
     out = {k: s[k] for k in ("id", "course_id", "title", "scheduled_at", "has_video", "video_size", "video_seconds",
                               "status", "teacher_available", "subject")}
     return jsonify({"ok": True, "session": out, "paid": paid})
@@ -452,12 +504,14 @@ def video_get(sid):
     """Streaming needs an open session. Downloading for offline is allowed from 24h before the start time."""
     u = g.tu
     dl = request.args.get("dl") == "1"
+    if dl:
+        return _err("Downloads are disabled", 403)
     with db() as (con, cur):
         s = _session(cur, sid, u)
         if not s or not s["video_file"]:
             return _err("Video not found", 404)
         if u["role"] == "student":
-            if not T.has_access(cur, u["id"], s["course_id"], s["price"]):
+            if not T.has_access(cur, u["id"], s):
                 return _err("Payment required", 402)
             if dl and _now() < s["raw_scheduled"] - timedelta(hours=24):
                 return _err("Downloads open 24 hours before the session", 403)
@@ -474,20 +528,29 @@ def video_get(sid):
     return send_file(os.path.join(TUITION_VIDEO_DIR, fname), mimetype=mime, conditional=True, max_age=0)
 
 
-@tuition_bp.route("/api/tuition/sessions/<int:sid>/availability", methods=["POST"])
+@tuition_bp.route("/api/tuition/sessions/<int:sid>/heartbeat", methods=["POST"])
 @need_user("teacher")
-def availability(sid):
-    on = 1 if (request.get_json(silent=True) or {}).get("available") else 0
+def heartbeat(sid):
     with db() as (con, cur):
         s = _session(cur, sid, g.tu)
         if not s:
             return _err("Session not found", 404)
         if s["status"] == "ended":
-            return _err("This session has ended", 409)
-        cur.execute("UPDATE tuition_sessions SET teacher_available=%s WHERE id=%s", (on, sid))
+            return jsonify({"ok": True, "ended": True})
+        cur.execute("UPDATE tuition_sessions SET teacher_last_seen=NOW() AT TIME ZONE 'utc' WHERE id=%s", (sid,))
         con.commit()
     _activate_due()
     return jsonify({"ok": True})
+
+
+@tuition_bp.route("/api/tuition/sessions/<int:sid>/leave", methods=["POST"])
+@need_user("teacher")
+def leave(sid):
+    with db() as (con, cur):
+        if _session(cur, sid, g.tu):
+            cur.execute("UPDATE tuition_sessions SET teacher_last_seen=NULL WHERE id=%s", (sid,))
+            con.commit()
+    return jsonify({"ok": True})   # sendBeacon passes ?token= which need_user already accepts
 
 
 @tuition_bp.route("/api/tuition/sessions/<int:sid>/end", methods=["POST"])
@@ -510,7 +573,9 @@ def due():
     with db() as (con, cur):
         cur.execute("""SELECT s.id,s.title,s.scheduled_at,c.id,c.subject FROM tuition_sessions s
                        JOIN tuition_courses c ON c.id=s.course_id
-                       WHERE c.teacher_id=%s AND s.status='scheduled' AND s.teacher_available=0
+                       WHERE c.teacher_id=%s
+                       WHERE c.teacher_id=%s AND s.status='scheduled'
+                         AND (s.teacher_last_seen IS NULL OR s.teacher_last_seen < (NOW() AT TIME ZONE 'utc') - INTERVAL '25 seconds')
                          AND s.scheduled_at <= (NOW() AT TIME ZONE 'utc') + INTERVAL '15 minutes'
                          AND s.scheduled_at > (NOW() AT TIME ZONE 'utc') - INTERVAL '12 hours'
                        ORDER BY s.scheduled_at""", (g.tu["id"],))
@@ -536,7 +601,7 @@ def msg_post(sid):
             return _err("This session has ended", 409)
         if u["role"] == "student":
             student_id = u["id"]
-            if not T.has_access(cur, u["id"], s["course_id"], s["price"]):
+            if not T.has_access(cur, u["id"], s):
                 return _err("Payment required", 402)
             if s["status"] == "scheduled":
                 return _err("The session has not started yet", 409)
@@ -784,7 +849,7 @@ def progress(cid):
 def pay():
     d = request.get_json(silent=True) or {}
     try:
-        res = T.start_payment(g.tu["id"], _int(d.get("course_id")), d.get("phone") or "")
+        res = T.start_payment(g.tu["id"], _int(d.get("course_id")), d.get("phone") or "", _int(d.get("session_id")))
     except ValueError as e:
         return _err(str(e))
     except SnippeError as e:

@@ -999,6 +999,19 @@ def init_db():
         "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS join_token TEXT",
         "UPDATE tuition_courses SET join_token = md5(random()::text || id::text) WHERE join_token IS NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_courses_token ON tuition_courses(join_token)",
+        "ALTER TABLE tuition_sessions ADD COLUMN IF NOT EXISTS teacher_last_seen TIMESTAMP",
+        "ALTER TABLE tuition_sessions ADD COLUMN IF NOT EXISTS price_tzs INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tuition_sessions ADD COLUMN IF NOT EXISTS share_token TEXT",
+        "UPDATE tuition_sessions SET share_token = md5(random()::text || id::text) WHERE share_token IS NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_sessions_token ON tuition_sessions(share_token)",
+        "ALTER TABLE tuition_payments ADD COLUMN IF NOT EXISTS session_id INTEGER REFERENCES tuition_sessions(id) ON DELETE CASCADE",
+        """CREATE TABLE IF NOT EXISTS tuition_session_access (
+            student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            session_id INTEGER NOT NULL REFERENCES tuition_sessions(id) ON DELETE CASCADE,
+            expires_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY(student_id, session_id)
+        )""",
     ):
         cur.execute(_m)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.

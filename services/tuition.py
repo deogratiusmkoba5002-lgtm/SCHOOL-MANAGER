@@ -21,8 +21,18 @@ def has_access(cur, student_id, course_id, price):
     r = cur.fetchone()
     return bool(r and r[0] > _now())
 
+def has_session_access(cur, student_id, s):
+    """s = session dict from _session(): needs id, course_id, charge_mode, session_price, price."""
+    if s["charge_mode"] == "session":
+        if (s["session_price"] or 0) <= 0:
+            return True
+        cur.execute("SELECT expires_at FROM tuition_session_access WHERE student_id=%s AND session_id=%s",
+                    (student_id, s["id"]))
+        r = cur.fetchone()
+        return bool(r and r[0] > _now())
+    return has_access(cur, student_id, s["course_id"], s["price"])
 
-def start_payment(student_id, course_id, phone_raw):
+def start_payment(student_id, course_id, phone_raw, session_id=None):
     if not A.SNIPPE_API_KEY:
         raise ValueError("Payments are not configured on the server yet")
     phone = A.normalize_phone(phone_raw)
@@ -40,6 +50,14 @@ def start_payment(student_id, course_id, phone_raw):
         if not row:
             raise ValueError("Course not found")
         price, days, name = row
+        if session_id:
+            cur.execute("""SELECT s.price_tzs, c.access_days FROM tuition_sessions s
+                           JOIN tuition_courses c ON c.id=s.course_id
+                           WHERE s.id=%s AND s.course_id=%s AND c.charge_mode='session'""", (session_id, course_id))
+            sp = cur.fetchone()
+            if not sp:
+                raise ValueError("Session not found")
+            price, days = sp
         if price <= 0:
             raise ValueError("This course is free")
         if price < A.SNIPPE_MIN_AMOUNT:
@@ -50,9 +68,9 @@ def start_payment(student_id, course_id, phone_raw):
             raise ValueError("Too many payment attempts. Wait an hour and try again.")
         idem = "tu" + secrets.token_hex(12)
         fee = price * TUITION_FEE_PERCENT // 100
-        cur.execute("""INSERT INTO tuition_payments(student_id,course_id,amount,fee_tzs,duration_days,idempotency_key,phone,status)
-                       VALUES(%s,%s,%s,%s,%s,%s,%s,'pending') RETURNING id""",
-                    (student_id, course_id, price, fee, days, idem, phone))
+        cur.execute("""INSERT INTO tuition_payments(student_id,course_id,session_id,amount,fee_tzs,duration_days,idempotency_key,phone,status)
+                       VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'pending') RETURNING id""",
+                    (student_id, course_id, session_id, price, fee, days, idem, phone))
         pid = cur.fetchone()[0]
         con.commit()
     finally:
@@ -102,8 +120,8 @@ def finalize_payment(pid):
 
     con = get_db(); cur = con.cursor()
     try:
-        cur.execute("SELECT student_id,course_id,duration_days,amount,applied FROM tuition_payments WHERE id=%s FOR UPDATE", (pid,))
-        student_id, course_id, days, amount, applied = cur.fetchone()
+        cur.execute("SELECT student_id,course_id,duration_days,amount,applied,session_id FROM tuition_payments WHERE id=%s FOR UPDATE", (pid,))
+        student_id, course_id, days, amount, applied, session_id = cur.fetchone()
         if applied:
             con.commit(); return "completed"
         if remote != "completed":
@@ -117,13 +135,22 @@ def finalize_payment(pid):
             cur.execute("UPDATE tuition_payments SET status='amount_mismatch', failure_reason=%s WHERE id=%s",
                         (f"Expected {amount} TZS, provider reported {amt.get('value')} {amt.get('currency')}", pid))
             con.commit(); return "amount_mismatch"
-        cur.execute("""INSERT INTO tuition_access(student_id,course_id,expires_at,updated_at)
-                       VALUES(%s,%s,(NOW() AT TIME ZONE 'utc') + (%s * INTERVAL '1 day'),NOW())
-                       ON CONFLICT(student_id,course_id) DO UPDATE SET
-                           expires_at = GREATEST(tuition_access.expires_at, NOW() AT TIME ZONE 'utc')
-                                        + (%s * INTERVAL '1 day'),
-                           updated_at = NOW()
-                       RETURNING expires_at""", (student_id, course_id, days, days))
+        if session_id:
+            cur.execute("""INSERT INTO tuition_session_access(student_id,session_id,expires_at,updated_at)
+                           VALUES(%s,%s,(NOW() AT TIME ZONE 'utc') + (%s * INTERVAL '1 day'),NOW())
+                           ON CONFLICT(student_id,session_id) DO UPDATE SET
+                               expires_at = GREATEST(tuition_session_access.expires_at, NOW() AT TIME ZONE 'utc')
+                                            + (%s * INTERVAL '1 day'),
+                               updated_at = NOW()
+                           RETURNING expires_at""", (student_id, session_id, days, days))
+        else:
+            cur.execute("""INSERT INTO tuition_access(student_id,course_id,expires_at,updated_at)
+                           VALUES(%s,%s,(NOW() AT TIME ZONE 'utc') + (%s * INTERVAL '1 day'),NOW())
+                           ON CONFLICT(student_id,course_id) DO UPDATE SET
+                               expires_at = GREATEST(tuition_access.expires_at, NOW() AT TIME ZONE 'utc')
+                                            + (%s * INTERVAL '1 day'),
+                               updated_at = NOW()
+                           RETURNING expires_at""", (student_id, course_id, days, days))
         new_exp = cur.fetchone()[0]
         cur.execute("UPDATE tuition_payments SET status='completed', applied=1, paid_at=%s, expires_at=%s WHERE id=%s",
                     (A._parse_ts(data.get("completed_at")) or _now(), new_exp, pid))
