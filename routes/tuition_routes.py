@@ -596,6 +596,74 @@ def video_upload(sid):
     return jsonify({"ok": True})
 
 
+# ── chunked video upload (works on weak connections) ────────
+CHUNK_MAX = 6 * 1024 * 1024
+
+
+def _part_path(sid, uid):
+    return os.path.join(TUITION_VIDEO_DIR, f".part_{int(sid)}_{int(uid)}")
+
+
+@tuition_bp.route("/api/tuition/sessions/<int:sid>/video/chunk", methods=["POST"])
+@need_user("teacher")
+def video_chunk(sid):
+    f = request.files.get("chunk")
+    offset = _int(request.form.get("offset"), -1)
+    if not f or offset < 0:
+        return _err("Bad upload piece")
+    with db() as (con, cur):
+        s = _session(cur, sid, g.tu)
+        if not s:
+            return _err("Session not found", 404)
+        if s["status"] == "ended":
+            return _err("This session has ended", 409)
+    path = _part_path(sid, g.tu["id"])
+    if offset == 0:
+        open(path, "wb").close()                      # start fresh
+    elif not os.path.exists(path) or offset > os.path.getsize(path):
+        return _err("Upload was interrupted. Choose the video again.", 409)
+    data = f.read(CHUNK_MAX + 1)
+    if len(data) > CHUNK_MAX:
+        return _err("Upload piece too large")
+    if offset + len(data) > TUITION_MAX_VIDEO_MB * 1024 * 1024:
+        try: os.remove(path)
+        except OSError: pass
+        return _err(f"Video must be smaller than {TUITION_MAX_VIDEO_MB}MB. Compress it (720p is plenty).", 413)
+    with open(path, "r+b") as fh:
+        fh.seek(offset)
+        fh.write(data)
+    return jsonify({"ok": True, "received": offset + len(data)})
+
+
+@tuition_bp.route("/api/tuition/sessions/<int:sid>/video/finish", methods=["POST"])
+@need_user("teacher")
+def video_finish(sid):
+    d = request.get_json(silent=True) or {}
+    secs, size = _int(d.get("seconds"), 0), _int(d.get("size"), 0)
+    ext = str(d.get("ext") or "").lower()
+    if ext not in VIDEO_EXT:
+        return _err("Upload an MP4 (or WebM/MOV) video")
+    if not (1 <= secs <= MAX_VIDEO_SECONDS):
+        return _err("Lesson videos can be at most 40 minutes long")
+    path = _part_path(sid, g.tu["id"])
+    if not os.path.exists(path) or os.path.getsize(path) != size or size <= 0:
+        return _err("The upload is incomplete. Please choose the video again.", 409)
+    with db() as (con, cur):
+        s = _session(cur, sid, g.tu)
+        if not s:
+            return _err("Session not found", 404)
+        if s["status"] == "ended":
+            return _err("This session has ended", 409)
+        name = secrets.token_hex(16) + "." + ext
+        os.replace(path, os.path.join(TUITION_VIDEO_DIR, name))
+        cur.execute("UPDATE tuition_sessions SET video_file=%s,video_size=%s,video_seconds=%s WHERE id=%s",
+                    (name, size, secs, sid))
+        con.commit()
+    if s["video_file"]:
+        try: os.remove(os.path.join(TUITION_VIDEO_DIR, os.path.basename(s["video_file"])))
+        except OSError: pass
+    return jsonify({"ok": True})
+
 @tuition_bp.route("/api/tuition/sessions/<int:sid>/video", methods=["GET"])
 @need_user("teacher", "student")
 def video_get(sid):
