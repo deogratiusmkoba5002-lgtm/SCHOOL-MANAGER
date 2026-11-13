@@ -103,6 +103,7 @@ MINI_AGENT_PAYOUT_GLOBAL_DAILY_TZS = _price("MINI_AGENT_PAYOUT_GLOBAL_DAILY_TZS"
 TUITION_FEE_PERCENT  = _price("TUITION_FEE_PERCENT", 10)    # platform commission, recorded per payment
 TUITION_MAX_STUDENTS = _price("TUITION_MAX_STUDENTS", 15)
 TUITION_MAX_VIDEO_MB = _price("TUITION_MAX_VIDEO_MB", 700)
+TUITION_RETENTION_DAYS = _price("TUITION_RETENTION_DAYS", 7)
 TUITION_VIDEO_DIR    = os.path.join(BASE_DIR, "storage", "tuition_videos")
 TUITION_FILE_DIR     = os.path.join(BASE_DIR, "storage", "tuition_files")
 TUITION_USE_XACCEL   = os.environ.get("TUITION_USE_XACCEL", "0") == "1"

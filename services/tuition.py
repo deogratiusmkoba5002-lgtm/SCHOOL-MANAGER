@@ -1,9 +1,10 @@
 """DrDemic Tuition: course access + Snippe payments. Same rule as access.py: access is granted ONLY by
 finalize_payment(), which asks Snippe for the real status and checks the amount. No Flask."""
-import logging, secrets
+import logging, os, secrets, time
 from datetime import datetime, timezone
 
-from config import TUITION_FEE_PERCENT
+from config import TUITION_FEE_PERCENT, TUITION_RETENTION_DAYS, TUITION_VIDEO_DIR, TUITION_FILE_DIR
+
 from core.db import get_db
 from services import access as A
 
@@ -170,3 +171,63 @@ def refresh_pending(student_id):
     for pid in ids:
         try: finalize_payment(pid)
         except Exception: log.exception("tuition finalize_payment failed for %s", pid)
+
+# ── auto-cleanup of old sessions / courses ──────────────────
+_last_purge = 0.0
+
+
+def _rm(folder, name):
+    if not name:
+        return
+    try:
+        os.remove(os.path.join(folder, os.path.basename(name)))
+    except OSError:
+        pass
+
+
+def purge_old(force=False):
+    """Lazy cleanup (no scheduler): runs at most once an hour, triggered by search.
+    Deletes sessions older than TUITION_RETENTION_DAYS (with their video + chat images),
+    then empty, abandoned courses that no student ever paid for."""
+    global _last_purge
+    if not force and time.time() - _last_purge < 3600:
+        return
+    _last_purge = time.time()
+    days = TUITION_RETENTION_DAYS
+    videos, files = [], []
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("""SELECT id, video_file FROM tuition_sessions
+                       WHERE scheduled_at < (NOW() AT TIME ZONE 'utc') - (%s * INTERVAL '1 day')""", (days,))
+        old = cur.fetchall()
+        if old:
+            ids = [r[0] for r in old]
+            videos += [r[1] for r in old if r[1]]
+            cur.execute("SELECT image_file FROM tuition_messages WHERE session_id=ANY(%s) AND image_file IS NOT NULL", (ids,))
+            files += [r[0] for r in cur.fetchall()]
+            # keep the money trail of paid sessions; unpaid/pending rows cascade away
+            cur.execute("UPDATE tuition_payments SET session_id=NULL WHERE session_id=ANY(%s) AND applied=1", (ids,))
+            cur.execute("DELETE FROM tuition_sessions WHERE id=ANY(%s)", (ids,))
+        cur.execute("""SELECT c.id FROM tuition_courses c
+                       WHERE c.created_at < (NOW() AT TIME ZONE 'utc') - (%s * INTERVAL '1 day')
+                         AND NOT EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id)
+                         AND NOT EXISTS (SELECT 1 FROM tuition_payments p WHERE p.course_id=c.id AND p.applied=1)""", (days,))
+        cids = [r[0] for r in cur.fetchall()]
+        if cids:
+            cur.execute("SELECT file_path FROM tuition_assignments WHERE course_id=ANY(%s) AND file_path IS NOT NULL", (cids,))
+            files += [r[0] for r in cur.fetchall()]
+            cur.execute("""SELECT s.file_path FROM tuition_submissions s JOIN tuition_assignments a ON a.id=s.assignment_id
+                           WHERE a.course_id=ANY(%s) AND s.file_path IS NOT NULL""", (cids,))
+            files += [r[0] for r in cur.fetchall()]
+            cur.execute("DELETE FROM tuition_courses WHERE id=ANY(%s)", (cids,))
+        con.commit()
+    except Exception:
+        con.rollback(); raise
+    finally:
+        cur.close(); con.close()
+    for v in videos:
+        _rm(TUITION_VIDEO_DIR, v)
+    for f in files:
+        _rm(TUITION_FILE_DIR, f)
+    if videos or files or cids:
+        log.info("tuition purge: %d videos, %d files, %d empty courses removed", len(videos), len(files), len(cids))

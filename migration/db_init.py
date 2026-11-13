@@ -1016,6 +1016,16 @@ def init_db():
         "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS google_sub TEXT",
         "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_users_google ON tuition_users(google_sub)",    
+        """CREATE TABLE IF NOT EXISTS tuition_ratings (
+            teacher_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            stars      INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+            comment    TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY(teacher_id, student_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_tuition_sessions_sched ON tuition_sessions(scheduled_at)",
     ):
         cur.execute(_m)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.

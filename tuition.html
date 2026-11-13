@@ -150,7 +150,7 @@ async function editProfile(){
   me.username=r.username;me.full_name=r.full_name;localStorage.setItem("tu_me",JSON.stringify(me));
   $("who").textContent=me.full_name||me.username;toast("Profile updated");}
 // ── home ──
-async function loadHome(){
+async function loadMine(){
   show("home");const T=me.role==="teacher";
   const r=await api("/courses");COURSES={};(r.courses||[]).forEach(c=>COURSES[c.id]=c);
   const form=T?`<div class="row"><button class="pri" onclick="const p=$('nc-panel');p.style.display=p.style.display==='block'?'none':'block'">+ Create course</button></div>
@@ -168,7 +168,7 @@ async function loadHome(){
       ${c.active?`<span class="badge on">Access active${c.expires_at?" until "+new Date(c.expires_at).toLocaleDateString():""}</span><div style="margin-top:8px"><button class="pri" onclick="openCourse(${c.id})">Open</button></div>`
       :`<span class="badge warn">${tzs(c.price)} for ${c.access_days} days</span>
         <div style="margin-top:8px"><button class="pri" onclick="openCourse(${c.id})">Open &amp; unlock</button></div>`}</div>`).join("");
-  $("v-home").innerHTML=`<div id="due"></div>${form}<h2 style="margin-bottom:10px">${T?"My courses":"My lessons"}</h2><div class="cards">${cards||"<p class='muted'>"+(T?"No courses yet.":"Open a course link from your teacher to join a course.")+"</p>"}</div>`;
+  $("v-home").innerHTML=`<div id="due"></div>${form}<div class="row">${T?"":"<button onclick='loadHome()'>← Search</button>"}<h2 style="margin-bottom:10px">${T?"My courses":"My courses"}</h2></div><div class="cards">${cards||"<p class='muted'>"+(T?"No courses yet.":"You have not joined any course yet. Search for one or open a link from your teacher.")+"</p>"}</div>`;  
   if(T){checkDue();timers.push(setInterval(checkDue,30000));}
 }
 async function checkDue(){const r=await api("/due");if(!r.ok)return;const el=$("due");if(!el)return;
@@ -183,11 +183,80 @@ async function payCourse(cid){
   const r=await api("/pay","POST",{course_id:cid,phone});if(!r.ok)return toast(r.error);
   toast("Approve the payment on your phone");let n=0;const el=$("ps-"+cid);el.textContent="⏳ Waiting for approval…";
   const t=setInterval(async()=>{n++;const c=await api("/pay/check/"+r.payment_id,"POST",{});
-    if(c.status==="completed"){clearInterval(t);toast("Payment confirmed!");await loadHome();openCourse(cid);}
+    if(c.status==="completed"){clearInterval(t);toast("Payment confirmed!");await loadMine();openCourse(cid);}
     else if(["failed","voided","expired","amount_mismatch"].includes(c.status)){clearInterval(t);el.textContent="Payment "+c.status+". You can try again.";}
     else if(n>=36){clearInterval(t);el.textContent="Still waiting. Reopen this page in a minute.";}},5000);timers.push(t);}
 
-// ── course ──
+// ── home dispatcher + student search ──
+function loadHome(){ return me.role==="student" ? loadSearch() : loadMine(); }
+let SQT=null, CAT={};
+const starsTxt=(a,n)=>n?`★ ${a.toFixed(1)} (${n})`:"No ratings yet";
+const chargeTxt=c=>c.charge_mode==="session"?"Charged per session":(c.price>0?tzs(c.price)+" for the whole course ("+c.access_days+" days)":"Free");
+
+function loadSearch(){
+  show("home");
+  $("v-home").innerHTML=`<div style="text-align:center;margin:56px 0 22px"><h1 style="font-size:2.8rem;color:#283593;letter-spacing:-.02em">DrDemic</h1></div>
+    <div style="position:relative;max-width:640px;margin:0 auto">
+      <input id="sq" placeholder="Type a topic you want to learn, or a teacher's name" oninput="searchSoon()" onkeydown="if(event.key==='Enter')runSearch()"
+        style="padding:15px 58px 15px 20px;font-size:1.05rem;border-radius:30px">
+      <button onclick="runSearch()" title="Search" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:none;font-size:1.3rem;padding:6px 12px">🔍</button>
+    </div>
+    <p style="text-align:center;margin:14px"><a href="#" onclick="loadMine();return false">My courses</a></p>
+    <div id="sres" style="margin-top:18px"></div>`;
+  runSearch();
+}
+function searchSoon(){clearTimeout(SQT);SQT=setTimeout(runSearch,300);}
+async function runSearch(){
+  const q=$("sq")?$("sq").value:"";
+  const r=await api("/search?q="+encodeURIComponent(q));
+  const el=$("sres");if(!el)return;
+  if(!r.ok)return toast(r.error||"Search failed");
+  const tchips=r.teachers.map(x=>`<div class="panel" style="cursor:pointer" onclick="openTeacher(${x.id})"><b>${esc(x.name)}</b>
+    <div class="muted">@${esc(x.username)} · ${starsTxt(x.rating,x.ratings)}</div></div>`).join("");
+  const cards=r.courses.map(c=>{CAT[c.id]=c;return `<div class="panel" style="cursor:pointer" onclick="openCatalog(${c.id})">
+    <b>${esc(c.subject)}</b>
+    <div class="muted" style="margin:6px 0">${chargeTxt(c)}<br>${c.upcoming} upcoming session${c.upcoming===1?"":"s"} · Next ${fdt(c.next)}</div>
+    <div class="muted">by <a href="#" onclick="event.stopPropagation();openTeacher(${c.teacher_id});return false">${esc(c.teacher)}</a> · ${starsTxt(c.rating,c.ratings)}</div></div>`}).join("");
+  el.innerHTML=(tchips?`<h3 style="margin-bottom:8px">Teachers</h3><div class="cards" style="margin-bottom:18px">${tchips}</div>`:"")
+    +`<h3 style="margin-bottom:8px">Lessons</h3><div class="cards">${cards||"<p class='muted'>Nothing found. Try another word.</p>"}</div>`;
+}
+
+async function openCatalog(cid){
+  const r=await api("/catalog/course/"+cid);if(!r.ok)return toast(r.error);
+  const c=r.course;CAT[cid]=c;show("course");
+  const sess=r.sessions.map(s=>`<div class="row"><b>${esc(s.title)}</b><span class="muted">${fdt(s.scheduled_at)}</span>
+    ${c.charge_mode==="session"?`<span class="badge warn">${tzs(s.price)}</span>`:""}</div>`).join("")||"<p class='muted'>No upcoming sessions.</p>";
+  const act=me.role!=="student"?"":(r.enrolled?`<button class="pri" onclick="enterCourse(${cid})">Open course</button>`
+    :`<button class="pri" onclick="joinCourse(${cid})">Join this course</button>`);
+  $("v-course").innerHTML=`<div class="row"><button onclick="loadHome()">← Back</button></div>
+    <div class="panel"><h2>${esc(c.subject)}</h2>
+      <div class="muted" style="margin:6px 0">by <a href="#" onclick="openTeacher(${c.teacher_id});return false">${esc(c.teacher)}</a> · ${starsTxt(c.rating,c.ratings)}</div>
+      <p style="margin:8px 0"><b>${chargeTxt(c)}</b>${c.charge_mode==="course"&&c.price>0?"<br><span class='muted'>This course is accessed as a whole: pay once and every session is unlocked.</span>":""}</p>${act}</div>
+    <div class="panel"><b>Upcoming sessions</b><div style="margin-top:8px">${sess}</div></div>`;
+}
+function enterCourse(cid){const c=CAT[cid];COURSES[cid]=CUR={id:cid,subject:c.subject,title:"",price:c.price,access_days:c.access_days,charge_mode:c.charge_mode};openCourse(cid);}
+async function joinCourse(cid){const r=await api("/catalog/course/"+cid+"/join","POST",{});if(!r.ok)return toast(r.error);toast("Joined!");enterCourse(cid);}
+
+async function openTeacher(tid){
+  const r=await api("/teachers/"+tid);if(!r.ok)return toast(r.error);
+  const t=r.teacher;show("course");
+  const courses=r.courses.map(c=>{CAT[c.id]=c;return `<div class="panel" style="cursor:pointer" onclick="openCatalog(${c.id})"><b>${esc(c.subject)}</b>
+    <div class="muted">${chargeTxt(c)} · ${c.upcoming} upcoming · Next ${fdt(c.next)}</div></div>`}).join("")||"<p class='muted'>No upcoming courses.</p>";
+  const rate=r.can_rate?`<div class="panel"><b>Rate this teacher</b><div class="row" style="margin-top:8px">
+    <select id="rt-s" style="flex:0 0 auto">${[5,4,3,2,1].map(n=>`<option value="${n}" ${r.mine&&r.mine.stars===n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select>
+    <input id="rt-c" placeholder="Comment (optional)" value="${esc(r.mine?r.mine.comment:"")}"><button class="pri" onclick="rateTeacher(${tid})">Save</button></div></div>`:"";
+  const rev=r.reviews.map(v=>`<div class="msg"><b>${esc(v.name)}</b> ${"★".repeat(v.stars)}<div>${esc(v.comment)}</div></div>`).join("");
+  $("v-course").innerHTML=`<div class="row"><button onclick="loadHome()">← Back</button></div>
+    <div class="panel"><h2>${esc(t.name)}</h2><div class="muted">@${esc(t.username)} · ${starsTxt(t.rating,t.ratings)}</div>
+      ${t.contact?`<p style="margin-top:8px">📞 <a href="tel:${esc(t.contact)}">${esc(t.contact)}</a></p>`:""}</div>
+    ${rate}<h3 style="margin:14px 0 8px">Upcoming courses</h3><div class="cards">${courses}</div>
+    ${rev?`<h3 style="margin:14px 0 8px">Reviews</h3>${rev}`:""}`;
+}
+async function rateTeacher(tid){
+  const r=await api(`/teachers/${tid}/rate`,"POST",{stars:$("rt-s").value,comment:$("rt-c").value});
+  if(!r.ok)return toast(r.error);toast("Thanks for rating!");openTeacher(tid);}
+
+    // ── course ──
 function openCourse(id){CUR=COURSES[id]||CUR;show("course");const T=me.role==="teacher";
   const link=T?location.origin+"/tuition/c/"+CUR.join_token:"";
   const top=T?`<div class="panel"><b>Course link</b> <span class="muted">send this to parents and students</span>
@@ -374,7 +443,7 @@ async function boot(){
   if(JT||ST){
     const t=JT||ST,path=ST?"/join_session/":"/join/";JT=ST=null;history.replaceState(null,"","/tuition");
     if(me.role!=="student"){await loadHome();return toast("Course and session links are for student accounts.");}
-    const r=await api(path+t,"POST",{});await loadHome();
+    const r=await api(path+t,"POST",{});await loadMine();
     if(!r.ok)return toast(r.error);
     return openCourse(r.course_id);
   }

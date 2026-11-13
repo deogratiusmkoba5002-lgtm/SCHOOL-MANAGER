@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import requests
-from flask import Blueprint, request, jsonify, send_file, g, make_response
+from flask import Blueprint, request, jsonify, send_file, g, make_response, current_app
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 from config import (SECRET_KEY, SESSION_MAX_AGE, TUITION_MAX_STUDENTS, TUITION_MAX_VIDEO_MB,
@@ -557,7 +557,7 @@ def session_get(sid):
         s = _session(cur, sid, u)
         if not s:
             return _err("Session not found", 404)
-        paid = T.has_access(cur, u["id"], s) if u["role"] == "student" else True
+        paid = T.has_session_access(cur, u["id"], s) if u["role"] == "student" else True
     out = {k: s[k] for k in ("id", "course_id", "title", "scheduled_at", "has_video", "video_size", "video_seconds",
                               "status", "teacher_available", "subject")}
     return jsonify({"ok": True, "session": out, "paid": paid})
@@ -609,7 +609,7 @@ def video_get(sid):
         if not s or not s["video_file"]:
             return _err("Video not found", 404)
         if u["role"] == "student":
-            if not T.has_access(cur, u["id"], s):
+            if not T.has_session_access(cur, u["id"], s):
                 return _err("Payment required", 402)
             if dl and _now() < s["raw_scheduled"] - timedelta(hours=24):
                 return _err("Downloads open 24 hours before the session", 403)
@@ -671,7 +671,6 @@ def due():
     with db() as (con, cur):
         cur.execute("""SELECT s.id,s.title,s.scheduled_at,c.id,c.subject FROM tuition_sessions s
                        JOIN tuition_courses c ON c.id=s.course_id
-                       WHERE c.teacher_id=%s
                        WHERE c.teacher_id=%s AND s.status='scheduled'
                          AND (s.teacher_last_seen IS NULL OR s.teacher_last_seen < (NOW() AT TIME ZONE 'utc') - INTERVAL '25 seconds')
                          AND s.scheduled_at <= (NOW() AT TIME ZONE 'utc') + INTERVAL '15 minutes'
@@ -699,7 +698,7 @@ def msg_post(sid):
             return _err("This session has ended", 409)
         if u["role"] == "student":
             student_id = u["id"]
-            if not T.has_access(cur, u["id"], s):
+            if not T.has_session_access(cur, u["id"], s):
                 return _err("Payment required", 402)
             if s["status"] == "scheduled":
                 return _err("The session has not started yet", 409)
@@ -964,3 +963,166 @@ def pay_check(pid):
     if not r or r[0] != g.tu["id"]:
         return _err("Payment not found", 404)
     return jsonify({"ok": True, "status": T.finalize_payment(pid)})
+
+# ── discovery: search, course catalog, teacher profiles, ratings ──
+def _tokens(q):
+    return re.findall(r"\w+", (q or "").lower())[:6]
+
+
+def _text_score(text, toks):
+    """exact word 4, word-prefix 3, substring 1, summed over the query words."""
+    text = (text or "").lower()
+    words = re.findall(r"\w+", text)
+    s = 0
+    for t in toks:
+        if t in words: s += 4
+        elif any(w.startswith(t) for w in words): s += 3
+        elif t in text: s += 1
+    return s
+
+
+def _boost(avg, n):
+    """Smoothed rating (prior 3.0 worth 2 votes), so one lucky 5-star doesn't outrank an established teacher."""
+    return (float(avg) * n + 3.0 * 2) / (n + 2)
+
+
+def _contact(p):
+    p = p or ""
+    return ("0" + p[3:]) if p.startswith("255") else p
+
+
+@tuition_bp.route("/api/tuition/search", methods=["GET"])
+@need_user("teacher", "student")
+def search():
+    try:
+        T.purge_old()
+    except Exception:
+        current_app.logger.exception("tuition purge failed")
+    toks = _tokens(request.args.get("q"))
+    pats = ["%" + t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%" for t in toks]
+    with db() as (con, cur):
+        cur.execute("""
+            SELECT c.id,c.subject,c.charge_mode,c.price_tzs,c.access_days,t.id,t.full_name,t.username,
+                   COALESCE((SELECT AVG(r.stars) FROM tuition_ratings r WHERE r.teacher_id=t.id),0),
+                   (SELECT COUNT(*) FROM tuition_ratings r WHERE r.teacher_id=t.id),
+                   (SELECT COUNT(*) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc'),
+                   (SELECT MIN(s.scheduled_at) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
+            FROM tuition_courses c JOIN tuition_users t ON t.id=c.teacher_id
+            WHERE EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
+              AND (%s OR c.subject ILIKE ANY(%s::text[]) OR t.full_name ILIKE ANY(%s::text[]) OR t.username ILIKE ANY(%s::text[]))
+            ORDER BY c.id DESC LIMIT 500""", (not toks, pats, pats, pats))
+        rows = cur.fetchall()
+    courses, teachers = [], {}
+    for cid, subj, mode, price, days, tid, tname, tuser, avg, n, upc, nxt in rows:
+        ts = _text_score(subj, toks)
+        ns = _text_score(f"{tname} {tuser}", toks)
+        if toks and not (ts or ns):
+            continue
+        b = _boost(avg, n)
+        courses.append((ts * 10 + ns * 6 + b * 2 + min(upc, 3), subj.lower(), {
+            "id": cid, "subject": subj, "charge_mode": mode, "price": price, "access_days": days,
+            "teacher_id": tid, "teacher": tname, "rating": round(float(avg), 1), "ratings": n,
+            "upcoming": upc, "next": _iso(nxt)}))
+        if tid not in teachers and (not toks or ns):
+            teachers[tid] = (ns * 10 + b * 2, tname.lower(), {
+                "id": tid, "name": tname, "username": tuser, "rating": round(float(avg), 1), "ratings": n})
+    courses.sort(key=lambda x: (-x[0], x[1]))          # best score first, then A-Z
+    tlist = sorted(teachers.values(), key=lambda x: (-x[0], x[1]))
+    return jsonify({"ok": True, "courses": [c[2] for c in courses[:30]], "teachers": [t[2] for t in tlist[:8]]})
+
+
+@tuition_bp.route("/api/tuition/catalog/course/<int:cid>", methods=["GET"])
+@need_user("teacher", "student")
+def catalog_course(cid):
+    with db() as (con, cur):
+        cur.execute("""SELECT c.id,c.subject,c.charge_mode,c.price_tzs,c.access_days,t.id,t.full_name,
+                              COALESCE((SELECT AVG(r.stars) FROM tuition_ratings r WHERE r.teacher_id=t.id),0),
+                              (SELECT COUNT(*) FROM tuition_ratings r WHERE r.teacher_id=t.id)
+                       FROM tuition_courses c JOIN tuition_users t ON t.id=c.teacher_id WHERE c.id=%s""", (cid,))
+        r = cur.fetchone()
+        if not r:
+            return _err("Course not found", 404)
+        cur.execute("""SELECT id,title,scheduled_at,price_tzs FROM tuition_sessions
+                       WHERE course_id=%s AND status<>'ended' ORDER BY scheduled_at""", (cid,))
+        sessions = [{"id": s[0], "title": s[1], "scheduled_at": _iso(s[2]), "price": s[3]} for s in cur.fetchall()]
+        enrolled = False
+        if g.tu["role"] == "student":
+            cur.execute("SELECT 1 FROM tuition_enrollments WHERE course_id=%s AND student_id=%s", (cid, g.tu["id"]))
+            enrolled = cur.fetchone() is not None
+    return jsonify({"ok": True, "enrolled": enrolled, "sessions": sessions,
+                    "course": {"id": r[0], "subject": r[1], "charge_mode": r[2], "price": r[3], "access_days": r[4],
+                               "teacher_id": r[5], "teacher": r[6], "rating": round(float(r[7]), 1), "ratings": r[8]}})
+
+
+@tuition_bp.route("/api/tuition/catalog/course/<int:cid>/join", methods=["POST"])
+@need_user("student")
+def catalog_join(cid):
+    with db() as (con, cur):
+        cur.execute("SELECT max_students FROM tuition_courses WHERE id=%s", (cid,))
+        c = cur.fetchone()
+        if not c:
+            return _err("Course not found", 404)
+        cur.execute("SELECT 1 FROM tuition_enrollments WHERE course_id=%s AND student_id=%s", (cid, g.tu["id"]))
+        if not cur.fetchone():
+            cur.execute("SELECT COUNT(*) FROM tuition_enrollments WHERE course_id=%s", (cid,))
+            if cur.fetchone()[0] >= c[0]:
+                return _err("This course is full", 409)
+            cur.execute("INSERT INTO tuition_enrollments(course_id,student_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                        (cid, g.tu["id"]))
+            con.commit()
+    return jsonify({"ok": True, "course_id": cid})
+
+
+@tuition_bp.route("/api/tuition/teachers/<int:tid>", methods=["GET"])
+@need_user("teacher", "student")
+def teacher_profile(tid):
+    with db() as (con, cur):
+        cur.execute("SELECT id,full_name,username,phone FROM tuition_users WHERE id=%s AND role='teacher'", (tid,))
+        t = cur.fetchone()
+        if not t:
+            return _err("Teacher not found", 404)
+        cur.execute("SELECT COALESCE(AVG(stars),0),COUNT(*) FROM tuition_ratings WHERE teacher_id=%s", (tid,))
+        avg, n = cur.fetchone()
+        cur.execute("""SELECT c.id,c.subject,c.charge_mode,c.price_tzs,c.access_days,
+                         (SELECT COUNT(*) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc'),
+                         (SELECT MIN(s.scheduled_at) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
+                       FROM tuition_courses c WHERE c.teacher_id=%s
+                         AND EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
+                       ORDER BY 7""", (tid,))
+        courses = [{"id": r[0], "subject": r[1], "charge_mode": r[2], "price": r[3], "access_days": r[4],
+                    "upcoming": r[5], "next": _iso(r[6])} for r in cur.fetchall()]
+        cur.execute("""SELECT u.full_name,r.stars,r.comment,r.updated_at FROM tuition_ratings r
+                       JOIN tuition_users u ON u.id=r.student_id WHERE r.teacher_id=%s AND r.comment<>''
+                       ORDER BY r.updated_at DESC LIMIT 5""", (tid,))
+        reviews = [{"name": r[0], "stars": r[1], "comment": r[2], "at": _iso(r[3])} for r in cur.fetchall()]
+        can_rate, mine = False, None
+        if g.tu["role"] == "student":
+            cur.execute("""SELECT 1 FROM tuition_enrollments e JOIN tuition_courses c ON c.id=e.course_id
+                           WHERE c.teacher_id=%s AND e.student_id=%s LIMIT 1""", (tid, g.tu["id"]))
+            can_rate = cur.fetchone() is not None
+            cur.execute("SELECT stars,comment FROM tuition_ratings WHERE teacher_id=%s AND student_id=%s", (tid, g.tu["id"]))
+            m = cur.fetchone()
+            mine = {"stars": m[0], "comment": m[1]} if m else None
+    return jsonify({"ok": True, "can_rate": can_rate, "mine": mine, "courses": courses, "reviews": reviews,
+                    "teacher": {"id": t[0], "name": t[1], "username": t[2], "contact": _contact(t[3]),
+                                "rating": round(float(avg), 1), "ratings": n}})
+
+
+@tuition_bp.route("/api/tuition/teachers/<int:tid>/rate", methods=["POST"])
+@need_user("student")
+def teacher_rate(tid):
+    d = request.get_json(silent=True) or {}
+    stars = _int(d.get("stars"))
+    if stars is None or not (1 <= stars <= 5):
+        return _err("Choose 1 to 5 stars")
+    comment = str(d.get("comment") or "").strip()[:500]
+    with db() as (con, cur):
+        cur.execute("""SELECT 1 FROM tuition_enrollments e JOIN tuition_courses c ON c.id=e.course_id
+                       WHERE c.teacher_id=%s AND e.student_id=%s LIMIT 1""", (tid, g.tu["id"]))
+        if not cur.fetchone():
+            return _err("Join one of this teacher's courses before rating", 403)
+        cur.execute("""INSERT INTO tuition_ratings(teacher_id,student_id,stars,comment) VALUES(%s,%s,%s,%s)
+                       ON CONFLICT(teacher_id,student_id) DO UPDATE SET stars=EXCLUDED.stars,
+                         comment=EXCLUDED.comment, updated_at=NOW()""", (tid, g.tu["id"], stars, comment))
+        con.commit()
+    return jsonify({"ok": True})
