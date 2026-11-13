@@ -1012,6 +1012,10 @@ def init_db():
             updated_at TIMESTAMP DEFAULT NOW(),
             PRIMARY KEY(student_id, session_id)
         )""",
+        "ALTER TABLE tuition_users ALTER COLUMN role DROP NOT NULL",
+        "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS google_sub TEXT",
+        "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT ''",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tuition_users_google ON tuition_users(google_sub)",    
     ):
         cur.execute(_m)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.

@@ -4,12 +4,12 @@ import os, re, secrets
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-
+import requests
 from flask import Blueprint, request, jsonify, send_file, g, make_response
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 from config import (SECRET_KEY, SESSION_MAX_AGE, TUITION_MAX_STUDENTS, TUITION_MAX_VIDEO_MB,
-                    TUITION_VIDEO_DIR, TUITION_FILE_DIR, TUITION_USE_XACCEL)
+                    TUITION_VIDEO_DIR, TUITION_FILE_DIR, TUITION_USE_XACCEL, GOOGLE_CLIENT_ID)
 from core.db import get_db
 from core.ratelimit import rate_limit
 from core.security import hash_password, verify_password
@@ -198,6 +198,104 @@ def change_password():
     u = g.tu
     return _token_reply(u["id"], u["username"], u["role"], u["full_name"], False, tv)
 
+# ── Google login ────────────────────────────────────────────
+@tuition_bp.route("/api/tuition/auth/config", methods=["GET"])
+def auth_config():
+    return jsonify({"ok": True, "google_client_id": GOOGLE_CLIENT_ID})
+
+
+def _verify_google(cred):
+    if not GOOGLE_CLIENT_ID:
+        raise ValueError("Google login is not configured on the server yet")
+    try:
+        r = requests.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": cred or ""}, timeout=8)
+    except requests.RequestException:
+        raise ValueError("Could not reach Google. Try again.")
+    if r.status_code != 200:
+        raise ValueError("Google sign-in failed")
+    j = r.json()
+    if (j.get("aud") != GOOGLE_CLIENT_ID
+            or j.get("iss") not in ("accounts.google.com", "https://accounts.google.com")
+            or str(j.get("email_verified")).lower() != "true" or not j.get("sub")):
+        raise ValueError("Google sign-in failed")
+    return j
+
+
+def _free_username(cur, base):
+    base = re.sub(r"[^A-Za-z0-9_.-]", "", base or "")[:30] or "user"
+    if len(base) < 3 or base.isdigit():
+        base = "user" + base
+    cand, n = base, 0
+    while True:
+        cur.execute("SELECT 1 FROM tuition_users WHERE LOWER(username)=%s", (cand.lower(),))
+        if not cur.fetchone():
+            return cand
+        n += 1
+        cand = f"{base}{n}"[:40]
+
+
+@tuition_bp.route("/api/tuition/auth/google", methods=["POST"])
+@rate_limit("tuition_google", max_attempts=60, window_minutes=15, by="ip")
+def google_login():
+    d = request.get_json(silent=True) or {}
+    try:
+        j = _verify_google(d.get("credential"))
+    except ValueError as e:
+        return _err(str(e), 401)
+    sub, email = j["sub"], (j.get("email") or "")
+    name = " ".join((j.get("name") or email.split("@")[0] or "User").split())[:80]
+    with db() as (con, cur):
+        cur.execute("SELECT id,username,role,full_name,must_change_password,token_version "
+                    "FROM tuition_users WHERE google_sub=%s", (sub,))
+        r = cur.fetchone()
+        if not r:
+            uname = _free_username(cur, email.split("@")[0])
+            cur.execute("""INSERT INTO tuition_users(username,password,role,full_name,google_sub,email)
+                           VALUES(%s,%s,NULL,%s,%s,%s) RETURNING id,username,role,full_name,must_change_password,token_version""",
+                        (uname, hash_password(secrets.token_hex(32)), name, sub, email))
+            r = cur.fetchone(); con.commit()
+    return _token_reply(r[0], r[1], r[2], r[3], r[4], r[5])
+
+
+@tuition_bp.route("/api/tuition/auth/role", methods=["POST"])
+@need_user()
+def set_role():
+    if g.tu["role"]:
+        return _err("Role already chosen", 409)
+    d = request.get_json(silent=True) or {}
+    role = d.get("role")
+    if role not in ("teacher", "student"):
+        return _err("Choose teacher or student")
+    phone = normalize_phone(d.get("phone")) if d.get("phone") else ""
+    if (role == "teacher" and not phone) or (d.get("phone") and not phone):
+        return _err("Enter a valid phone number, e.g. 0712345678")
+    with db() as (con, cur):
+        cur.execute("UPDATE tuition_users SET role=%s, phone=%s WHERE id=%s AND role IS NULL "
+                    "RETURNING token_version", (role, phone or "", g.tu["id"]))
+        r = cur.fetchone(); con.commit()
+    if not r:
+        return _err("Role already chosen", 409)
+    u = g.tu
+    return _token_reply(u["id"], u["username"], role, u["full_name"], False, r[0])
+
+
+@tuition_bp.route("/api/tuition/auth/profile", methods=["POST"])
+@need_user()
+def set_profile():
+    d = request.get_json(silent=True) or {}
+    u = (d.get("username") or "").strip()
+    name = " ".join((d.get("full_name") or "").split())
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,40}", u) or u.isdigit():
+        return _err("Username: 3-40 letters/numbers/_ . - with at least one letter")
+    if not (3 <= len(name) <= 80):
+        return _err("Name must be 3-80 characters")
+    with db() as (con, cur):
+        cur.execute("SELECT 1 FROM tuition_users WHERE LOWER(username)=%s AND id<>%s", (u.lower(), g.tu["id"]))
+        if cur.fetchone():
+            return _err("That username is taken", 409)
+        cur.execute("UPDATE tuition_users SET username=%s, full_name=%s WHERE id=%s", (u, name, g.tu["id"]))
+        con.commit()
+    return jsonify({"ok": True, "username": u, "full_name": name})
 
 # ── courses & students ──────────────────────────────────────
 _CC = "c.id,c.teacher_id,c.subject,c.title,c.price_tzs,c.access_days,c.max_students,c.charge_mode,c.join_token"

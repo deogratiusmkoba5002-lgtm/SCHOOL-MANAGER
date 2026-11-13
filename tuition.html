@@ -27,9 +27,11 @@ input,textarea{font:inherit;padding:9px;border:1.5px solid #B0BEC5;border-radius
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;padding:8px;text-align:left}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#283593;color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:50}
 .stu{padding:8px;border-bottom:1px solid #E8EAF6;cursor:pointer}.stu:hover{background:#F1F3FA}
-</style></head><body>
-<div class="top"><b>DrDemic Tuition</b><a href="/">Home</a><span class="sp"></span><span id="who"></span><button id="out" onclick="logout()" style="display:none">Sign out</button></div>
-<div id="toast"></div>
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head><body>
+<div class="top"><b>DrDemic Tuition</b><a href="/">Home</a><span class="sp"></span><span id="who"></span><button id="prof" onclick="editProfile()" style="display:none">Profile</button><button id="out" onclick="logout()" style="display:none">Sign out</button></div>
+  <div id="toast"></div>
 
 <div id="v-auth" class="box">
   <h2 id="a-title">Sign in</h2>
@@ -47,6 +49,7 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;
   <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms</a>.</label>
   <button class="pri" style="width:100%;margin-top:6px" id="a-btn" onclick="doAuth()">Sign in</button>
   <p class="muted" style="margin-top:12px"><a href="#" id="a-sw" onclick="setMode(mode==='login'?'signup':'login');return false">No account? Create one</a></p>
+  <div id="g-wrap" style="margin-top:14px;display:flex;justify-content:center"></div>
 </div>
 
 <div id="v-pw" class="box">
@@ -54,6 +57,17 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;
   <input id="op" type="password" placeholder="Current password (from your teacher)">
   <input id="np" type="password" placeholder="New password (6+ characters)">
   <button class="pri" style="width:100%" onclick="changePw()">Save</button>
+</div>
+
+<div id="v-role" class="box">
+  <h2>Welcome! Who are you?</h2>
+  <p class="muted" style="margin-bottom:8px">You can only choose this once.</p>
+  <select id="rl-role" onchange="$('rl-phone').style.display=this.value==='teacher'?'block':'none'" style="width:100%;margin-bottom:6px">
+    <option value="student">I am a student / parent</option>
+    <option value="teacher">I am a teacher</option>
+  </select>
+  <input id="rl-phone" type="tel" placeholder="Your phone number" style="display:none">
+  <button class="pri" style="width:100%;margin-top:8px" onclick="saveRole()">Continue</button>
 </div>
 
 <div id="v-home" class="wrap"></div>
@@ -75,8 +89,10 @@ function leaveRoom(sid){try{navigator.sendBeacon(`/api/tuition/sessions/${sid}/l
 window.addEventListener("pagehide",()=>{if(ROOM&&me&&me.role==="teacher")leaveRoom(ROOM.sid);});
 function show(v){clearTimers();if(ROOM&&me&&me.role==="teacher")leaveRoom(ROOM.sid);
   if(ROOM&&ROOM.url)URL.revokeObjectURL(ROOM.url);ROOM=null;
-  ["auth","pw","home","course","room"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
-  $("out").style.display=me?"inline-block":"none";$("who").textContent=me?(me.full_name||me.username):"";}
+  ["auth","pw","role","home","course","room"].forEach(x=>$("v-"+x).style.display=x===v?"block":"none");
+  $("out").style.display=me?"inline-block":"none";
+  $("prof").style.display=me&&me.role?"inline-block":"none";
+  $("who").textContent=me?(me.full_name||me.username):"";}
 function logout(){localStorage.removeItem("tu_token");localStorage.removeItem("tu_me");location.href="/tuition";}
 async function api(path,method="GET",body,isForm){
   const h={};if(token)h.Authorization="Bearer "+token;const o={method,headers:h};
@@ -112,7 +128,27 @@ function setAuth(r){token=r.token;me={username:r.username,role:r.role,full_name:
   localStorage.setItem("tu_token",token);localStorage.setItem("tu_me",JSON.stringify(me));}
 async function changePw(){const r=await api("/auth/change_password","POST",{old_password:$("op").value,new_password:$("np").value});
   if(!r.ok)return toast(r.error);setAuth(r);toast("Password updated");boot();}
-
+async function initGoogle(){
+  const c=await api("/auth/config");if(!c.ok||!c.google_client_id)return;
+  const go=()=>{if(!window.google||!google.accounts)return setTimeout(go,300);
+    google.accounts.id.initialize({client_id:c.google_client_id,callback:onGoogle});
+    google.accounts.id.renderButton($("g-wrap"),{theme:"outline",size:"large",text:"continue_with",width:300});};
+  go();}
+async function onGoogle(resp){
+  const r=await api("/auth/google","POST",{credential:resp.credential});
+  if(!r.ok)return toast(r.error||"Google sign-in failed");
+  setAuth(r);boot();}
+async function saveRole(){
+  const role=$("rl-role").value;
+  const r=await api("/auth/role","POST",{role,phone:$("rl-phone").value});
+  if(!r.ok)return toast(r.error);
+  setAuth(r);boot();}
+async function editProfile(){
+  const u=prompt("Username:",me.username);if(u===null)return;
+  const n=prompt(me.role==="teacher"?"Brand name (students see this):":"Full name:",me.full_name||"");if(n===null)return;
+  const r=await api("/auth/profile","POST",{username:u,full_name:n});if(!r.ok)return toast(r.error);
+  me.username=r.username;me.full_name=r.full_name;localStorage.setItem("tu_me",JSON.stringify(me));
+  $("who").textContent=me.full_name||me.username;toast("Profile updated");}
 // ── home ──
 async function loadHome(){
   show("home");const T=me.role==="teacher";
@@ -334,6 +370,7 @@ async function boot(){
   }
   if(!token||!me){show("auth");return setMode("login");}
   if(me.must_change){show("pw");return;}
+  if(!me.role){show("role");return;}
   if(JT||ST){
     const t=JT||ST,path=ST?"/join_session/":"/join/";JT=ST=null;history.replaceState(null,"","/tuition");
     if(me.role!=="student"){await loadHome();return toast("Course and session links are for student accounts.");}
@@ -342,5 +379,6 @@ async function boot(){
     return openCourse(r.course_id);
   }
   loadHome();}
+  initGoogle();
 boot();
 </script></body></html>

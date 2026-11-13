@@ -108,3 +108,4 @@ TUITION_FILE_DIR     = os.path.join(BASE_DIR, "storage", "tuition_files")
 TUITION_USE_XACCEL   = os.environ.get("TUITION_USE_XACCEL", "0") == "1"
 os.makedirs(TUITION_VIDEO_DIR, exist_ok=True)
 os.makedirs(TUITION_FILE_DIR, exist_ok=True)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
