@@ -101,13 +101,16 @@ def api_access_webhook():
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM student_payments WHERE reference=%s", (ref,))
         row = cur.fetchone()
-        mrow = trow = None
+        mrow = trow = prow = None
         if not row:
             cur.execute("SELECT id FROM mini_payments WHERE reference=%s", (ref,))
             mrow = cur.fetchone()
             if not mrow:
                 cur.execute("SELECT id FROM tuition_payments WHERE reference=%s", (ref,))
                 trow = cur.fetchone()
+                if not trow:
+                    cur.execute("SELECT id FROM tuition_program_payments WHERE reference=%s", (ref,))
+                    prow = cur.fetchone()                
         cur.close(); con.close()
         if row:
             finalize_payment(row[0])
@@ -117,6 +120,9 @@ def api_access_webhook():
         elif trow:
             from services.tuition import finalize_payment as tuition_finalize
             tuition_finalize(trow[0])
+        elif prow:
+            from services.tuition_program import finalize_payment as program_finalize
+            program_finalize(prow[0])
     elif etype.startswith("payout.") and ref:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM star_withdrawals WHERE payout_reference=%s", (ref,))

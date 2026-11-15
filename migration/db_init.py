@@ -995,6 +995,62 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_tuition_payments_student ON tuition_payments(student_id, course_id);
     """)
     for _m in (
+        """CREATE TABLE IF NOT EXISTS tuition_programs (
+            id SERIAL PRIMARY KEY,
+            teacher_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            fee_tzs INTEGER NOT NULL DEFAULT 0,
+            advance_tzs INTEGER NOT NULL DEFAULT 0,
+            installments INTEGER NOT NULL DEFAULT 1,
+            max_students INTEGER NOT NULL DEFAULT 100,
+            status TEXT NOT NULL DEFAULT 'open',
+            timetable TEXT NOT NULL DEFAULT '',
+            join_token TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT NOW()
+        )""",
+        "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS program_id INTEGER REFERENCES tuition_programs(id) ON DELETE SET NULL",
+        "ALTER TABLE tuition_assignments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'assignment'",
+        "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS mini_user_id INTEGER",
+        """CREATE TABLE IF NOT EXISTS tuition_applications (
+            id SERIAL PRIMARY KEY,
+            program_id INTEGER NOT NULL REFERENCES tuition_programs(id) ON DELETE CASCADE,
+            student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            full_name TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            subjects TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'applied',
+            created_at TIMESTAMP DEFAULT NOW(),
+            registered_at TIMESTAMP,
+            UNIQUE(program_id, student_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS tuition_program_payments (
+            id SERIAL PRIMARY KEY,
+            program_id INTEGER NOT NULL REFERENCES tuition_programs(id) ON DELETE CASCADE,
+            student_id INTEGER NOT NULL REFERENCES tuition_users(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL,
+            fee_tzs INTEGER NOT NULL DEFAULT 0,
+            kind TEXT NOT NULL DEFAULT 'installment',
+            reference TEXT UNIQUE,
+            idempotency_key TEXT,
+            phone TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            failure_reason TEXT,
+            applied INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW(),
+            paid_at TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS tuition_notes (
+            id SERIAL PRIMARY KEY,
+            course_id INTEGER REFERENCES tuition_courses(id) ON DELETE CASCADE,
+            program_id INTEGER REFERENCES tuition_programs(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            file_path TEXT,
+            file_name TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        )""",
         "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS charge_mode TEXT NOT NULL DEFAULT 'course'",
         "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS join_token TEXT",
         "UPDATE tuition_courses SET join_token = md5(random()::text || id::text) WHERE join_token IS NULL",

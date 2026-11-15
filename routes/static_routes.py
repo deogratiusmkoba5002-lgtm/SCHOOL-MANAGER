@@ -34,6 +34,9 @@ def tuition_join_page(token): return send_from_directory(BASE_DIR, "tuition.html
 @static_bp.route("/tuition/s/<token>")
 def tuition_session_page(token): return send_from_directory(BASE_DIR, "tuition.html")
 
+@static_bp.route("/tuition/p/<token>")
+def tuition_program_page(token): return send_from_directory(BASE_DIR, "tuition.html")
+
 @static_bp.route("/exam")
 def exam_page(): return send_from_directory(BASE_DIR, "exam.html")
 

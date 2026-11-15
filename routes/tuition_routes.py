@@ -15,6 +15,7 @@ from core.ratelimit import rate_limit
 from core.security import hash_password, verify_password
 from services.access import normalize_phone, SnippeError
 from services import tuition as T
+from services import tuition_program as TP
 import shutil
 
 MIN_FREE_BYTES = 1 *1024**3
@@ -134,6 +135,9 @@ def _token_reply(uid, username, role, full_name, must_change, tv):
     return jsonify({"ok": True, "token": _ser.dumps({"uid": uid, "tv": tv}), "username": username, "role": role,
                     "full_name": full_name, "must_change_password": bool(must_change)})
 
+def _teacher_ok(d):
+    code = os.environ.get("TUITION_TEACHER_CODE", "")
+    return (not code) or secrets.compare_digest(str(d.get("teacher_code") or ""), code)
 
 @tuition_bp.route("/api/tuition/auth/signup", methods=["POST"])
 @rate_limit("tuition_signup_attempts", max_attempts=60, window_minutes=60, by="ip")
@@ -141,6 +145,8 @@ def _token_reply(uid, username, role, full_name, must_change, tv):
 def signup():
     d = request.get_json(silent=True) or {}
     role = "student" if d.get("role") == "student" else "teacher"
+    if role == "teacher" and not _teacher_ok(d):
+        return _err("Teacher sign-up needs the invite code from DrDemic", 403)
     u, p = (d.get("username") or "").strip(), d.get("password") or ""
     name = " ".join((d.get("full_name") or "").split())
     if not re.fullmatch(r"[A-Za-z0-9_.-]{3,40}", u) or u.isdigit():
@@ -269,6 +275,8 @@ def set_role():
     role = d.get("role")
     if role not in ("teacher", "student"):
         return _err("Choose teacher or student")
+    if role == "teacher" and not _teacher_ok(d):
+        return _err("Teacher sign-up needs the invite code from DrDemic", 403)
     phone = normalize_phone(d.get("phone")) if d.get("phone") else ""
     if (role == "teacher" and not phone) or (d.get("phone") and not phone):
         return _err("Enter a valid phone number, e.g. 0712345678")
@@ -326,7 +334,7 @@ def courses_list():
                                   (SELECT COUNT(*) FROM tuition_enrollments e WHERE e.course_id=c.id),
                                   (SELECT COUNT(*) FROM tuition_sessions s WHERE s.course_id=c.id),
                                   c.charge_mode,c.join_token
-                           FROM tuition_courses c WHERE c.teacher_id=%s ORDER BY c.id DESC""", (u["id"],))
+                           FROM tuition_courses c WHERE c.teacher_id=%s AND c.program_id IS NULL ORDER BY c.id DESC""", (u["id"],))
             out = [{"id": r[0], "subject": r[1], "title": r[2], "price": r[3], "access_days": r[4],
                     "max_students": r[5], "students": r[6], "sessions": r[7],
                     "charge_mode": r[8], "join_token": r[9]} for r in cur.fetchall()]
@@ -335,7 +343,7 @@ def courses_list():
                            FROM tuition_enrollments e JOIN tuition_courses c ON c.id=e.course_id
                            JOIN tuition_users t ON t.id=c.teacher_id
                            LEFT JOIN tuition_access a ON a.course_id=c.id AND a.student_id=e.student_id
-                           WHERE e.student_id=%s ORDER BY c.id DESC""", (u["id"],))
+                           WHERE e.student_id=%s AND c.program_id IS NULL ORDER BY c.id DESC""", (u["id"],))
             now = _now()
             out = [{"id": r[0], "subject": r[1], "title": r[2], "price": r[3], "access_days": r[4], "teacher": r[5],
                     "active": r[3] <= 0 or bool(r[6] and r[6] > now), "expires_at": _iso(r[6]),
@@ -348,19 +356,27 @@ def courses_list():
 def course_create():
     d = request.get_json(silent=True) or {}
     name = " ".join((d.get("name") or "").split())[:120]
-    mode = d.get("charge_mode")
+    mode, pid = d.get("charge_mode"), _int(d.get("program_id"))
     if not name:
-        return _err("Enter the course name")
-    if mode not in ("session", "course"):
-        return _err("Choose how you charge")
+        return _err("Enter the topic name")
     token = secrets.token_urlsafe(8)
     with db() as (con, cur):
-        cur.execute("INSERT INTO tuition_courses(teacher_id,subject,title,price_tzs,access_days,max_students,charge_mode,join_token) "
-                    "VALUES(%s,%s,'',0,30,%s,%s,%s) RETURNING id",
-                    (g.tu["id"], name, TUITION_MAX_STUDENTS, mode, token))
-        cid = cur.fetchone()[0]; con.commit()
+        if pid:
+            cur.execute("SELECT 1 FROM tuition_programs WHERE id=%s AND teacher_id=%s", (pid, g.tu["id"]))
+            if not cur.fetchone():
+                return _err("Course not found", 404)
+            mode = "course"
+        elif mode not in ("session", "course"):
+            return _err("Choose how you charge")
+        cur.execute("INSERT INTO tuition_courses(teacher_id,subject,title,price_tzs,access_days,max_students,charge_mode,join_token,program_id) "
+                    "VALUES(%s,%s,'',0,30,%s,%s,%s,%s) RETURNING id",
+                    (g.tu["id"], name, TUITION_MAX_STUDENTS, mode, token, pid))
+        cid = cur.fetchone()[0]
+        if pid:
+            cur.execute("INSERT INTO tuition_enrollments(course_id,student_id) SELECT %s,student_id FROM tuition_applications "
+                        "WHERE program_id=%s AND status='registered' ON CONFLICT DO NOTHING", (cid, pid))
+        con.commit()
     return jsonify({"ok": True, "id": cid})
-
 
 @tuition_bp.route("/api/tuition/courses/<int:cid>/pricing", methods=["POST"])
 @need_user("teacher")
@@ -860,21 +876,21 @@ def assign_list(cid):
         if not _course(cur, cid, u):
             return _err("Course not found", 404)
         if u["role"] == "teacher":
-            cur.execute("""SELECT a.id,a.title,a.instructions,a.due_at,a.max_score,a.file_name,
+            cur.execute("""SELECT a.id,a.title,a.instructions,a.due_at,a.max_score,a.file_name,a.kind,
                   (SELECT COUNT(*) FROM tuition_submissions s WHERE s.assignment_id=a.id),
                   (SELECT COUNT(*) FROM tuition_submissions s WHERE s.assignment_id=a.id AND s.marked_at IS NOT NULL)
                   FROM tuition_assignments a WHERE a.course_id=%s ORDER BY a.id DESC""", (cid,))
             out = [{"id": r[0], "title": r[1], "instructions": r[2], "due_at": _iso(r[3]), "max_score": r[4],
-                    "file_name": r[5], "submitted": r[6], "marked": r[7]} for r in cur.fetchall()]
+                    "file_name": r[5], "kind": r[6], "submitted": r[7], "marked": r[8]} for r in cur.fetchall()]
         else:
-            cur.execute("""SELECT a.id,a.title,a.instructions,a.due_at,a.max_score,a.file_name,
+            cur.execute("""SELECT a.id,a.title,a.instructions,a.due_at,a.max_score,a.file_name,a.kind,
                   s.id,s.body,s.file_name,s.submitted_at,s.score,s.feedback
                   FROM tuition_assignments a LEFT JOIN tuition_submissions s
                     ON s.assignment_id=a.id AND s.student_id=%s WHERE a.course_id=%s ORDER BY a.id DESC""", (u["id"], cid))
             out = [{"id": r[0], "title": r[1], "instructions": r[2], "due_at": _iso(r[3]), "max_score": r[4],
-                    "file_name": r[5],
-                    "mine": ({"id": r[6], "body": r[7], "file_name": r[8], "submitted_at": _iso(r[9]),
-                              "score": r[10], "feedback": r[11]} if r[6] else None)} for r in cur.fetchall()]
+                    "file_name": r[5], "kind": r[6],
+                    "mine": ({"id": r[7], "body": r[8], "file_name": r[9], "submitted_at": _iso(r[10]),
+                              "score": r[11], "feedback": r[12]} if r[7] else None)} for r in cur.fetchall()]
     return jsonify({"ok": True, "assignments": out})
 
 
@@ -893,8 +909,9 @@ def assign_create(cid):
         stored, orig, err = _save_upload(request.files.get("file"), DOC_EXT, 10)
         if err:
             return _err(err)
-        cur.execute("INSERT INTO tuition_assignments(course_id,title,instructions,due_at,max_score,file_path,file_name) "
-                    "VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id", (cid, title, instr, due, mx, stored, orig))
+        kind = "exam" if request.form.get("kind") == "exam" else "assignment"
+        cur.execute("INSERT INTO tuition_assignments(course_id,title,instructions,due_at,max_score,file_path,file_name,kind) "
+                    "VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id", (cid, title, instr, due, mx, stored, orig, kind))
         aid = cur.fetchone()[0]; con.commit()
     return jsonify({"ok": True, "id": aid})
 
@@ -1085,6 +1102,7 @@ def search():
                    (SELECT MIN(s.scheduled_at) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
             FROM tuition_courses c JOIN tuition_users t ON t.id=c.teacher_id
             WHERE EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
+            AND c.program_id IS NULL
               AND (%s OR c.subject ILIKE ANY(%s::text[]) OR t.full_name ILIKE ANY(%s::text[]) OR t.username ILIKE ANY(%s::text[]))
             ORDER BY c.id DESC LIMIT 500""", (not toks, pats, pats, pats))
         rows = cur.fetchall()
@@ -1163,6 +1181,7 @@ def teacher_profile(tid):
                          (SELECT COUNT(*) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc'),
                          (SELECT MIN(s.scheduled_at) FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
                        FROM tuition_courses c WHERE c.teacher_id=%s
+                       AND c.program_id IS NULL
                          AND EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id AND s.scheduled_at > NOW() AT TIME ZONE 'utc')
                        ORDER BY 7""", (tid,))
         courses = [{"id": r[0], "subject": r[1], "charge_mode": r[2], "price": r[3], "access_days": r[4],
@@ -1202,3 +1221,305 @@ def teacher_rate(tid):
                          comment=EXCLUDED.comment, updated_at=NOW()""", (tid, g.tu["id"], stars, comment))
         con.commit()
     return jsonify({"ok": True})
+
+# ══ COURSES (programs): application, instalments, timetable ══════════════
+def _prog_row(cur, pid, u):
+    cur.execute("""SELECT p.id,p.name,p.description,p.fee_tzs,p.advance_tzs,p.installments,p.max_students,p.status,
+                          p.timetable,p.join_token,t.full_name,p.teacher_id
+                   FROM tuition_programs p JOIN tuition_users t ON t.id=p.teacher_id WHERE p.id=%s""", (pid,))
+    r = cur.fetchone()
+    if not r: return None
+    if u["role"] == "teacher" and r[11] != u["id"]: return None
+    if u["role"] == "student":
+        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s", (pid, u["id"]))
+        if not cur.fetchone(): return None
+    return dict(zip(("id", "name", "description", "fee", "advance", "installments", "max_students", "status",
+                     "timetable", "join_token", "teacher", "teacher_id"), r))
+
+
+def _prog_vals(d, base):
+    gv = lambda k: d.get(k, base.get(k))
+    name = " ".join(str(gv("name") or "").split())[:120]
+    fee, adv = _int(gv("fee"), 0), _int(gv("advance"), 0)
+    inst, mx = _int(gv("installments"), 1), _int(gv("max_students"), 100)
+    if not name: return None, "Enter the course name"
+    if fee < 0 or 0 < fee < 500: return None, "Fee must be 0 (free) or at least 500 TZS"
+    if adv < 0 or 0 < adv < 500 or adv > fee: return None, "Advance must be 0, or between 500 TZS and the full fee"
+    if not 1 <= inst <= 12: return None, "Instalments must be between 1 and 12"
+    if not 1 <= mx <= 1000: return None, "Maximum students must be between 1 and 1000"
+    status = gv("status") if gv("status") in ("open", "closed") else "open"
+    return {"name": name, "description": str(gv("description") or "").strip()[:3000], "fee": fee, "advance": adv,
+            "installments": inst, "max_students": mx, "status": status,
+            "timetable": str(gv("timetable") or "")[:6000]}, None
+
+
+@tuition_bp.route("/api/tuition/programs", methods=["GET"])
+@need_user("teacher", "student")
+def programs_list():
+    u = g.tu
+    with db() as (con, cur):
+        if u["role"] == "teacher":
+            cur.execute("""SELECT p.id,p.name,p.fee_tzs,p.installments,p.status,
+                  (SELECT COUNT(*) FROM tuition_applications a WHERE a.program_id=p.id AND a.status='registered'),
+                  (SELECT COUNT(*) FROM tuition_applications a WHERE a.program_id=p.id AND a.status='applied'),
+                  (SELECT COUNT(*) FROM tuition_courses c WHERE c.program_id=p.id)
+                  FROM tuition_programs p WHERE p.teacher_id=%s ORDER BY p.id DESC""", (u["id"],))
+            out = [dict(zip(("id", "name", "fee", "installments", "status", "registered", "applied", "topics"), r))
+                   for r in cur.fetchall()]
+        else:
+            cur.execute("""SELECT p.id,p.name,p.fee_tzs,p.installments,p.status,t.full_name,a.status
+                  FROM tuition_applications a JOIN tuition_programs p ON p.id=a.program_id
+                  JOIN tuition_users t ON t.id=p.teacher_id WHERE a.student_id=%s ORDER BY a.created_at DESC""", (u["id"],))
+            out = [dict(zip(("id", "name", "fee", "installments", "status", "teacher", "my_status"), r))
+                   for r in cur.fetchall()]
+    return jsonify({"ok": True, "programs": out})
+
+
+@tuition_bp.route("/api/tuition/programs", methods=["POST"])
+@need_user("teacher")
+def program_create():
+    v, err = _prog_vals(request.get_json(silent=True) or {}, {})
+    if err: return _err(err)
+    with db() as (con, cur):
+        cur.execute("""INSERT INTO tuition_programs(teacher_id,name,description,fee_tzs,advance_tzs,installments,max_students,status,join_token)
+                       VALUES(%s,%s,%s,%s,%s,%s,%s,'open',%s) RETURNING id""",
+                    (g.tu["id"], v["name"], v["description"], v["fee"], v["advance"], v["installments"],
+                     v["max_students"], secrets.token_urlsafe(8)))
+        pid = cur.fetchone()[0]; con.commit()
+    return jsonify({"ok": True, "id": pid})
+
+
+@tuition_bp.route("/api/tuition/programs/<int:pid>", methods=["POST"])
+@need_user("teacher")
+def program_update(pid):
+    with db() as (con, cur):
+        base = _prog_row(cur, pid, g.tu)
+        if not base: return _err("Course not found", 404)
+        v, err = _prog_vals(request.get_json(silent=True) or {}, base)
+        if err: return _err(err)
+        cur.execute("""UPDATE tuition_programs SET name=%s,description=%s,fee_tzs=%s,advance_tzs=%s,installments=%s,
+                       max_students=%s,status=%s,timetable=%s WHERE id=%s""",
+                    (v["name"], v["description"], v["fee"], v["advance"], v["installments"], v["max_students"],
+                     v["status"], v["timetable"], pid))
+        con.commit()
+    return jsonify({"ok": True})
+
+
+@tuition_bp.route("/api/tuition/programs/<int:pid>", methods=["GET"])
+@need_user("teacher", "student")
+def program_get(pid):
+    u = g.tu
+    if u["role"] == "student":
+        TP.refresh_pending(pid, u["id"])
+    with db() as (con, cur):
+        p = _prog_row(cur, pid, u)
+        if not p: return _err("Course not found", 404)
+        out = {"ok": True, "topics": [], "applicants": [], "mine": None, "history": [],
+               "stats": {"registered": 0, "applied": 0, "collected": 0}}
+        member = u["role"] == "teacher"
+        if u["role"] == "student":
+            p.pop("join_token", None)
+            cur.execute("SELECT status,full_name FROM tuition_applications WHERE program_id=%s AND student_id=%s", (pid, u["id"]))
+            a = cur.fetchone()
+            paid, cnt = TP.paid_summary(cur, pid, u["id"])
+            out["mine"] = {"status": a[0], "name": a[1], "paid": paid, "count": cnt, "balance": max(p["fee"] - paid, 0)}
+            member = a[0] == "registered"
+            cur.execute("SELECT id,amount,kind,status,created_at FROM tuition_program_payments WHERE program_id=%s "
+                        "AND student_id=%s ORDER BY id DESC LIMIT 10", (pid, u["id"]))
+            out["history"] = [{"id": r[0], "amount": r[1], "kind": r[2], "status": r[3], "at": _iso(r[4])} for r in cur.fetchall()]
+        if member:
+            cur.execute("""SELECT c.id,c.subject,(SELECT COUNT(*) FROM tuition_enrollments e WHERE e.course_id=c.id),
+                                  (SELECT COUNT(*) FROM tuition_sessions s WHERE s.course_id=c.id)
+                           FROM tuition_courses c WHERE c.program_id=%s ORDER BY c.id""", (pid,))
+            out["topics"] = [{"id": r[0], "subject": r[1], "students": r[2], "sessions": r[3], "program_id": pid}
+                             for r in cur.fetchall()]
+        if u["role"] == "teacher":
+            cur.execute("""SELECT a.id,a.student_id,a.full_name,a.phone,a.subjects,a.note,a.status,
+                  COALESCE((SELECT SUM(x.amount) FROM tuition_program_payments x WHERE x.program_id=a.program_id
+                            AND x.student_id=a.student_id AND x.applied=1),0)
+                  FROM tuition_applications a WHERE a.program_id=%s ORDER BY a.created_at DESC""", (pid,))
+            out["applicants"] = [dict(zip(("id", "student_id", "name", "phone", "subjects", "note", "status", "paid"), r))
+                                 for r in cur.fetchall()]
+            for a in out["applicants"]:
+                a["phone"] = ("0" + a["phone"][3:]) if a["phone"].startswith("255") else a["phone"]
+            s = out["stats"]
+            s["registered"] = sum(a["status"] == "registered" for a in out["applicants"])
+            s["applied"] = sum(a["status"] == "applied" for a in out["applicants"])
+            s["collected"] = sum(a["paid"] for a in out["applicants"])
+    out["program"] = p
+    return jsonify(out)
+
+
+# ── public application ──────────────────────────────────────
+@tuition_bp.route("/api/tuition/p/<token>", methods=["GET"])
+def prog_public(token):
+    with db() as (con, cur):
+        cur.execute("""SELECT p.name,p.description,p.fee_tzs,p.advance_tzs,p.installments,p.status,t.full_name,
+                         p.max_students,(SELECT COUNT(*) FROM tuition_applications a WHERE a.program_id=p.id)
+                       FROM tuition_programs p JOIN tuition_users t ON t.id=p.teacher_id WHERE p.join_token=%s""", (token,))
+        r = cur.fetchone()
+    if not r: return _err("Course not found", 404)
+    return jsonify({"ok": True, "name": r[0], "description": r[1], "fee": r[2], "advance": r[3],
+                    "installments": r[4], "status": r[5], "teacher": r[6], "spots": max(r[7] - r[8], 0)})
+
+
+@tuition_bp.route("/api/tuition/p/<token>/apply", methods=["POST"])
+@need_user("student")
+def prog_apply(token):
+    d = request.get_json(silent=True) or {}
+    name = " ".join((d.get("full_name") or g.tu["full_name"] or "").split())[:80]
+    phone = normalize_phone(d.get("phone"))
+    if len(name) < 3: return _err("Enter your full name")
+    if not phone: return _err("Enter a valid phone number, e.g. 0712345678")
+    subjects, note = str(d.get("subjects") or "").strip()[:300], str(d.get("note") or "").strip()[:1000]
+    with db() as (con, cur):
+        cur.execute("SELECT id,status,max_students,advance_tzs FROM tuition_programs WHERE join_token=%s", (token,))
+        p = cur.fetchone()
+        if not p: return _err("Course not found", 404)
+        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s", (p[0], g.tu["id"]))
+        if cur.fetchone():
+            cur.execute("UPDATE tuition_applications SET full_name=%s,phone=%s,subjects=%s,note=%s "
+                        "WHERE program_id=%s AND student_id=%s", (name, phone, subjects, note, p[0], g.tu["id"]))
+        else:
+            if p[1] != "open": return _err("Applications for this course are closed", 409)
+            cur.execute("SELECT COUNT(*) FROM tuition_applications WHERE program_id=%s", (p[0],))
+            if cur.fetchone()[0] >= p[2]: return _err("This course is full", 409)
+            cur.execute("INSERT INTO tuition_applications(program_id,student_id,full_name,phone,subjects,note) "
+                        "VALUES(%s,%s,%s,%s,%s,%s)", (p[0], g.tu["id"], name, phone, subjects, note))
+        if p[3] == 0:
+            TP.register(cur, p[0], g.tu["id"])
+        con.commit()
+    return jsonify({"ok": True, "program_id": p[0]})
+
+
+@tuition_bp.route("/api/tuition/programs/<int:pid>/pay", methods=["POST"])
+@need_user("student")
+def program_pay(pid):
+    d = request.get_json(silent=True) or {}
+    try:
+        res = TP.start_payment(g.tu["id"], pid, d.get("amount"), d.get("phone") or "")
+    except ValueError as e:
+        return _err(str(e))
+    except SnippeError as e:
+        return _err(str(e), 502)
+    return jsonify({"ok": True, **res})
+
+
+@tuition_bp.route("/api/tuition/program_pay/check/<int:pay_id>", methods=["POST"])
+@need_user("student")
+def program_pay_check(pay_id):
+    with db() as (con, cur):
+        cur.execute("SELECT student_id FROM tuition_program_payments WHERE id=%s", (pay_id,))
+        r = cur.fetchone()
+    if not r or r[0] != g.tu["id"]:
+        return _err("Payment not found", 404)
+    return jsonify({"ok": True, "status": TP.finalize_payment(pay_id)})
+
+
+# ── notes ───────────────────────────────────────────────────
+def _notes_ok(cur, u, course_id, program_id):
+    if course_id:
+        c = _course(cur, course_id, u)
+        if not c: return False
+        return True if u["role"] == "teacher" else T.has_access(cur, u["id"], course_id, c["price"])
+    if program_id:
+        cur.execute("SELECT teacher_id FROM tuition_programs WHERE id=%s", (program_id,))
+        r = cur.fetchone()
+        if not r: return False
+        if u["role"] == "teacher": return r[0] == u["id"]
+        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s AND status='registered'",
+                    (program_id, u["id"]))
+        return cur.fetchone() is not None
+    return False
+
+
+@tuition_bp.route("/api/tuition/notes", methods=["GET"])
+@need_user("teacher", "student")
+def notes_list():
+    cid, pid = _int(request.args.get("course_id")), _int(request.args.get("program_id"))
+    with db() as (con, cur):
+        if not _notes_ok(cur, g.tu, cid, pid): return _err("Not allowed", 403)
+        cur.execute("SELECT id,title,body,file_name,created_at FROM tuition_notes WHERE "
+                    + ("course_id=%s" if cid else "program_id=%s") + " ORDER BY id DESC", (cid or pid,))
+        rows = [{"id": r[0], "title": r[1], "body": r[2], "file_name": r[3], "at": _iso(r[4])} for r in cur.fetchall()]
+    return jsonify({"ok": True, "notes": rows})
+
+
+@tuition_bp.route("/api/tuition/notes", methods=["POST"])
+@need_user("teacher")
+def notes_create():
+    cid, pid = _int(request.form.get("course_id")), _int(request.form.get("program_id"))
+    title = " ".join((request.form.get("title") or "").split())[:150]
+    body = (request.form.get("body") or "").strip()[:6000]
+    if not title: return _err("Enter a title")
+    with db() as (con, cur):
+        if not _notes_ok(cur, g.tu, cid, pid): return _err("Not allowed", 403)
+        stored, orig, err = _save_upload(request.files.get("file"), DOC_EXT, 20)
+        if err: return _err(err)
+        if not body and not stored: return _err("Write some text or attach a file")
+        cur.execute("INSERT INTO tuition_notes(course_id,program_id,title,body,file_path,file_name) VALUES(%s,%s,%s,%s,%s,%s)",
+                    (cid if cid else None, None if cid else pid, title, body, stored, orig))
+        con.commit()
+    return jsonify({"ok": True})
+
+
+@tuition_bp.route("/api/tuition/notes/<int:nid>/file", methods=["GET"])
+@need_user("teacher", "student")
+def notes_file(nid):
+    with db() as (con, cur):
+        cur.execute("SELECT course_id,program_id,file_path,file_name FROM tuition_notes WHERE id=%s", (nid,))
+        r = cur.fetchone()
+        if not r or not r[2] or not _notes_ok(cur, g.tu, r[0], r[1]): return _err("Not found", 404)
+    return _send_stored(r[2], r[3])
+
+
+@tuition_bp.route("/api/tuition/notes/<int:nid>", methods=["DELETE"])
+@need_user("teacher")
+def notes_delete(nid):
+    with db() as (con, cur):
+        cur.execute("SELECT course_id,program_id,file_path FROM tuition_notes WHERE id=%s", (nid,))
+        r = cur.fetchone()
+        if not r or not _notes_ok(cur, g.tu, r[0], r[1]): return _err("Not found", 404)
+        cur.execute("DELETE FROM tuition_notes WHERE id=%s", (nid,)); con.commit()
+    if r[2]:
+        try: os.remove(os.path.join(TUITION_FILE_DIR, os.path.basename(r[2])))
+        except OSError: pass
+    return jsonify({"ok": True})
+
+
+# ── exams → DrDemic Mini ────────────────────────────────────
+@tuition_bp.route("/api/tuition/programs/<int:pid>/exams", methods=["GET"])
+@need_user("teacher")
+def program_exams(pid):
+    with db() as (con, cur):
+        if not _prog_row(cur, pid, g.tu): return _err("Course not found", 404)
+        cur.execute("""SELECT a.id,a.title,c.subject,a.max_score,
+                         (SELECT COUNT(*) FROM tuition_submissions s WHERE s.assignment_id=a.id AND s.score IS NOT NULL)
+                       FROM tuition_assignments a JOIN tuition_courses c ON c.id=a.course_id
+                       WHERE c.program_id=%s AND a.kind='exam' ORDER BY a.id DESC""", (pid,))
+        rows = [dict(zip(("id", "title", "subject", "max_score", "marked"), r)) for r in cur.fetchall()]
+    return jsonify({"ok": True, "exams": rows})
+
+
+@tuition_bp.route("/api/tuition/programs/<int:pid>/to_mini", methods=["POST"])
+@need_user("teacher")
+def program_to_mini(pid):
+    d = request.get_json(silent=True) or {}
+    ids = [i for i in (_int(x) for x in (d.get("assignment_ids") or [])) if i]
+    try:
+        res = TP.send_results(g.tu["id"], pid, d.get("title"), ids)
+    except ValueError as e:
+        return _err(str(e))
+    return jsonify({"ok": True, **res})
+
+
+@tuition_bp.route("/api/tuition/mini/open", methods=["POST"])
+@need_user("teacher", "student")
+def mini_open():
+    u = g.tu
+    with db() as (con, cur):
+        if u["role"] == "student":
+            cur.execute("SELECT 1 FROM tuition_applications WHERE student_id=%s AND status='registered' LIMIT 1", (u["id"],))
+            if not cur.fetchone(): return _err("Register in a course first", 403)
+        sess = TP.mini_session(cur, u); con.commit()
+    return jsonify({"ok": True, **sess})

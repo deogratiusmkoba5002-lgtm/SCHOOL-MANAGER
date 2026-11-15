@@ -4,33 +4,62 @@
 <title>DrDemic Tuition</title><meta name="robots" content="noindex"/>
 <link rel="icon" type="image/png" href="/DRDEMIC-LOGO.png"/>
 <style>
+:root{--g9:#16301f;--g:#1f3d2b;--g2:#2f5a40;--g3:#4a7a5c;--sand:#e8dcc4;--sand2:#f1e8d3;--sand3:#faf6ec;--ink:#1d2a22;--mut:#667266;--line:#e0d5bb;--warn:#9a6a12;--bad:#9c2f22;--ok:#2f6b45}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F3FA;color:#0D1B2A;font-size:14px}
-.top{background:#283593;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
-.top a{color:#C5CAE9;text-decoration:none}.sp{flex:1}
-button,select{font:inherit;padding:7px 12px;border-radius:8px;border:1.5px solid #3949AB;background:#fff;color:#3949AB;cursor:pointer;font-weight:600}
-button.pri{background:#3949AB;color:#fff}button.red{border-color:#C62828;color:#C62828}button:disabled{opacity:.5}
-input,textarea{font:inherit;padding:9px;border:1.5px solid #B0BEC5;border-radius:8px;width:100%}
-.box{max-width:400px;margin:50px auto;background:#fff;padding:26px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1);display:none}
-.box input{margin:7px 0}
-.wrap{max-width:900px;margin:20px auto;padding:0 14px;display:none}
-.panel{background:#fff;border-radius:12px;padding:16px;box-shadow:0 3px 14px rgba(57,73,171,.13);margin-bottom:14px}
-.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}.row>input,.row>select{width:auto;flex:1;min-width:120px}
-.muted{color:#546E7A;font-size:.85rem}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
-.badge{background:#E8EAF6;color:#283593;border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:700}
-.badge.on{background:#C8E6C9;color:#1B5E20}.badge.end{background:#ECEFF1;color:#546E7A}.badge.warn{background:#FFF3E0;color:#E65100}
-.tabs{display:flex;gap:4px;background:#E8EAF6;padding:4px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap}
-.tabs button{border:none;background:none}.tabs button.on{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
-.msg{padding:8px 10px;border-radius:8px;margin-bottom:6px;background:#F5F5F5}.msg.me{background:#E8EAF6}
-.alert{background:#FFF3E0;border-left:4px solid #FF6D00;padding:10px 14px;border-radius:8px;margin-bottom:12px}
-table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;padding:8px;text-align:left}
-#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#283593;color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:50}
-.stu{padding:8px;border-bottom:1px solid #E8EAF6;cursor:pointer}.stu:hover{background:#F1F3FA}
+body{font-family:Inter,'Segoe UI',system-ui,sans-serif;background:var(--sand3);color:var(--ink);font-size:15px;line-height:1.5}
+h1{font-size:1.75rem;letter-spacing:-.02em;line-height:1.2}h2{font-size:1.3rem;letter-spacing:-.01em}h3{font-size:1.05rem;margin-bottom:6px}
+a{color:var(--g2);font-weight:600}
+.top{background:var(--g);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20;box-shadow:0 2px 12px rgba(22,48,31,.3)}
+.top a{color:var(--sand);text-decoration:none;font-size:.9rem}.top a:hover{color:#fff}
+.brand{font-size:1.1rem;letter-spacing:-.01em}.brand span{color:var(--sand);font-weight:500}
+.sp{flex:1}
+button,select{font:inherit;font-weight:600;padding:9px 16px;border-radius:10px;border:1.5px solid var(--g);background:transparent;color:var(--g);cursor:pointer;transition:background .15s,transform .05s}
+select{background:#fff;font-weight:500}
+button:hover{background:var(--sand2)}button:active{transform:translateY(1px)}
+button.pri{background:var(--g);color:#fff}button.pri:hover{background:var(--g2)}
+button.alt{background:var(--sand);color:var(--g);border-color:var(--sand)}button.alt:hover{background:#f3ead6}
+button.red{border-color:var(--bad);color:var(--bad)}button.red:hover{background:#f7e4e0}
+button:disabled{opacity:.5;cursor:not-allowed}
+.top button{border-color:rgba(232,220,196,.5);color:var(--sand);padding:6px 12px;font-size:.85rem}.top button:hover{background:rgba(232,220,196,.15)}
+.btn{display:inline-block;padding:8px 14px;border-radius:10px;border:1.5px solid var(--g);text-decoration:none;font-size:.9rem}
+input,textarea{font:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;width:100%;background:#fff;color:var(--ink)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--g3);box-shadow:0 0 0 3px rgba(74,122,92,.22)}
+.box{max-width:420px;margin:48px auto;background:#fff;padding:28px;border-radius:16px;border:1px solid var(--line);box-shadow:0 10px 36px rgba(22,48,31,.12);display:none}
+.box h2{margin-bottom:10px}.box input,.box select{margin:6px 0}
+.wrap{max-width:960px;margin:24px auto;padding:0 16px;display:none}
+.panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(22,48,31,.06);margin-bottom:16px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}.row>input,.row>select{width:auto;flex:1;min-width:140px}
+.muted{color:var(--mut);font-size:.88rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:22px}
+.card-h{cursor:pointer;transition:transform .15s,box-shadow .15s}.card-h:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(22,48,31,.14)}
+.row-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.badge{background:var(--sand);color:var(--g);border-radius:999px;padding:2px 10px;font-size:.75rem;font-weight:700;white-space:nowrap}
+.badge.on{background:#cfe5d6;color:var(--ok)}.badge.end{background:#ece8dc;color:var(--mut)}.badge.warn{background:#f6e6c4;color:var(--warn)}
+.tabs{display:flex;gap:6px;background:var(--sand2);padding:5px;border-radius:12px;margin-bottom:16px;flex-wrap:wrap}
+.tabs button{border:none;padding:8px 14px;color:var(--g)}.tabs button.on{background:var(--g);color:#fff;box-shadow:0 2px 8px rgba(22,48,31,.25)}
+.msg{padding:9px 12px;border-radius:10px;margin-bottom:8px;background:var(--sand3);border:1px solid var(--line)}.msg.me{background:var(--sand2)}
+.alert{background:#fbf0d9;border-left:4px solid var(--warn);padding:12px 14px;border-radius:10px;margin-bottom:14px}
+.alert.ok{background:#e4f0e8;border-color:var(--ok)}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left}th{color:var(--mut);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--g);color:#fff;padding:11px 20px;border-radius:12px;display:none;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.stu{padding:10px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}.stu:hover{background:var(--sand3)}
+.hero{background:linear-gradient(135deg,var(--g9),var(--g) 60%,var(--g2));color:#fff;border-radius:18px;padding:26px 28px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.hero p{color:var(--sand);margin-top:4px}.hero.center{flex-direction:column;text-align:center;padding:44px 20px}
+.hero button.pri{background:var(--sand);color:var(--g)}.hero button.ghost{border-color:rgba(232,220,196,.6);color:var(--sand)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}.kpi b{display:block;font-size:1.5rem;color:var(--g);letter-spacing:-.02em}.kpi span{color:var(--mut);font-size:.82rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+.fld{display:block}.fld span{display:block;font-size:.8rem;font-weight:600;color:var(--mut);margin-bottom:4px}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}.chk input{width:auto;margin-top:4px}.chk small{display:block;color:var(--mut)}
+.empty{text-align:center;color:var(--mut);padding:28px;border:1.5px dashed var(--line);border-radius:14px;margin-bottom:14px}
+.steps ol{margin:8px 0 0 20px}.steps li{margin-bottom:6px}
+.bar{height:8px;background:var(--sand2);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--g3)}
+.searchbox{position:relative;max-width:620px;width:100%;margin-top:16px}.searchbox input{padding:15px 56px 15px 20px;font-size:1.05rem;border-radius:999px}
+.searchbox button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;font-size:1.2rem;padding:6px 12px}
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head><body>
-<div class="top"><b>DrDemic Tuition</b><a href="/">Home</a><span class="sp"></span><span id="who"></span><button id="prof" onclick="editProfile()" style="display:none">Profile</button><button id="out" onclick="logout()" style="display:none">Sign out</button></div>
+<div class="top"><b class="brand">DrDemic <span>Tuition</span></b><a href="/">Home</a><span class="sp"></span><span id="who"></span><button id="prof" onclick="editProfile()" style="display:none">Profile</button><button id="out" onclick="logout()" style="display:none">Sign out</button></div>
   <div id="toast"></div>
 
 <div id="v-auth" class="box">
@@ -44,6 +73,7 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;
   <input id="a-name" placeholder="Full name (teachers: your brand name)" style="display:none">
   <input id="a-user" placeholder="Username" autocomplete="username">
   <input id="a-phone" type="tel" placeholder="Your phone number" style="display:none">
+  <input id="a-tcode" placeholder="Teacher invite code" style="display:none">  
   <input id="a-pass" type="password" placeholder="Password" autocomplete="current-password">
   <input id="a-pass2" type="password" placeholder="Repeat password" style="display:none">
   <label id="a-agree-l" style="display:none;font-size:.8rem;margin:6px 0"><input type="checkbox" id="a-agree" style="width:auto"> I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms</a>.</label>
@@ -62,11 +92,12 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E8EAF6;
 <div id="v-role" class="box">
   <h2>Welcome! Who are you?</h2>
   <p class="muted" style="margin-bottom:8px">You can only choose this once.</p>
-  <select id="rl-role" onchange="$('rl-phone').style.display=this.value==='teacher'?'block':'none'" style="width:100%;margin-bottom:6px">
+  <select id="rl-role" onchange="const t=this.value==='teacher';$('rl-phone').style.display=t?'block':'none';$('rl-tcode').style.display=t?'block':'none'" style="width:100%;margin-bottom:6px">
     <option value="student">I am a student / parent</option>
     <option value="teacher">I am a teacher</option>
   </select>
   <input id="rl-phone" type="tel" placeholder="Your phone number" style="display:none">
+  <input id="rl-tcode" placeholder="Teacher invite code" style="display:none">
   <button class="pri" style="width:100%;margin-top:8px" onclick="saveRole()">Continue</button>
 </div>
 
@@ -474,6 +505,7 @@ async function boot(){
     return openCourse(r.course_id);
   }
   loadHome();}
-  initGoogle();
-boot();
-</script></body></html>
+
+</script>
+<script src="/js/tuition-v2.js"></script>
+</body></html>

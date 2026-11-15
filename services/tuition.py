@@ -16,6 +16,12 @@ def _now():
 
 
 def has_access(cur, student_id, course_id, price):
+    cur.execute("SELECT program_id FROM tuition_courses WHERE id=%s", (course_id,))
+    r = cur.fetchone()
+    if r and r[0]:                       # topic inside a course: members only, never "free"
+        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s AND status='registered'",
+                    (r[0], student_id))
+        return cur.fetchone() is not None
     if (price or 0) <= 0:
         return True
     cur.execute("SELECT expires_at FROM tuition_access WHERE student_id=%s AND course_id=%s", (student_id, course_id))
@@ -210,6 +216,7 @@ def purge_old(force=False):
             cur.execute("DELETE FROM tuition_sessions WHERE id=ANY(%s)", (ids,))
         cur.execute("""SELECT c.id FROM tuition_courses c
                        WHERE c.created_at < (NOW() AT TIME ZONE 'utc') - (%s * INTERVAL '1 day')
+                         AND c.program_id IS NULL
                          AND NOT EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id)
                          AND NOT EXISTS (SELECT 1 FROM tuition_payments p WHERE p.course_id=c.id AND p.applied=1)""", (days,))
         cids = [r[0] for r in cur.fetchall()]
