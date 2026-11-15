@@ -15,6 +15,9 @@ from core.ratelimit import rate_limit
 from core.security import hash_password, verify_password
 from services.access import normalize_phone, SnippeError
 from services import tuition as T
+import shutil
+
+MIN_FREE_BYTES = 1 *1024**3
 
 tuition_bp = Blueprint("tuition", __name__)
 _ser = URLSafeTimedSerializer(SECRET_KEY, salt="drdemic-tuition-session")
@@ -619,6 +622,11 @@ def video_chunk(sid):
             return _err("This session has ended", 409)
     path = _part_path(sid, g.tu["id"])
     if offset == 0:
+        if shutil.disk_usage(TUITION_VIDEO_DIR).free < MIN_FREE_BYTES:
+            try: T.purge_old(force=True)              # emergency cleanup of expired sessions
+            except Exception: current_app.logger.exception("purge failed")
+        if shutil.disk_usage(TUITION_VIDEO_DIR).free < MIN_FREE_BYTES:
+            return _err("Server storage is full right now. Please try again later.", 507)
         open(path, "wb").close()                      # start fresh
     elif not os.path.exists(path) or offset > os.path.getsize(path):
         return _err("Upload was interrupted. Choose the video again.", 409)
