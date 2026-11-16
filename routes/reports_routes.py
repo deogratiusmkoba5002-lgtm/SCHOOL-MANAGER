@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
 from core.school import format_student_display_id
-from services.restrictions import parent_restriction, term_report_allowed, locked_response
+from services.restrictions import parent_restriction, term_report_allowed, locked_response, parent_may_view_report
 from services.grading import get_grade, compute_division_from_finals
 from services.scores import (
     get_subjects, get_active_term, get_term_by_id, get_students_in_scope,
@@ -36,11 +36,13 @@ def api_report(student_id):
     access = get_access(sid, student_id)
     if g.role == "parent" and not access["active"]:
         return jsonify({"ok":False,"error":"Parent access required. Subscribe to unlock full reports.","code":"parent_access_required"}),402
-    if g.role == "parent":
-        maybe_record_qualifying_parent(sid, student_id)
     student["display_id"] = format_student_display_id(sid, student.pop("school_student_no", None))
     term = get_term_by_id(sid,int(term_id)) if term_id else get_active_term(sid)
     if not term: return jsonify({"ok":False,"error":"No term available"}),400
+    if g.role == "parent":
+        if not parent_may_view_report(sid, term["id"]):
+            return jsonify({"ok": False, "error": "Results for this term have not been published yet"}), 403
+        maybe_record_qualifying_parent(sid, student_id)
     restriction = parent_restriction(sid, g.role, g.student_id)
     if restriction and not term_report_allowed(sid, term["id"], restriction):
         return locked_response(restriction)

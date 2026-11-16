@@ -218,7 +218,7 @@ def api_import_students():
     # Snapshot of existing students for duplicate detection (name+class+stream+phone).
     # Also grows as we insert, so repeated rows within the same file are caught too —
     # and re-running an import on the same file becomes a safe no-op instead of creating dupes.
-    cur.execute("SELECT LOWER(TRIM(name)), class_id, COALESCE(stream_id,0), phone_number "
+    cur.execute("SELECT LOWER(TRIM(name)), class_id, COALESCE(stream_id,0), COALESCE(phone_number,'') "
                 "FROM students WHERE school_id=%s", (school_id,))
     existing_students = set(cur.fetchall())
     cur.execute("SELECT COALESCE(MAX(school_student_no),0) FROM students WHERE school_id=%s", (school_id,))

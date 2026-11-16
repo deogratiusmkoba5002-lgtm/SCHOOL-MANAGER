@@ -499,6 +499,8 @@ def test_report_pdf_with_many_cas_uses_the_landscape_branch(client, login):
 # ═══ 10. PARENT ACCESS + ANNOUNCEMENTS ══════════════════════════
 def test_parent_access_expiry_gates_the_report(client, login):
     school, term, cls, admin, studs = classroom(2)
+    run("INSERT INTO published_assessments(school_id,term_id,assess_key,published) VALUES(%s,%s,'exam',1)",
+        (school["id"], term["id"]))
     p = login(school, studs[0]["parent_username"], studs[0]["parent_password"])
     url = f"/api/report/{studs[0]['id']}"
     r = client.get(url, headers=p)

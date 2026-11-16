@@ -101,7 +101,7 @@ def api_submit_payment_request():
     try:
         cur.execute("""INSERT INTO payment_requests(school_id,plan,claimed_amount,transaction_id,phone_used,payment_date,note,status,submitted_by)
                        VALUES(%s,%s,%s,%s,%s,%s,%s,'pending',%s) RETURNING id""",
-                    (sid, plan, amount, txn_id, phone, pay_date, note, d.get("username", "")))
+                    (sid, plan, amount, txn_id, phone, pay_date, note, g.username))
         new_id = cur.fetchone()[0]
         cur.execute("UPDATE schools SET subscription_status='pending' WHERE id=%s", (sid,))
         con.commit()

@@ -1,11 +1,12 @@
 import os, tempfile
+import re
 from flask import Blueprint, request, jsonify, g, send_file
 from reportlab.lib.pagesizes import A4, A3, landscape
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from services.restrictions import parent_restriction, term_report_allowed, locked_response
+from services.restrictions import parent_restriction, term_report_allowed, locked_response, parent_may_view_report
 
 from core.db import get_db, to_dict
 from core.auth import require_auth, require_role
@@ -43,6 +44,8 @@ def pdf_report(sid):
         return jsonify({"ok":False,"error":"Parent access required for this student's report PDF","code":"parent_access_required"}),402
     term=get_term_by_id(school_id,int(term_id)) if term_id else get_active_term(school_id)
     if not term: return jsonify({"error":"No term"}),400
+    if g.role == "parent" and not parent_may_view_report(school_id, term["id"]):
+        return jsonify({"ok": False, "error": "Results for this term have not been published yet"}), 403
     restriction = parent_restriction(school_id, g.role, g.student_id)
     if restriction and not term_report_allowed(school_id, term["id"], restriction):
         return locked_response(restriction)
@@ -65,7 +68,7 @@ def pdf_report(sid):
     avg = c_entry["average"] if c_entry else compute_average_from_finals(student_finals)
     student_scores = scores_bulk.get(sid, {})
 
-    safe=student["name"].replace(" ","_")
+    safe=re.sub(r"[^A-Za-z0-9_-]","_",student["name"])
     fname=os.path.join(tempfile.gettempdir(),f"RC_{school_id}_{safe}_{tid}.pdf")
     # Many CA columns get cramped in portrait — switch to landscape automatically.
     page_size = landscape(A4) if ca_count > 4 else A4

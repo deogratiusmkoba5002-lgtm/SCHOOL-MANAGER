@@ -8,6 +8,29 @@ const empty=t=>`<div class="empty">${t}</div>`;
 const money=n=>n?tzs(n):"Free";
 function copyIn(id){const u=$(id).value;(navigator.clipboard?navigator.clipboard.writeText(u).then(()=>toast("Copied")):Promise.reject()).catch(()=>prompt("Copy:",u));}
 
+/* subject chips (teacher) + subject picker (student) */
+const CHIPS={};
+function chipsMount(id,list){
+  CHIPS[id]=[...(list||[])];
+  $("cs-"+id).innerHTML=`<div class="chips" id="cl-${id}"></div>
+    <div class="row" style="margin:8px 0 0"><input id="ci-${id}" placeholder="Type a subject, press Enter to add" onkeydown="if(event.key==='Enter'||event.key===','){event.preventDefault();chipAdd('${id}')}"><button type="button" onclick="chipAdd('${id}')">Add</button></div>`;
+  chipsDraw(id);}
+function chipsDraw(id){
+  $("cl-"+id).innerHTML=CHIPS[id].map((s,i)=>`<span class="chip">${esc(s)}<button type="button" aria-label="Remove ${esc(s)}" onclick="chipDel('${id}',${i})">×</button></span>`).join("")||'<span class="muted">No subjects added yet.</span>';}
+function chipAdd(id){
+  const el=$("ci-"+id);if(!el)return;
+  el.value.split(",").forEach(x=>{x=x.replace(/\s+/g," ").trim().slice(0,60);if(x&&!CHIPS[id].some(y=>y.toLowerCase()===x.toLowerCase()))CHIPS[id].push(x);});
+  el.value="";chipsDraw(id);}
+function chipDel(id,i){CHIPS[id].splice(i,1);chipsDraw(id);}
+
+function subjectPicker(list){
+  if(!list.length)return fld("Subjects you want (comma separated)",'<input id="ap-sub" placeholder="Physics, Chemistry, Biology">');
+  return `<div class="fld"><span>Subjects you want <b id="ap-cnt" class="muted"></b></span>
+    <div class="pick">${list.map(s=>`<label class="pickitem"><input type="checkbox" class="ap-s" value="${esc(s)}" onchange="apCount()"><span>${esc(s)}</span></label>`).join("")}</div>
+    <div class="row" style="margin:0"><button type="button" class="alt" onclick="apAll(true)">Select all</button><button type="button" class="alt" onclick="apAll(false)">Clear</button></div></div>`;}
+function apCount(){const n=document.querySelectorAll(".ap-s:checked").length;if($("ap-cnt"))$("ap-cnt").textContent=n?`(${n} selected)`:"";}
+function apAll(on){document.querySelectorAll(".ap-s").forEach(c=>c.checked=on);apCount();}
+
 /* teacher invite code rides along on signup / role choice */
 const _api0=window.api,_sm0=window.setMode,_boot0=window.boot;
 window.api=function(p,m,b,f){
@@ -41,6 +64,7 @@ async function loadMine(){
       <div class="grid2">${fld("Course name",'<input id="np-name" placeholder="e.g. Pre-Form Five 2027">')}${fld("Total fee (TZS)",'<input id="np-fee" type="number" min="0">')}
       ${fld("Advance to complete registration (TZS)",'<input id="np-adv" type="number" min="0" value="0">')}${fld("Instalments allowed (including advance)",'<input id="np-inst" type="number" min="1" max="12" value="1">')}</div>
       ${fld("Description (what students get)",'<textarea id="np-desc" rows="3"></textarea>')}<div style="margin-top:12px"><button class="pri" onclick="newProgram()">Create course</button></div></div>
+      ${fld("Subjects taught in this course", '<div id="cs-np"></div>')}
     <div class="panel" id="nt-panel" style="display:none;max-width:460px"><h3>Create a single topic</h3><p class="muted" style="margin-bottom:10px">A stand-alone topic that students find in search and pay for directly.</p>
       ${fld("Topic name",'<input id="nt-name" placeholder="e.g. Physics: Newton\'s laws">')}<div style="height:10px"></div>
       ${fld("How do you charge?",'<select id="nt-mode" style="width:100%"><option value="session">Per session</option><option value="course">Per topic (whole topic)</option></select>')}
@@ -50,10 +74,12 @@ async function loadMine(){
   if(P.length) h+=`<h3 style="margin:6px 0 10px">Courses</h3><div class="cards">${pcards}</div>`;
   if(C.length||!T) h+=`<h3 style="margin:6px 0 10px">${T?"Single topics":"Topics"}</h3><div class="cards">${ccards||empty("Nothing here yet. Search for a lesson or open a link from your teacher.")}</div>`;
   $("v-home").innerHTML=h;
+  if(T) chipsMount("np",[]);
   if(T){checkDue();timers.push(setInterval(checkDue,30000));}
 }
 async function newProgram(){
-  const r=await api("/programs","POST",{name:$("np-name").value,fee:$("np-fee").value,advance:$("np-adv").value,installments:$("np-inst").value,description:$("np-desc").value});
+  chipAdd("np");
+  const r=await api("/programs","POST",{name:$("np-name").value,fee:$("np-fee").value,advance:$("np-adv").value,installments:$("np-inst").value,description:$("np-desc").value,subjects:CHIPS.np});
   if(!r.ok)return toast(r.error);toast("Course created");openProgram(r.id);}
 async function newTopic(pid){
   const name=pid?$("pt-name").value:$("nt-name").value;
@@ -96,10 +122,14 @@ function pOv(){
     ${fld("Advance (TZS)",`<input id="pf-adv" type="number" value="${p.advance}">`)}${fld("Instalments allowed",`<input id="pf-inst" type="number" value="${p.installments}">`)}
     ${fld("Maximum students",`<input id="pf-max" type="number" value="${p.max_students}">`)}
     ${fld("Applications",`<select id="pf-st" style="width:100%"><option value="open" ${p.status==="open"?"selected":""}>Open</option><option value="closed" ${p.status==="closed"?"selected":""}>Closed</option></select>`)}</div>
+    ${fld("Subjects taught in this course", '<div id="cs-pf"></div>')}
     ${fld("Description",`<textarea id="pf-desc" rows="3">${esc(p.description)}</textarea>`)}
     <p class="muted" style="margin:10px 0">Changing the fee affects what each student still owes.</p><button class="pri" onclick="saveProg()">Save changes</button></div>`;}
+    chipsMount("pf" ,p.subjects||[]);
+
 async function saveProg(){
-  const r=await api("/programs/"+CURP.program.id,"POST",{name:$("pf-name").value,fee:$("pf-fee").value,advance:$("pf-adv").value,installments:$("pf-inst").value,max_students:$("pf-max").value,status:$("pf-st").value,description:$("pf-desc").value});
+  chipAdd("pf");
+  const r=await api("/programs/"+CURP.program.id,"POST",{name:$("pf-name").value,fee:$("pf-fee").value,advance:$("pf-adv").value,installments:$("pf-inst").value,max_students:$("pf-max").value,status:$("pf-st").value,description:$("pf-desc").value,subjects:CHIPS.pf});
   if(!r.ok)return toast(r.error);toast("Saved");openProgram(CURP.program.id,"ov");}
 
 function pTop(){
@@ -175,11 +205,15 @@ async function openApply(token){
     ${r.advance?`<div class="alert">Your seat is confirmed after paying an advance of <b>${tzs(r.advance)}</b>.</div>`:""}
     ${r.status!=="open"?'<div class="alert">Applications are closed.</div>':`<h3>Application form</h3><div class="grid2">
       ${fld("Full name",`<input id="ap-name" value="${esc(me.full_name||"")}">`)}${fld("Phone number",'<input id="ap-ph" type="tel" placeholder="0712345678">')}</div>
-      ${fld("Subjects you want (comma separated)",'<input id="ap-sub" placeholder="Physics, Chemistry, Biology">')}<div style="height:10px"></div>
+      ${subjectPicker(r.subjects||[])}<div style="height:10px"></div>
       ${fld("Anything we should know? (optional)",'<textarea id="ap-note" rows="2"></textarea>')}
       <div style="margin-top:14px"><button class="pri" onclick="submitApply('${token}')">Submit application</button></div>`}</div>`;}
+
 async function submitApply(t){
-  const r=await api(`/p/${t}/apply`,"POST",{full_name:$("ap-name").value,phone:$("ap-ph").value,subjects:$("ap-sub").value,note:$("ap-note").value});
+  const boxes=document.querySelectorAll(".ap-s");let subjects;
+  if(boxes.length){subjects=[...document.querySelectorAll(".ap-s:checked")].map(c=>c.value);if(!subjects.length)return toast("Pick at least one subject");}
+  else subjects=$("ap-sub").value;
+  const r=await api(`/p/${t}/apply`,"POST",{full_name:$("ap-name").value,phone:$("ap-ph").value,subjects,note:$("ap-note").value});
   if(!r.ok)return toast(r.error);toast("Application received");openProgram(r.program_id,"pay");}
 
 window.boot=async function(){

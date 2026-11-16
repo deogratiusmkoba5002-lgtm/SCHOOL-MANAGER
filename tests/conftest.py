@@ -132,6 +132,8 @@ _AREA_BY_FILE = {
     "test_workflows.py": "workflows",
     "test_e2e_workflow.py": "workflows",
     "test_security.py": "security",
+    "test_tuition.py": "workflows",
+    "test_regressions.py": "workflows",
 }
 _AREAS = ["foundation", "monitoring", "workflows", "security"]
 _COLS = ["passed", "failed", "error", "xfailed", "XPASS", "skipped"]

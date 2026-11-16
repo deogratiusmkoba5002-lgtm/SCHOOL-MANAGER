@@ -96,10 +96,13 @@ def api_enter_test():
     if not student_in_class(sid, student_id, class_id, stream_id):
         return jsonify({"ok":False,"error":"Student is not in that class"}),400   
     con=get_db(); cur=con.cursor()
-    cur.execute("SELECT term_id, all_classes FROM term_tests WHERE id=%s AND school_id=%s",(test_id,sid))
+    cur.execute("""SELECT t.term_id, t.all_classes, tm.status FROM term_tests t
+                   JOIN terms tm ON tm.id=t.term_id WHERE t.id=%s AND t.school_id=%s""",(test_id,sid))
     row=cur.fetchone()
     if not row: cur.close(); con.close(); return jsonify({"ok":False,"error":"Test not found"}),404
-    term_id, all_classes = row
+    term_id, all_classes, term_status = row
+    if term_status != "open":
+        cur.close(); con.close(); return jsonify({"ok":False,"error":"This term is closed"}),400
     if not all_classes:
         cur.execute("SELECT 1 FROM test_classes WHERE test_id=%s AND class_id=%s",(test_id,class_id))
         if not cur.fetchone():

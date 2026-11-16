@@ -30,6 +30,11 @@ def _resolve_student_id():
     ok = cur.fetchone(); cur.close(); con.close()
     return stid if ok else None
 
+_PAY_TABLES = (("student_payments", "services.access", "finalize_payment"),
+               ("mini_payments", "services.mini_access", "finalize_payment"),
+               ("mini_student_payments", "services.mini_access", "finalize_student_payment"),
+               ("tuition_payments", "services.tuition", "finalize_payment"),
+               ("tuition_program_payments", "services.tuition_program", "finalize_payment"))
 
 @access_bp.route("/api/access/status", methods=["GET"])
 @require_auth
@@ -98,31 +103,17 @@ def api_access_webhook():
     data  = event.get("data") or event          # legacy flat format fallback
     ref   = data.get("reference")
     if etype.startswith("payment.") and ref:
-        con = get_db(); cur = con.cursor()
-        cur.execute("SELECT id FROM student_payments WHERE reference=%s", (ref,))
-        row = cur.fetchone()
-        mrow = trow = prow = None
-        if not row:
-            cur.execute("SELECT id FROM mini_payments WHERE reference=%s", (ref,))
-            mrow = cur.fetchone()
-            if not mrow:
-                cur.execute("SELECT id FROM tuition_payments WHERE reference=%s", (ref,))
-                trow = cur.fetchone()
-                if not trow:
-                    cur.execute("SELECT id FROM tuition_program_payments WHERE reference=%s", (ref,))
-                    prow = cur.fetchone()                
+        import importlib
+        con = get_db(); cur = con.cursor(); hit = None
+        for table, mod, fn in _PAY_TABLES:                      # table names are constants above
+            cur.execute(f"SELECT id FROM {table} WHERE reference=%s", (ref,))
+            row = cur.fetchone()
+            if row:
+                hit = (mod, fn, row[0]); break
         cur.close(); con.close()
-        if row:
-            finalize_payment(row[0])
-        elif mrow:
-            from services.mini_access import finalize_payment as mini_finalize
-            mini_finalize(mrow[0])
-        elif trow:
-            from services.tuition import finalize_payment as tuition_finalize
-            tuition_finalize(trow[0])
-        elif prow:
-            from services.tuition_program import finalize_payment as program_finalize
-            program_finalize(prow[0])
+        if hit:
+            getattr(importlib.import_module(hit[0]), hit[1])(hit[2])
+
     elif etype.startswith("payout.") and ref:
         con = get_db(); cur = con.cursor()
         cur.execute("SELECT id FROM star_withdrawals WHERE payout_reference=%s", (ref,))

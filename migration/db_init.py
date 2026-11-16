@@ -3,8 +3,18 @@ from core.db import get_db
 from core.security import hash_password
 
 # ── INIT DB ───────────────────────────────────────────────────
+def _safe(cur, sql):
+    cur.execute("SAVEPOINT sp_safe")
+    try:
+        cur.execute(sql)
+        cur.execute("RELEASE SAVEPOINT sp_safe")
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_safe")
+        print(f"Migration note: {e}")
+
 def init_db():
     con = get_db(); cur = con.cursor()
+    cur.execute("SELECT pg_advisory_lock(7272741)")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS schools (
         id            SERIAL PRIMARY KEY,
@@ -505,8 +515,7 @@ def init_db():
     ]
     
     for m in migrations:
-        try: cur.execute(m)
-        except Exception as e: print(f"Migration note: {e}")
+        _safe(cur, m)
 
     # Seed school_id=1 for all existing data
     try:
@@ -537,8 +546,7 @@ def init_db():
         "INSERT INTO school_config(school_id,key,value) VALUES(1,'admin_phone','') ON CONFLICT DO NOTHING",
     ]
     for s in seeds:
-        try: cur.execute(s)
-        except Exception as e: print(f"Seed note: {e}")
+        _safe(cur, s)
 
     # Repair announcements from before the target-classes default-selection
     # fix — these were saved with an empty target_classes and were invisible
@@ -1010,6 +1018,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT NOW()
         )""",
         "ALTER TABLE tuition_courses ADD COLUMN IF NOT EXISTS program_id INTEGER REFERENCES tuition_programs(id) ON DELETE SET NULL",
+        "ALTER TABLE tuition_programs ADD COLUMN IF NOT EXISTS subjects JSONB NOT NULL DEFAULT '[]'::jsonb",
         "ALTER TABLE tuition_assignments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'assignment'",
         "ALTER TABLE tuition_users ADD COLUMN IF NOT EXISTS mini_user_id INTEGER",
         """CREATE TABLE IF NOT EXISTS tuition_applications (

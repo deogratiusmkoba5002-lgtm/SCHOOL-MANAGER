@@ -37,6 +37,24 @@ def api_add_class():
         con.rollback(); cur.close(); con.close(); return jsonify({"ok":False,"error":"Class already exists"}),409
     cur.close(); con.close(); return jsonify({"ok":True,"id":new_id})
 
+@classes_bp.route("/api/classes/<int:cid>", methods=["PATCH"])
+@require_auth
+@require_role("admin")
+def api_rename_class(cid):
+    sid = g.school_id
+    name = ((request.get_json(silent=True) or {}).get("class_name") or "").strip()
+    if not name: return jsonify({"ok": False, "error": "Class name required"}), 400
+    con = get_db(); cur = con.cursor()
+    try:
+        cur.execute("UPDATE classes SET class_name=%s WHERE id=%s AND school_id=%s", (name, cid, sid))
+        found = cur.rowcount > 0
+        con.commit()
+    except psycopg2.errors.UniqueViolation:
+        con.rollback(); cur.close(); con.close()
+        return jsonify({"ok": False, "error": "Class already exists"}), 409
+    cur.close(); con.close()
+    if not found: return jsonify({"ok": False, "error": "Class not found"}), 404
+    return jsonify({"ok": True})
 
 @classes_bp.route("/api/classes/<int:cid>", methods=["DELETE"])
 @require_auth

@@ -94,7 +94,7 @@ async function loadDashboard(){
   const recent = studs.slice(-8).reverse();
   document.getElementById("dash-recent-students").innerHTML = recent.length
     ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Class</th></tr></thead><tbody>
-       ${recent.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td><span class="badge badge-blue">${cap(s.class_name)}</span></td></tr>`).join("")}
+       ${recent.map(s=>`<tr><td>${s.id}</td><td>${escHtml(s.name)}</td><td><span class="badge badge-blue">${cap(s.class_name)}</span></td></tr>`).join("")}
        </tbody></table></div>`
     : `<div class="empty-state" data-i18n="no-studs">${emptySVG()}<p>No students yet</p></div>`;
 }

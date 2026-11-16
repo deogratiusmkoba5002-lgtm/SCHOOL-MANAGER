@@ -1,4 +1,4 @@
-import hashlib, secrets
+import hashlib, secrets, hmac
 
 def hash_password(pw, iterations=260_000):
     salt = secrets.token_hex(16)
@@ -15,8 +15,8 @@ def verify_password(pw, stored):
             salt, dk_hex = parts
             iterations = 260_000
         dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), iterations)
-        return dk.hex() == dk_hex
-    except: return False
+        return hmac.compare_digest(dk.hex(), dk_hex)
+    except Exception: return False
 
 def hash_password_fast(pw):
     """Fast hash for temporary/bulk import passwords — throwaway, user must

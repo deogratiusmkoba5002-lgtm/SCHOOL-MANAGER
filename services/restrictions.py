@@ -68,3 +68,7 @@ def locked_response(restriction):
         msg += " Reason: " + restriction["reason"]
     return jsonify({"ok": False, "error": msg, "code": "results_restricted",
                     "reason": restriction["reason"]}), 403
+
+def parent_may_view_report(school_id, term_id):
+    """A report card is final: parents see it only once the exam (or the legacy whole-term switch) is published."""
+    return any(k in ("exam", "*") for k, _ in _published_rows(school_id, term_id))

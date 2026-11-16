@@ -56,6 +56,16 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--li
 .bar{height:8px;background:var(--sand2);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--g3)}
 .searchbox{position:relative;max-width:620px;width:100%;margin-top:16px}.searchbox input{padding:15px 56px 15px 20px;font-size:1.05rem;border-radius:999px}
 .searchbox button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;font-size:1.2rem;padding:6px 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--sand);color:var(--g);border-radius:999px;padding:4px 6px 4px 12px;font-size:.85rem;font-weight:600}
+.chip button{border:none;background:rgba(22,48,31,.12);color:var(--g);width:20px;height:20px;padding:0;border-radius:50%;line-height:1;font-size:.9rem}
+.chip button:hover{background:var(--bad);color:#fff}
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin:6px 0 10px}
+.pickitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;cursor:pointer;background:#fff;transition:border-color .15s,background .15s}
+.pickitem:hover{border-color:var(--g3)}
+.pickitem input{width:18px;height:18px;accent-color:var(--g);flex:none;margin:0}
+.pickitem:has(input:checked){background:#e4f0e8;border-color:var(--g2)}
+.pickitem span{font-weight:600}
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head><body>

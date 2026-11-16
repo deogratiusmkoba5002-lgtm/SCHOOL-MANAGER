@@ -57,6 +57,10 @@ def start_payment(sid, prog_id, amount, phone_raw):
         bal = fee - paid
         if bal <= 0:
             raise ValueError("This course is already fully paid")
+        cur.execute("SELECT 1 FROM tuition_program_payments WHERE program_id=%s AND student_id=%s "
+                    "AND status='pending' AND created_at > NOW() - INTERVAL '10 minutes'", (prog_id, sid))
+        if cur.fetchone():
+            raise ValueError("You already have a payment waiting for approval. Approve it on your phone or wait a few minutes.")
         if amount < A.SNIPPE_MIN_AMOUNT:
             raise ValueError(f"The minimum payment is {A.SNIPPE_MIN_AMOUNT} TZS")
         if amount > bal:

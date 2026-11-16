@@ -8,7 +8,7 @@ async function loadTeachers(){
     tb.innerHTML=teachers.map(t=>`
       <tr>
         <td>
-          <span style="font-weight:600">${t.username}</span>
+          <span style="font-weight:600">${escHtml(t.username)}</span>
           ${t.must_change_password
             ? `<span class="badge badge-orange" style="margin-left:6px;font-size:.68rem">⏳ Pending</span>`
             : `<span class="badge badge-green" style="margin-left:6px;font-size:.68rem">✓ Active</span>`}
@@ -23,10 +23,10 @@ async function loadTeachers(){
         }</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-sm btn-outline" onclick="openSetClassTeacher('${t.username}',${t.class_id||"null"},${t.stream_id||"null"},${t.is_class_teacher})">
+            <button class="btn btn-sm btn-outline" onclick="openSetClassTeacher('${escHtml(t.username)}',${t.class_id||"null"},${t.stream_id||"null"},${t.is_class_teacher})">
               ${t.is_class_teacher?"Edit CT":"Set as CT"}
             </button>
-            <button class="btn btn-sm btn-red btn-icon" onclick="deleteTeacher('${t.username}')">
+            <button class="btn btn-sm btn-red btn-icon" onclick="deleteTeacher('${escHtml(t.username)}')">
               <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
             </button>
           </div>
@@ -34,7 +34,7 @@ async function loadTeachers(){
       </tr>`).join("");
   }
   const userSel = document.getElementById("assign-teacher-user");
-  userSel.innerHTML=teachers.map(t=>`<option value="${t.username}">${t.username}</option>`).join("");
+  userSel.innerHTML=teachers.map(t=>`<option value="${escHtml(t.username)}">${escHtml(t.username)}</option>`).join("");
 }
 async function deleteTeacher(username){
   if(!confirm(`Delete teacher "${username}"? All their assignments will be removed.`))return;
