@@ -66,6 +66,14 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--li
 .pickitem input{width:18px;height:18px;accent-color:var(--g);flex:none;margin:0}
 .pickitem:has(input:checked){background:#e4f0e8;border-color:var(--g2)}
 .pickitem span{font-weight:600}
+.top{flex-wrap:wrap;gap:8px 12px}
+#who{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.85rem}
+@media(max-width:560px){
+  .top{padding:10px 12px}
+  .brand{font-size:1rem}
+  #who{display:none}
+  .top button{padding:5px 10px;font-size:.8rem}
+}
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head><body>
@@ -431,7 +439,7 @@ async function tabProgress(){const r=await api(`/courses/${CUR.id}/progress`);
 
 // ── session room ──
 const msgHTML=m=>`<div class="msg ${m.sender_role===me.role?"me":""}"><b>${m.sender_role===me.role?"You":(me.role==="student"?"Teacher":"Student")}</b>
-  ${m.video_ts!=null?`<span class="muted"> @ ${fmtT(m.video_ts)}</span>`:""}<div>${esc(m.body)}</div>
+  ${m.video_ts!=null?`<a href="#" onclick="seekTo(${m.video_ts});return false" title="Jump to this moment"> ▶ @ ${fmtT(m.video_ts)}</a>`:""}<div>${esc(m.body)}</div>
   ${m.has_image?`<a href="${U(`/messages/${m.id}/image`)}" target="_blank"><img src="${U(`/messages/${m.id}/image`)}" style="max-width:220px;border-radius:6px;margin-top:4px"></a>`:""}</div>`;
 
 async function openRoom(sid){
@@ -445,6 +453,11 @@ async function openRoom(sid){
       <div class="panel"><b>Students</b><div id="inbox"></div></div>
       <div class="panel" id="tp" style="display:none"><b id="tn"></b><div id="thr" style="margin:8px 0"></div>
       <textarea id="q" rows="2" placeholder="Reply…"></textarea><div class="row" style="margin-top:6px"><input id="qi" type="file" accept="image/*"><button class="pri" onclick="sendMsg()">Send</button></div></div>`;
+    $("v-room").querySelector(".panel").insertAdjacentHTML("afterend",
+      `<div class="panel"><video id="vid" controls playsinline controlsList="nodownload" oncontextmenu="return false"
+        preload="metadata" style="width:100%;max-height:50vh;background:#000;display:${s.has_video?"block":"none"}"></video>
+      ${s.has_video?"":'<p class="muted">No video uploaded for this session.</p>'}</div>`);
+    if(s.has_video) $("vid").src=U(`/sessions/${sid}/video`);
     beat();timers.push(setInterval(beat,10000));pollTeacher();timers.push(setInterval(pollTeacher,4000));
   }else{
     $("v-room").innerHTML=head+`<div id="end" class="alert" style="display:none">This session has ended. Thank you!</div>
@@ -488,7 +501,10 @@ async function setupVideo(){
   v.style.display="block";if(v.dataset.ready)return;v.dataset.ready=1;
   v.src=U(`/sessions/${ROOM.sid}/video`);
   v.playbackRate=+$("spd").value;}
-
+function seekTo(t){
+  const v=$("vid"); if(!v||!v.src) return toast("No video loaded for this session");
+  v.currentTime=t; v.pause(); v.scrollIntoView({behavior:"smooth",block:"center"});
+}
 
 // ── boot ──
 let JT=(location.pathname.match(/^\/tuition\/c\/([^/]+)/)||[])[1]||null;

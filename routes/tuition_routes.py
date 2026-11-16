@@ -1239,7 +1239,7 @@ def _clean_subjects(raw):
 
 def _prog_row(cur, pid, u):
     cur.execute("""SELECT p.id,p.name,p.description,p.fee_tzs,p.advance_tzs,p.installments,p.max_students,p.status,
-                          p.timetable,p.join_token,t.full_name,p.teacher_id,p.subjects
+                          p.timetable,p.join_token,t.full_name,p.teacher_id,p.subjects,p.duration_days,p.trial_days
                    FROM tuition_programs p JOIN tuition_users t ON t.id=p.teacher_id WHERE p.id=%s""", (pid,))
     r = cur.fetchone()
     if not r: return None
@@ -1248,7 +1248,7 @@ def _prog_row(cur, pid, u):
         cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s", (pid, u["id"]))
         if not cur.fetchone(): return None
     return dict(zip(("id", "name", "description", "fee", "advance", "installments", "max_students", "status",
-                     "timetable", "join_token", "teacher", "teacher_id", "subjects"), r))
+                     "timetable", "join_token", "teacher", "teacher_id", "subjects", "duration_days", "trial_days"), r))
 
 
 def _prog_vals(d, base):
@@ -1256,6 +1256,9 @@ def _prog_vals(d, base):
     name = " ".join(str(gv("name") or "").split())[:120]
     fee, adv = _int(gv("fee"), 0), _int(gv("advance"), 0)
     inst, mx = _int(gv("installments"), 1), _int(gv("max_students"), 100)
+    dur, trial = _int(gv("duration_days"), 90), _int(gv("trial_days"), 7)
+    if not 1 <= dur <= 730: return None, "Course length must be between 1 and 730 days"
+    if not 0 <= trial <= 60: return None, "Free trial must be between 0 and 60 days"
     if not name: return None, "Enter the course name"
     if fee < 0 or 0 < fee < 500: return None, "Fee must be 0 (free) or at least 500 TZS"
     if adv < 0 or 0 < adv < 500 or adv > fee: return None, "Advance must be 0, or between 500 TZS and the full fee"
@@ -1265,7 +1268,7 @@ def _prog_vals(d, base):
     return {"name": name, "description": str(gv("description") or "").strip()[:3000], "fee": fee, "advance": adv,
             "installments": inst, "max_students": mx, "status": status,
             "timetable": str(gv("timetable") or "")[:6000],
-            "subjects": _clean_subjects(gv("subjects"))}, None
+            "subjects": _clean_subjects(gv("subjects")), "duration_days":dur, "trial_days": trial,}, None
 
 
 @tuition_bp.route("/api/tuition/programs", methods=["GET"])
@@ -1296,10 +1299,10 @@ def program_create():
     v, err = _prog_vals(request.get_json(silent=True) or {}, {})
     if err: return _err(err)
     with db() as (con, cur):
-        cur.execute("""INSERT INTO tuition_programs(teacher_id,name,description,fee_tzs,advance_tzs,installments,max_students,status,join_token,subjects)
-                       VALUES(%s,%s,%s,%s,%s,%s,%s,'open',%s,%s) RETURNING id""",
+        cur.execute("""INSERT INTO tuition_programs(teacher_id,name,description,fee_tzs,advance_tzs,installments,max_students,status,join_token,subjects,duration_days,trial_days)
+                       VALUES(%s,%s,%s,%s,%s,%s,%s,'open',%s,%s,%s,%s) RETURNING id""",
                     (g.tu["id"], v["name"], v["description"], v["fee"], v["advance"], v["installments"],
-                     v["max_students"], secrets.token_urlsafe(8), Json(v["subjects"])))
+                     v["max_students"], secrets.token_urlsafe(8), Json(v["subjects"]), v["duration_days"], v["trial_days"]))
         pid = cur.fetchone()[0]; con.commit()
     return jsonify({"ok": True, "id": pid})
 
@@ -1313,9 +1316,9 @@ def program_update(pid):
         v, err = _prog_vals(request.get_json(silent=True) or {}, base)
         if err: return _err(err)
         cur.execute("""UPDATE tuition_programs SET name=%s,description=%s,fee_tzs=%s,advance_tzs=%s,installments=%s,
-                       max_students=%s,status=%s,timetable=%s,subjects=%s WHERE id=%s""",
+                       max_students=%s,status=%s,timetable=%s,subjects=%s,duration_days=%s,trial_days=%s WHERE id=%s""",
                     (v["name"], v["description"], v["fee"], v["advance"], v["installments"], v["max_students"],
-                     v["status"], v["timetable"], Json(v["subjects"]), pid))
+                     v["status"], v["timetable"], Json(v["subjects"]), v["duration_days"], v["trial_days"], pid))
         con.commit()
     return jsonify({"ok": True})
 
@@ -1333,10 +1336,11 @@ def program_get(pid):
         member = u["role"] == "teacher"
         if u["role"] == "student":
             p.pop("join_token", None)
-            cur.execute("SELECT status,full_name FROM tuition_applications WHERE program_id=%s AND student_id=%s", (pid, u["id"]))
+            cur.execute("SELECT status,full_name,access_until FROM tuition_applications WHERE program_id=%s AND student_id=%s", (pid, u["id"]))
             a = cur.fetchone()
             paid, cnt = TP.paid_summary(cur, pid, u["id"])
-            out["mine"] = {"status": a[0], "name": a[1], "paid": paid, "count": cnt, "balance": max(p["fee"] - paid, 0)}
+            out["mine"] = {"status": a[0], "name": a[1], "paid": paid, "count": cnt,
+                           "balance": max(p["fee"] - paid, 0), "until": _iso(a[2])}
             member = a[0] == "registered"
             cur.execute("SELECT id,amount,kind,status,created_at FROM tuition_program_payments WHERE program_id=%s "
                         "AND student_id=%s ORDER BY id DESC LIMIT 10", (pid, u["id"]))
@@ -1455,7 +1459,9 @@ def _notes_ok(cur, u, course_id, program_id):
         r = cur.fetchone()
         if not r: return False
         if u["role"] == "teacher": return r[0] == u["id"]
-        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s AND status='registered'",
+        cur.execute("""SELECT 1 FROM tuition_applications a JOIN tuition_programs p ON p.id=a.program_id
+                       WHERE a.program_id=%s AND a.student_id=%s AND a.status='registered'
+                         AND (p.fee_tzs=0 OR a.access_until > (NOW() AT TIME ZONE 'utc'))""",
                     (program_id, u["id"]))
         return cur.fetchone() is not None
     return False

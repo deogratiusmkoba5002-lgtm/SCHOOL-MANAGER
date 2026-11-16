@@ -18,8 +18,10 @@ def _now():
 def has_access(cur, student_id, course_id, price):
     cur.execute("SELECT program_id FROM tuition_courses WHERE id=%s", (course_id,))
     r = cur.fetchone()
-    if r and r[0]:                       # topic inside a course: members only, never "free"
-        cur.execute("SELECT 1 FROM tuition_applications WHERE program_id=%s AND student_id=%s AND status='registered'",
+    if r and r[0]:                       # topic inside a course: registered AND inside the paid time window
+        cur.execute("""SELECT 1 FROM tuition_applications a JOIN tuition_programs p ON p.id=a.program_id
+                       WHERE a.program_id=%s AND a.student_id=%s AND a.status='registered'
+                         AND (p.fee_tzs=0 OR a.access_until > (NOW() AT TIME ZONE 'utc'))""",
                     (r[0], student_id))
         return cur.fetchone() is not None
     if (price or 0) <= 0:

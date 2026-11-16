@@ -1,7 +1,7 @@
 """DrDemic Tuition courses (programs): instalment payments via Snippe + the DrDemic Mini bridge. No Flask.
 Same rule as every payment: access is granted ONLY after Snippe confirms status and amount."""
 import logging, secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from psycopg2.extras import Json
 
 from config import TUITION_FEE_PERCENT
@@ -18,14 +18,23 @@ def paid_summary(cur, prog_id, sid):
                 "WHERE program_id=%s AND student_id=%s AND applied=1", (prog_id, sid))
     return cur.fetchone()
 
+def slices(paid, fee, inst):
+    """Whole slices covered by cumulative payment. Decimals are kept; epsilon only guards float noise."""
+    if fee <= 0:
+        return inst
+    return min(inst, int(paid * inst / fee + 1e-9))
 
 def register(cur, prog_id, sid):
-    """Idempotent: mark registered and enrol in every topic of the course."""
+    """Idempotent: mark registered, start the trial once, enrol in every topic."""
     cur.execute("UPDATE tuition_applications SET status='registered',registered_at=NOW() "
                 "WHERE program_id=%s AND student_id=%s AND status='applied'", (prog_id, sid))
+    cur.execute("""UPDATE tuition_applications a
+                   SET access_until = COALESCE(a.access_until, (NOW() AT TIME ZONE 'utc') + (p.trial_days * INTERVAL '1 day'))
+                   FROM tuition_programs p
+                   WHERE p.id=a.program_id AND a.program_id=%s AND a.student_id=%s AND a.status='registered'""",
+                (prog_id, sid))
     cur.execute("INSERT INTO tuition_enrollments(course_id,student_id) SELECT id,%s FROM tuition_courses "
                 "WHERE program_id=%s ON CONFLICT DO NOTHING", (sid, prog_id))
-
 
 def _mark(pay_id, status, reason=None):
     con = get_db(); cur = con.cursor()
@@ -67,8 +76,6 @@ def start_payment(sid, prog_id, amount, phone_raw):
             raise ValueError(f"The remaining balance is {bal} TZS")
         if cnt == 0 and amount < adv:
             raise ValueError(f"The first payment must be at least {adv} TZS")
-        if cnt + 1 >= inst and amount != bal:
-            raise ValueError(f"This is your last allowed instalment. Pay the full balance of {bal} TZS")
         cur.execute("SELECT COUNT(*) FROM tuition_program_payments WHERE student_id=%s "
                     "AND created_at > NOW() - INTERVAL '1 hour'", (sid,))
         if cur.fetchone()[0] >= 5:
@@ -138,11 +145,19 @@ def finalize_payment(pay_id):
             con.commit(); return "amount_mismatch"
         cur.execute("UPDATE tuition_program_payments SET status='completed',applied=1,paid_at=%s WHERE id=%s",
                     (A._parse_ts(data.get("completed_at")) or datetime.utcnow(), pay_id))
-        cur.execute("SELECT advance_tzs FROM tuition_programs WHERE id=%s", (prog_id,))
-        adv = cur.fetchone()[0]
-        paid, _ = paid_summary(cur, prog_id, sid)
+        cur.execute("SELECT advance_tzs,fee_tzs,installments,duration_days FROM tuition_programs WHERE id=%s", (prog_id,))
+        adv, fee, inst, dur = cur.fetchone()
+        paid, _ = paid_summary(cur, prog_id, sid)          # already includes this payment (applied=1)
         if paid >= adv:
             register(cur, prog_id, sid)
+            gained = slices(paid, fee, inst) - slices(paid - amount, fee, inst)
+            if gained > 0:
+                cur.execute("SELECT access_until FROM tuition_applications WHERE program_id=%s AND student_id=%s FOR UPDATE",
+                            (prog_id, sid))
+                until = cur.fetchone()[0] or datetime.utcnow()
+                until = max(until, datetime.utcnow()) + timedelta(days=gained * dur / inst)
+                cur.execute("UPDATE tuition_applications SET access_until=%s WHERE program_id=%s AND student_id=%s",
+                            (until, prog_id, sid))
         con.commit()
         return "completed"
     except Exception:

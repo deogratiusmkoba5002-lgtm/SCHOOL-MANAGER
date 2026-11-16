@@ -62,7 +62,8 @@ async function loadMine(){
       <div class="row" style="margin:0"><button class="pri" onclick="toggle('np-panel')">+ New course</button><button class="ghost" onclick="toggle('nt-panel')">+ Single topic</button></div></div>
     <div class="panel" id="np-panel" style="display:none"><h3>Create a course</h3><p class="muted" style="margin-bottom:12px">A course is the big programme (e.g. Pre-Form Five). Inside it you add topics, and inside topics, sessions.</p>
       <div class="grid2">${fld("Course name",'<input id="np-name" placeholder="e.g. Pre-Form Five 2027">')}${fld("Total fee (TZS)",'<input id="np-fee" type="number" min="0">')}
-      ${fld("Advance to complete registration (TZS)",'<input id="np-adv" type="number" min="0" value="0">')}${fld("Instalments allowed (including advance)",'<input id="np-inst" type="number" min="1" max="12" value="1">')}</div>
+      ${fld("Course length (days)",'<input id="np-dur" type="number" min="1" value="90">')}${fld("Free trial after registering (days)",'<input id="np-trial" type="number" min="0" value="7">')}
+      ${fld("Advance to complete registration (TZS)",'<input id="np-adv" type="number" min="0" value="0">')}${fld("Payment slices (fee ÷ this = price per slice) )",'<input id="np-inst" type="number" min="1" max="12" value="1">')}</div>
       ${fld("Subjects taught in this course",'<div id="cs-np"></div>')}
       ${fld("Description (what students get)",'<textarea id="np-desc" rows="3"></textarea>')}<div style="margin-top:12px"><button class="pri" onclick="newProgram()">Create course</button></div></div>
     <div class="panel" id="nt-panel" style="display:none;max-width:460px"><h3>Create a single topic</h3><p class="muted" style="margin-bottom:10px">A stand-alone topic that students find in search and pay for directly.</p>
@@ -79,7 +80,7 @@ async function loadMine(){
 }
 async function newProgram(){
   chipAdd("np");
-  const r=await api("/programs","POST",{name:$("np-name").value,fee:$("np-fee").value,advance:$("np-adv").value,installments:$("np-inst").value,description:$("np-desc").value,subjects:CHIPS.np});
+  const r=await api("/programs","POST",{name:$("np-name").value,fee:$("np-fee").value,advance:$("np-adv").value,installments:$("np-inst").value,description:$("np-desc").value,subjects:CHIPS.np,duration_days:$("np-dur").value,trial_days:$("np-trial").value});
   if(!r.ok)return toast(r.error);toast("Course created");openProgram(r.id);}
 async function newTopic(pid){
   const name=pid?$("pt-name").value:$("nt-name").value;
@@ -119,7 +120,8 @@ function pOv(){
     <div class="row"><input id="pl" readonly value="${esc(link)}"><button class="pri" onclick="copyIn('pl')">Copy</button></div></div>
   <div class="panel"><h3>Course settings</h3><div class="grid2">
     ${fld("Name",`<input id="pf-name" value="${esc(p.name)}">`)}${fld("Total fee (TZS)",`<input id="pf-fee" type="number" value="${p.fee}">`)}
-    ${fld("Advance (TZS)",`<input id="pf-adv" type="number" value="${p.advance}">`)}${fld("Instalments allowed",`<input id="pf-inst" type="number" value="${p.installments}">`)}
+    ${fld("Course length (days)",`<input id="pf-dur" type="number" value="${p.duration_days}">`)}${fld("Free trial (days)",`<input id="pf-trial" type="number" value="${p.trial_days}">`)}
+    ${fld("Advance (TZS)",`<input id="pf-adv" type="number" value="${p.advance}">`)}${fld("Payment Slices",`<input id="pf-inst" type="number" value="${p.installments}">`)}
     ${fld("Maximum students",`<input id="pf-max" type="number" value="${p.max_students}">`)}
     ${fld("Applications",`<select id="pf-st" style="width:100%"><option value="open" ${p.status==="open"?"selected":""}>Open</option><option value="closed" ${p.status==="closed"?"selected":""}>Closed</option></select>`)}</div>
     ${fld("Subjects taught in this course", '<div id="cs-pf"></div>')}
@@ -129,7 +131,7 @@ function pOv(){
 }
 async function saveProg(){
   chipAdd("pf");
-  const r=await api("/programs/"+CURP.program.id,"POST",{name:$("pf-name").value,fee:$("pf-fee").value,advance:$("pf-adv").value,installments:$("pf-inst").value,max_students:$("pf-max").value,status:$("pf-st").value,description:$("pf-desc").value,subjects:CHIPS.pf});
+  const r=await api("/programs/"+CURP.program.id,"POST",{name:$("pf-name").value,fee:$("pf-fee").value,advance:$("pf-adv").value,installments:$("pf-inst").value,max_students:$("pf-max").value,status:$("pf-st").value,description:$("pf-desc").value,subjects:CHIPS.pf,duration_days:$("pf-dur").value,trial_days:$("pf-trial").value});
   if(!r.ok)return toast(r.error);toast("Saved");openProgram(CURP.program.id,"ov");}
 
 function pTop(){
@@ -160,12 +162,21 @@ function pTt(){
 async function saveTT(){const r=await api("/programs/"+CURP.program.id,"POST",{timetable:$("tt").value});if(!r.ok)return toast(r.error);toast("Timetable saved");CURP.program.timetable=$("tt").value;}
 
 function pPay(){
-  const r=CURP,p=r.program,m=r.mine,must=m.count+1>=p.installments,min=m.count===0?Math.max(p.advance,500):500;
-  const hist=r.history.map(h=>`<tr><td>${fdt(h.at)}</td><td>${h.kind==="advance"?"Advance":"Instalment"}</td><td>${tzs(h.amount)}</td><td><span class="badge ${h.status==="completed"?"on":"warn"}">${esc(h.status)}</span></td></tr>`).join("");
-  $("tab").innerHTML=`<div class="kpis">${kpi(tzs(m.paid),"Paid")}${kpi(tzs(m.balance),"Balance")}${kpi(Math.max(p.installments-m.count,0),"Instalments left")}</div>
-  ${m.status!=="registered"?`<div class="alert">Pay at least <b>${tzs(p.advance||500)}</b> to complete your registration.</div>`:""}
-  ${m.balance>0?`<div class="panel"><h3>Make a payment</h3>${must&&m.count>0?'<p class="muted" style="margin-bottom:8px">This is your last instalment: the full balance is due.</p>':""}
-    <div class="grid2">${fld("Amount (TZS)",`<input id="pg-amt" type="number" min="${min}" max="${m.balance}" value="${must?m.balance:Math.min(m.balance,Math.max(min,m.count===0?p.advance:min))}" ${must?"readonly":""}>`)}
+  const r=CURP,p=r.program,m=r.mine,N=p.installments,slice=p.fee/N;
+  const done=Math.min(N,Math.floor(m.paid/slice+1e-9));
+  const toNext=done>=N?0:Math.ceil((done+1)*slice-m.paid);
+  const first=m.count===0, min=first?Math.max(p.advance,500):500;
+  const def=Math.min(m.balance,Math.max(min,first?p.advance:toNext));
+  const live=p.fee===0||(m.until&&new Date(m.until).getTime()>Date.now());
+  const hist=r.history.map(h=>`<tr><td>${fdt(h.at)}</td><td>${h.kind==="advance"?"Advance":"Payment"}</td><td>${tzs(h.amount)}</td><td><span class="badge ${h.status==="completed"?"on":"warn"}">${esc(h.status)}</span></td></tr>`).join("");
+  $("tab").innerHTML=`<div class="kpis">${kpi(tzs(m.paid),"Paid")}${kpi(tzs(m.balance),"Balance")}${kpi(done+" / "+N,"Slices unlocked")}</div>
+  ${m.status!=="registered"?`<div class="alert">Pay at least <b>${tzs(p.advance||500)}</b> to complete your registration.</div>`
+    :live?`<div class="alert ok">Lessons unlocked until <b>${fdt(m.until)}</b>.</div>`
+         :`<div class="alert">Your access has expired. Pay to unlock the next slice.</div>`}
+  ${m.balance>0?`<div class="panel"><h3>Make a payment</h3>
+    <p class="muted" style="margin-bottom:8px">Each slice is ${tzs(Math.round(slice*100)/100)} and unlocks ${Math.round(p.duration_days/N*10)/10} days of lessons.
+      ${toNext>0?`<b>${tzs(toNext)}</b> more completes your next slice.`:""}</p>
+    <div class="grid2">${fld("Amount (TZS)",`<input id="pg-amt" type="number" min="${min}" max="${m.balance}" value="${def}">`)}
     ${fld("Mobile-money number that will pay",'<input id="pg-ph" type="tel" placeholder="0712345678">')}</div>
     <button class="pri" onclick="payProg()">Pay now</button><div id="pg-st" class="muted" style="margin-top:10px"></div></div>`
    :'<div class="alert ok">Fully paid. Thank you!</div>'}

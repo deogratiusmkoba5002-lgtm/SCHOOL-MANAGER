@@ -1091,6 +1091,11 @@ def init_db():
             PRIMARY KEY(teacher_id, student_id)
         )""",
         "CREATE INDEX IF NOT EXISTS idx_tuition_sessions_sched ON tuition_sessions(scheduled_at)",
+        "ALTER TABLE tuition_programs ADD COLUMN IF NOT EXISTS duration_days INTEGER NOT NULL DEFAULT 90",
+        "ALTER TABLE tuition_programs ADD COLUMN IF NOT EXISTS trial_days INTEGER NOT NULL DEFAULT 7",
+        "ALTER TABLE tuition_applications ADD COLUMN IF NOT EXISTS access_until TIMESTAMP",
+        # already-registered students get a trial week instead of being locked out on deploy
+        "UPDATE tuition_applications SET access_until=(NOW() AT TIME ZONE 'utc')+INTERVAL '7 days' WHERE status='registered' AND access_until IS NULL",
     ):
         cur.execute(_m)
     # Mini: every sheet already published when the subscription lock ships stays free forever. Runs once.
