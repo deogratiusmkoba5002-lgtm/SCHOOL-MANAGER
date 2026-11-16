@@ -63,8 +63,8 @@ async function loadMine(){
     <div class="panel" id="np-panel" style="display:none"><h3>Create a course</h3><p class="muted" style="margin-bottom:12px">A course is the big programme (e.g. Pre-Form Five). Inside it you add topics, and inside topics, sessions.</p>
       <div class="grid2">${fld("Course name",'<input id="np-name" placeholder="e.g. Pre-Form Five 2027">')}${fld("Total fee (TZS)",'<input id="np-fee" type="number" min="0">')}
       ${fld("Advance to complete registration (TZS)",'<input id="np-adv" type="number" min="0" value="0">')}${fld("Instalments allowed (including advance)",'<input id="np-inst" type="number" min="1" max="12" value="1">')}</div>
+      ${fld("Subjects taught in this course",'<div id="cs-np"></div>')}
       ${fld("Description (what students get)",'<textarea id="np-desc" rows="3"></textarea>')}<div style="margin-top:12px"><button class="pri" onclick="newProgram()">Create course</button></div></div>
-      ${fld("Subjects taught in this course", '<div id="cs-np"></div>')}
     <div class="panel" id="nt-panel" style="display:none;max-width:460px"><h3>Create a single topic</h3><p class="muted" style="margin-bottom:10px">A stand-alone topic that students find in search and pay for directly.</p>
       ${fld("Topic name",'<input id="nt-name" placeholder="e.g. Physics: Newton\'s laws">')}<div style="height:10px"></div>
       ${fld("How do you charge?",'<select id="nt-mode" style="width:100%"><option value="session">Per session</option><option value="course">Per topic (whole topic)</option></select>')}
@@ -124,9 +124,9 @@ function pOv(){
     ${fld("Applications",`<select id="pf-st" style="width:100%"><option value="open" ${p.status==="open"?"selected":""}>Open</option><option value="closed" ${p.status==="closed"?"selected":""}>Closed</option></select>`)}</div>
     ${fld("Subjects taught in this course", '<div id="cs-pf"></div>')}
     ${fld("Description",`<textarea id="pf-desc" rows="3">${esc(p.description)}</textarea>`)}
-    <p class="muted" style="margin:10px 0">Changing the fee affects what each student still owes.</p><button class="pri" onclick="saveProg()">Save changes</button></div>`;}
+    <p class="muted" style="margin:10px 0">Changing the fee affects what each student still owes.</p><button class="pri" onclick="saveProg()">Save changes</button></div>`;
     chipsMount("pf" ,p.subjects||[]);
-
+}
 async function saveProg(){
   chipAdd("pf");
   const r=await api("/programs/"+CURP.program.id,"POST",{name:$("pf-name").value,fee:$("pf-fee").value,advance:$("pf-adv").value,installments:$("pf-inst").value,max_students:$("pf-max").value,status:$("pf-st").value,description:$("pf-desc").value,subjects:CHIPS.pf});

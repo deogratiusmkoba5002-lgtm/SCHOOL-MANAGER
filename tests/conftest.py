@@ -48,6 +48,7 @@ def _configure_environment():
     os.environ["ALERT_EMAIL_API_KEY"] = ""
     os.environ["ALERT_SMTP_HOST"] = ""
     os.environ["SLOW_REQUEST_SECONDS"] = "0"
+    os.environ["PBKDF2_ITERATIONS"] = "1000"
     return url
 
 

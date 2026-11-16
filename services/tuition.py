@@ -218,6 +218,7 @@ def purge_old(force=False):
                        WHERE c.created_at < (NOW() AT TIME ZONE 'utc') - (%s * INTERVAL '1 day')
                          AND c.program_id IS NULL
                          AND NOT EXISTS (SELECT 1 FROM tuition_sessions s WHERE s.course_id=c.id)
+                         AND NOT EXISTS (SELECT 1 FROM tuition_enrollments e WHERE e.course_id=c.id)
                          AND NOT EXISTS (SELECT 1 FROM tuition_payments p WHERE p.course_id=c.id AND p.applied=1)""", (days,))
         cids = [r[0] for r in cur.fetchall()]
         if cids:
