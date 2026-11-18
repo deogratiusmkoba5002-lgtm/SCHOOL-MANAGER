@@ -98,29 +98,34 @@ def test_only_the_owner_sees_a_course(client):
 
 
 # ── instalments ─────────────────────────────────────────────────
-def test_instalment_rules_registration_and_no_double_pending(client, snippe):
+def test_payments_unlock_time_slices(client, snippe):
+    from datetime import datetime
     t, s = signup(client, "teach1", "teacher"), signup(client, "stud1")
-    pid, token = make_program(client, t)                                     # fee 10000, advance 2000, 3 instalments
+    pid, token = make_program(client, t)                  # fee 10000, advance 2000, 3 slices, 90 days, 7-day trial
     topic = client.post("/api/tuition/courses", json={"name": "Mechanics", "program_id": pid}, headers=t).get_json()["id"]
     assert apply(client, s, token, ["Physics"]).status_code == 200
     pay = lambda amount: client.post(f"/api/tuition/programs/{pid}/pay", json={"amount": amount, "phone": "0712345678"}, headers=s)
     check = lambda p: client.post(f"/api/tuition/program_pay/check/{p['payment_id']}", json={}, headers=s).get_json()["status"]
+    until = lambda: query("SELECT access_until FROM tuition_applications")[0][0]
+    days_left = lambda: (until() - datetime.utcnow()).total_seconds() / 86400
 
-    assert pay(1000).status_code == 400                                      # below the advance
+    assert pay(1000).status_code == 400                   # below the advance
     first = pay(2000).get_json(); assert first["ok"]
     dup = pay(2000)
-    assert dup.status_code == 400 and "waiting" in dup.get_json()["error"]   # no second pending payment
+    assert dup.status_code == 400 and "waiting" in dup.get_json()["error"]
     assert check(first) == "pending"
     snippe.settle(first["reference"])
     assert check(first) == "completed"
     assert query("SELECT status FROM tuition_applications") == [("registered",)]
-    assert query("SELECT course_id FROM tuition_enrollments") == [(topic,)]  # enrolled in every topic
+    assert query("SELECT course_id FROM tuition_enrollments") == [(topic,)]
+    assert 6.9 <= days_left() <= 7.1                      # advance alone = trial week only
 
-    second = pay(2000).get_json(); snippe.settle(second["reference"]); assert check(second) == "completed"
-    assert pay(2000).status_code == 400                                      # last instalment must clear the balance (6000)
-    last = pay(6000).get_json(); snippe.settle(last["reference"]); assert check(last) == "completed"
-    assert pay(500).status_code == 400                                       # fully paid
+    second = pay(1400).get_json(); snippe.settle(second["reference"]); assert check(second) == "completed"
+    assert 36.9 <= days_left() <= 37.1                    # 3400 >= 3333.33 -> first slice (+30 days)
 
+    last = pay(6600).get_json(); snippe.settle(last["reference"]); assert check(last) == "completed"
+    assert 96.9 <= days_left() <= 97.1                    # two more slices (+60 days)
+    assert pay(500).status_code == 400                    # fully paid
 
 # ── isolation ───────────────────────────────────────────────────
 def test_program_topics_cannot_be_joined_through_the_catalog(client):
